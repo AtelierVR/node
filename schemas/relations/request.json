@@ -1,0 +1,20 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "relations/request",
+    "title": "Relation Request Schema",
+    "type": "object",
+    "properties": {
+        "type": {
+            "type": "string",
+            "enum": ["follow", "friend"]
+        },
+        "message": {
+            "type": "string",
+            "maxLength": 500
+        }
+    },
+    "required": [
+        "type"
+    ],
+    "additionalProperties": false
+}

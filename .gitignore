@@ -1,0 +1,11 @@
+node_modules
+.env
+*.code-workspace
+prisma/*.db
+certs/
+/assets/
+dist/
+db/
+tmp/
+.vscode/
+.idea/

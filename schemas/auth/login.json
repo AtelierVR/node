@@ -1,0 +1,26 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "login",
+    "title": "Login Schema",
+    "type": "object",
+    "properties": {
+        "identifier": {
+            "type": [
+                "string",
+                "integer"
+            ],
+            "minimum": 1,
+            "$ref": "../users/types.json#/definitions/username"
+        },
+        "password": {
+            "$ref": "../users/types.json#/definitions/password"
+        },
+        "public_key": {
+            "$ref": "../types.json#/definitions/public_key"
+        }
+    },
+    "required": [
+        "identifier",
+        "password"
+    ]
+}

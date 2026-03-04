@@ -1,0 +1,57 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "relay/client",
+    "title": "Relay Client Schema",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "remote": {
+            "type": "string"
+        },
+        "platform": {
+            "type": "string"
+        },
+        "engine": {
+            "type": "string"
+        },
+        "last_seen": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "user": {
+            "anyOf": [
+                {
+                    "type": "null"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "$ref": "../users/types.json#/definitions/id"
+                        },
+                        "address": {
+                            "type": "string",
+                            "description": "Master server address (IP or hostname)"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "address"
+                    ],
+                    "additionalProperties": false
+                }
+            ]
+        }
+    },
+    "required": [
+        "id",
+        "remote",
+        "platform",
+        "engine",
+        "last_seen"
+    ],
+    "additionalProperties": false
+}

@@ -1,0 +1,35 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "id": {
+            "$ref": "../users/types.json#/definitions/id"
+        },
+        "username": {
+            "$ref": "../users/types.json#/definitions/username"
+        },
+        "display": {
+            "$ref": "../users/types.json#/definitions/display"
+        },
+        "email": {
+            "$ref": "../types.json#/definitions/email"
+        },
+        "password": {
+            "$ref": "../users/types.json#/definitions/password"
+        },
+        "thumbnail": {
+            "$ref": "../types.json#/definitions/url"
+        },
+        "banner": {
+            "$ref": "../types.json#/definitions/url"
+        },
+        "public_key": {
+            "$ref": "../types.json#/definitions/public_key"
+        }
+    },
+    "required": [
+        "username",
+        "password"
+    ],
+    "additionalProperties": false
+}

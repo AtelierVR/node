@@ -1,0 +1,392 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model NetServer {
+  id                Int                     @id @default(autoincrement())
+  rank              Float                   @default(0)
+  address           String                  @unique
+  cert_blob         Bytes                   @unique
+  cert_expires      DateTime
+  last_seen         DateTime                @default(now())
+  created_at        DateTime                @default(now())
+  updated_at        DateTime                @updatedAt
+  users             NetUser[]
+  out_integrities   OutIntegrity[]
+  in_integrities    InIntegrity[]
+  conversation_refs ConversationReference[]
+}
+
+model NetUser {
+  id          Int
+  server_id   Int
+  rank        Float         @default(0)
+  blacklisted Json?
+  tags        String[]
+  last_seen   DateTime      @default(now())
+  server      NetServer     @relation(fields: [server_id], references: [id])
+  integrities InIntegrity[]
+
+  @@id([id, server_id])
+}
+
+enum PresenceStatus {
+  ONLINE_ALL_JOIN // cyan - oja - localisation à tout le monde, affiche status
+  ONLINE_JOIN // bleu - ojf - localisation aux followings, affiche status
+  ONLINE // vert - localisation aux followings, affiche status
+  BUSY // orange - pas de localisation, affiche status
+  DO_NOT_DISTURB // red - dnd - pas de localisation, affiche status
+  STREAM // violet - pas de localisation, affiche status
+  OFFLINE // gris - pas de localisation, pas de status
+}
+
+model User {
+  id                   Int                     @id @default(autoincrement())
+  username             String                  @unique
+  display              String
+  links                Json                    @default("[]")
+  thumbnail            String?
+  bio                  String?
+  banner               String?
+  email                String?                 @unique
+  email_verified       Boolean                 @default(false)
+  password             String?
+  rank                 Float                   @default(0)
+  blacklisted          Json?
+  home_ref             String?
+  avatar_ref           String?
+  pronoun              String?
+  tags                 String[]
+  twofa_enabled        Boolean                 @default(false)
+  twofa_secret         String?
+  presence             PresenceStatus          @default(ONLINE)
+  presence_status      String? // Custom status message
+  created_at           DateTime                @default(now())
+  updated_at           DateTime                @updatedAt
+  sessions             Session[]
+  integrities          OutIntegrity[]
+  notifications        Notification[]
+  presences            Presence[]
+  email_verifications  EmailVerification[]
+  verification_factors VerificationFactor[]
+  conversation_refs    ConversationReference[]
+  tables               Table[]
+  cert_blob            Bytes
+  key_blob             Bytes
+  cert_expires         DateTime
+}
+
+model EmailVerification {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token      String   @unique
+  email      String // Store the email being verified (in case user changes email)
+  expires_at DateTime
+  verified   Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([token])
+  @@index([user_id, verified])
+}
+
+model VerificationFactor {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  method     String // 'email', etc.
+  code       String // Verification code
+  expires_at DateTime
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([code, method])
+}
+
+model OutIntegrity {
+  id         Int       @id @default(autoincrement())
+  user_id    Int
+  user       User      @relation(fields: [user_id], references: [id])
+  server_id  Int
+  server     NetServer @relation(fields: [server_id], references: [id])
+  token      String    @unique
+  created_at DateTime  @default(now())
+  expires_at DateTime
+  updated_at DateTime  @updatedAt
+}
+
+model InIntegrity {
+  id         Int       @id @default(autoincrement())
+  user_id    Int
+  server_id  Int
+  user       NetUser   @relation(fields: [user_id, server_id], references: [id, server_id])
+  server     NetServer @relation(fields: [server_id], references: [id])
+  token      String    @unique
+  created_at DateTime  @default(now())
+  expires_at DateTime
+  updated_at DateTime  @updatedAt
+}
+
+model UserRelation {
+  id            String           @id @default(uuid())
+  type          UserRelationType
+  initiator_ref String
+  target_ref    String
+  created_at    DateTime         @default(now())
+  updated_at    DateTime         @updatedAt
+}
+
+enum UserRelationType {
+  REQUEST
+  REQUESTED_BY
+  FOLLOW
+  FOLLOWED_BY
+}
+
+model Instance {
+  id             Int      @id @default(autoincrement())
+  name           String   @unique // Humain identifier
+  title          String?
+  description    String?
+  thumbnail      String?
+  capacity       Int      @default(0) // if 0, use the world capacity (node user)
+  tags           String[]
+  world_ref      String
+  owner_ref      String
+  use_whitelist  Boolean  @default(false)
+  whitelist_refs String[]
+  use_password   Boolean  @default(false)
+  password       String?
+  cache          Json?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+}
+
+enum SessionType {
+  TOKEN
+  PAIR_KEY
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  token       String
+  user_id     Int
+  user        User     @relation(fields: [user_id], references: [id])
+  expires     DateTime
+  public_key  Bytes?
+  fingerprint String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  devices     Device[]
+}
+
+model Device {
+  id         Int      @id @default(autoincrement())
+  session_id String
+  session    Session  @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  ip         String
+  user_agent String
+  last_seen  DateTime @default(now())
+  created_at DateTime @default(now())
+
+  @@unique([session_id, ip, user_agent], name: "session_id_ip_user_agent")
+}
+
+model Badger {
+  id         Int      @id @default(autoincrement())
+  token      String   @unique
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  relay_id   Int      @unique
+  relay      Relay    @relation(fields: [relay_id], references: [id], onDelete: Cascade)
+}
+
+model Relay {
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  badger     Badger?
+}
+
+model Avatar {
+  id          Int           @id @default(autoincrement())
+  title       String
+  description String?
+  thumbnail   String?
+  tags        String[]
+  owner_ref   String
+  created_at  DateTime      @default(now())
+  updated_at  DateTime      @updatedAt
+  assets      AvatarAsset[]
+}
+
+model AvatarAsset {
+  id         Int      @id @default(autoincrement())
+  version    Int
+  engine     String
+  platform   String
+  url        String?
+  hash       String?
+  features   String[]
+  size       Int
+  avatar_id  Int
+  avatar     Avatar   @relation(fields: [avatar_id], references: [id], onDelete: Cascade)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([version, engine, platform, avatar_id])
+  @@index([hash])
+}
+
+model World {
+  id               Int          @id @default(autoincrement())
+  title            String
+  description      String?
+  thumbnail        String?
+  tags             String[]
+  capacity         Int
+  owner_ref        String
+  contributor_refs String[]     @default([])
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+  assets           WorldAsset[]
+}
+
+model WorldAsset {
+  id         Int      @id @default(autoincrement())
+  version    Int
+  engine     String
+  platform   String
+  url        String?
+  hash       String?
+  mod_refs   String[]
+  features   String[]
+  size       Int?
+  world_id   Int
+  world      World    @relation(fields: [world_id], references: [id])
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([version, engine, platform, world_id])
+}
+
+model Notification {
+  id          Int       @id @default(autoincrement())
+  external_id String? // Identifiant donné par l'envoyeur
+  type        String
+  data        Json
+  to_user_id  Int
+  to_user     User      @relation(fields: [to_user_id], references: [id])
+  expires_at  DateTime? // Date d'expiration de la notification
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  @@index([external_id])
+  @@index([expires_at])
+}
+
+enum NotificationDeletion {
+  IMMEDIATE
+  ON_READ
+  ON_EXPIRE
+}
+
+model Presence {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  user       User     @relation(fields: [user_id], references: [id])
+  type       String
+  data       Json
+  created_at DateTime @default(now())
+}
+
+model Table {
+  id         Int      @id @default(autoincrement())
+  key        String
+  user_id    Int
+  value      Bytes
+  mime       String   @default("application/octet-stream")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([key, user_id])
+}
+
+// ========== MESSAGING SYSTEM ==========
+
+model Conversation {
+  id           String               @id @default(uuid())
+  title        String? // null pour les conversations à 2, optionnel pour les groupes
+  thumbnail    String? // Avatar du groupe (null pour DM)
+  created_at   DateTime             @default(now())
+  updated_at   DateTime             @updatedAt
+  members      ConversationMember[]
+  messages     Message[]
+  last_message DateTime? // Timestamp du dernier message pour tri
+}
+
+model ConversationMember {
+  id                String       @id @default(uuid())
+  conversation_id   String
+  conversation      Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  user_ref          String // format: "id@server" ou "id" pour local
+  joined_at         DateTime     @default(now())
+  last_read_at      DateTime? // Dernière lecture pour compteur de non-lus
+  notification_mode String       @default("ALL") // ALL, MENTIONS, MUTED
+  created_at        DateTime     @default(now())
+  updated_at        DateTime     @updatedAt
+
+  @@unique([conversation_id, user_ref])
+  @@index([user_ref])
+  @@index([conversation_id, last_read_at])
+}
+
+enum MessageStatus {
+  SENDING // Message en cours d'envoi
+  SENT // Message envoyé avec succès
+  DELIVERED // Message délivré à au moins un serveur distant
+  FAILED // Échec de délivrance
+  RETRYING // Nouvelle tentative en cours
+}
+
+model Message {
+  id              String       @id @default(uuid())
+  conversation_id String
+  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  author_ref      String // format: "id@server" ou "id" pour local
+  content         String // Contenu du message
+  attachments     Json[]       @default([]) // Array de {type, url, size, mime, filename}
+  reply_to        String? // ID du message auquel on répond
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  edited_at       DateTime? // Timestamp de la dernière édition
+
+  @@index([conversation_id, created_at])
+  @@index([author_ref])
+}
+
+model ConversationReference {
+  id      String @id
+  server  Int
+  user_id Int
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  net_server NetServer @relation(fields: [server], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([id, server, user_id], name: "id_server_user_id")
+}

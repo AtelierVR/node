@@ -1,0 +1,26 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "avatars/create",
+    "title": "Create Avatar Schema",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+        },
+        "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+        },
+        "description": {
+            "type": "string",
+            "maxLength": 4096
+        },
+        "thumbnail": {
+            "$ref": "../types.json#/definitions/url"
+        }
+    },
+    "additionalProperties": false
+}

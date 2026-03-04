@@ -1,0 +1,16 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "totp/verify",
+    "title": "TOTP Verify Schema",
+    "type": "object",
+    "properties": {
+        "token": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$"
+        }
+    },
+    "required": [
+        "token"
+    ],
+    "additionalProperties": false
+}

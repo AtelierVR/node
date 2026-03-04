@@ -1,0 +1,35 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "presence/server",
+    "title": "Server Presence Schema",
+    "type": "object",
+    "properties": {
+        "type": {
+            "type": "string",
+            "enum": ["status", "location"]
+        },
+        "user_id": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "status": {
+            "type": "string",
+            "enum": ["online", "away", "busy", "offline"]
+        },
+        "message": {
+            "type": "string",
+            "maxLength": 100
+        },
+        "instance_id": {
+            "type": "string"
+        },
+        "world_id": {
+            "type": "integer"
+        }
+    },
+    "required": [
+        "type",
+        "user_id"
+    ],
+    "additionalProperties": false
+}

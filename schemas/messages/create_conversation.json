@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["members"],
+  "properties": {
+    "members": {
+      "type": "array",
+      "description": "Array of user references (user_id@server or user_id for local)",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "title": {
+      "type": "string",
+      "description": "Optional conversation title",
+      "maxLength": 255
+    },
+    "thumbnail": {
+      "type": "string",
+      "description": "Optional thumbnail URL for the conversation",
+      "maxLength": 500
+    }
+  },
+  "additionalProperties": false
+}

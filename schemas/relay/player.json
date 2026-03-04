@@ -1,0 +1,36 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "relay/player",
+    "title": "Relay Player Schema",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "client_id": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "display": {
+            "$ref": "../users/types.json#/definitions/display"
+        },
+        "flags": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Bitfield for player flags (admin, muted, etc.)"
+        },
+        "status": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Player status code"
+        },
+        "created_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix timestamp of when the player joined"
+        }
+    },
+    "required": ["id", "client_id", "display", "flags", "status", "created_at"],
+    "additionalProperties": false
+}

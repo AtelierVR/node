@@ -1,0 +1,42 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "worlds/asset/create",
+    "title": "Create World Asset Schema",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+        },
+        "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+        },
+        "engine": {
+            "type": "string",
+            "minLength": 1
+        },
+        "platform": {
+            "type": "string",
+            "minLength": 1
+        },
+        "url": {
+            "$ref": "../../types.json#/definitions/url"
+        },
+        "hash": {
+            "type": "string"
+        },
+        "size": {
+            "type": "integer",
+            "minimum": 0
+        }
+    },
+    "required": [
+        "version",
+        "engine",
+        "platform"
+    ],
+    "additionalProperties": false
+}

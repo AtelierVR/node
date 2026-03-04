@@ -1,0 +1,44 @@
+version: '3'
+
+services:
+  node:
+    image: noxnode
+    container_name: nox_node
+    env_file: .env
+    ports:
+      - "${NODE_PORT}:${NODE_PORT}"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - ./assets:/app/assets
+      - ./certs:/app/certs
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+    healthcheck:
+      test: ['CMD', 'npm', 'run', 'healthcheck']
+    networks:
+      - noxbridge
+    restart: always
+    depends_on:
+      - db
+
+  db:
+    image: postgres:latest
+    container_name: nox_database
+    env_file: .env
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', '${POSTGRES_USER}']
+    networks:
+      - noxbridge
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    restart: always
+    volumes:
+      - noxdb:/var/lib/postgresql/data
+
+volumes:
+  noxdb:
+
+networks:
+  noxbridge:
+    driver: bridge
+

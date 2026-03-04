@@ -1,0 +1,31 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "email/test",
+    "title": "Test Email Schema",
+    "type": "object",
+    "properties": {
+        "to": {
+            "type": "string",
+            "format": "email"
+        },
+        "template": {
+            "type": "string"
+        },
+        "variables": {
+            "type": "object"
+        },
+        "subject": {
+            "type": "string"
+        },
+        "html": {
+            "type": "string"
+        },
+        "text": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "to"
+    ],
+    "additionalProperties": false
+}

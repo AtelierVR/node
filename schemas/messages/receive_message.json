@@ -1,0 +1,73 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "receive_message",
+    "description": "Schema for receiving a message from an authoritative server",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Unique message identifier"
+        },
+        "conversation_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Conversation identifier"
+        },
+        "sender": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[0-9]+@[a-z0-9.-]+$",
+            "description": "User reference in format: id@server"
+        },
+        "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000,
+            "description": "Message content"
+        },
+        "attachments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "type": { "type": "string" },
+                    "url": { "type": "string" },
+                    "size": { "type": "number" },
+                    "mime": { "type": "string" },
+                    "filename": { "type": "string" }
+                },
+                "required": ["type", "url", "size", "mime"]
+            },
+            "description": "Optional attachments"
+        },
+        "reply": {
+            "type": "string",
+            "description": "ID of the message being replied to"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Message creation timestamp"
+        },
+        "recipients": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[0-9]+@[a-z0-9.-]+$"
+            },
+            "minItems": 1,
+            "description": "List of recipient user references"
+        }
+    },
+    "required": [
+        "id",
+        "conversation_id",
+        "sender",
+        "content",
+        "created_at",
+        "recipients"
+    ],
+    "additionalProperties": false
+}

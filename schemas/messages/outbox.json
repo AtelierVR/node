@@ -1,0 +1,271 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "outbox",
+    "description": "Schema for receiving federated events from external users on internal conversations",
+    "type": "object",
+    "required": ["type", "data"],
+    "additionalProperties": false,
+    "allOf": [
+        {
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "create_message",
+                        "edit_message",
+                        "read",
+                        "join_conversation",
+                        "leave_conversation",
+                        "typing",
+                        "delete_message"
+                    ]
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "type": { "const": "create_message" } }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "conversation_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Conversation identifier"
+                            },
+                            "author": {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "^[0-9]+@[a-z0-9.-]+$",
+                                "description": "Author user reference in format: id@server"
+                            },
+                            "content": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 10000,
+                                "description": "Message content"
+                            },
+                            "attachments": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "type": { "type": "string" },
+                                        "url": { "type": "string" },
+                                        "size": { "type": "number" },
+                                        "mime": { "type": "string" },
+                                        "filename": { "type": "string" }
+                                    },
+                                    "required": ["type", "url", "size", "mime"]
+                                }
+                            },
+                            "reply": {
+                                "type": ["string", "null"],
+                                "description": "ID of the message being replied to"
+                            }
+                        },
+                        "required": ["conversation_id", "author", "content"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "type": { "const": "edit_message" } }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Message identifier to edit"
+                            },
+                            "conversation_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Conversation identifier"
+                            },
+                            "editor": {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "^[0-9]+@[a-z0-9.-]+$",
+                                "description": "User reference who edited the message"
+                            },
+                            "content": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 10000,
+                                "description": "New message content"
+                            },
+                            "edited_at": {
+                                "type": "number",
+                                "description": "Edit timestamp (milliseconds since epoch)"
+                            }
+                        },
+                        "required": ["id", "conversation_id", "editor", "content", "edited_at"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "type": { "const": "read" } }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "conversation_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Conversation identifier"
+                            },
+                            "user": {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "^[0-9]+@[a-z0-9.-]+$",
+                                "description": "User reference who marked as read"
+                            }
+                        },
+                        "required": ["conversation_id", "user"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "type": { "const": "join_conversation" } }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "conversation_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Conversation identifier"
+                            },
+                            "user": {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "^[0-9]+@[a-z0-9.-]+$",
+                                "description": "User reference who joined"
+                            },
+                            "joined_at": {
+                                "type": "number",
+                                "description": "Timestamp when user joined (milliseconds since epoch)"
+                            }
+                        },
+                        "required": ["conversation_id", "user", "joined_at"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "type": { "const": "leave_conversation" } }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "conversation_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Conversation identifier"
+                            },
+                            "user": {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "^[0-9]+@[a-z0-9.-]+$",
+                                "description": "User reference who left"
+                            },
+                            "left_at": {
+                                "type": "number",
+                                "description": "Timestamp when user left (milliseconds since epoch)"
+                            }
+                        },
+                        "required": ["conversation_id", "user", "left_at"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "type": { "const": "typing" } }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "conversation_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Conversation identifier"
+                            },
+                            "user": {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "^[0-9]+@[a-z0-9.-]+$",
+                                "description": "User reference who is typing"
+                            },
+                            "is_typing": {
+                                "type": "boolean",
+                                "description": "Whether user is typing or stopped typing"
+                            }
+                        },
+                        "required": ["conversation_id", "user", "is_typing"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "type": { "const": "delete_message" } }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "conversation_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Conversation identifier"
+                            },
+                            "message_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "ID of the message to delete"
+                            },
+                            "deleted_by": {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "^[0-9]+@[a-z0-9.-]+$",
+                                "description": "User reference who deleted the message"
+                            }
+                        },
+                        "required": ["conversation_id", "message_id", "deleted_by"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        }
+    ]
+}

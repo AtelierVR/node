@@ -1,0 +1,144 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "update_user",
+    "description": "Schema for updating user information",
+    "type": "object",
+    "properties": {
+        "username": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "$ref": "./types.json#/definitions/username"
+        },
+        "display": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "$ref": "./types.json#/definitions/display"
+        },
+        "email": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "$ref": "../types.json#/definitions/email"
+        },
+        "password": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "$ref": "./types.json#/definitions/password"
+        },
+        "current_password": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "$ref": "./types.json#/definitions/password"
+        },
+        "twofa_token": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "pattern": "^[0-9]{6}$",
+            "description": "6-digit 2FA token required for sensitive operations"
+        },
+        "bio": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "maxLength": 512
+        },
+        "pronoun": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "maxLength": 32,
+            "description": "User's preferred pronouns (e.g., they/them, she/her, he/him)"
+        },
+        "thumbnail": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "$ref": "../types.json#/definitions/url"
+        },
+        "banner": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "$ref": "../types.json#/definitions/url"
+        },
+        "links": {
+            "type": [
+                "array",
+                "null"
+            ],
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                    },
+                    "value": {
+                        "$ref": "../types.json#/definitions/url"
+                    }
+                },
+                "required": ["label", "value"],
+                "additionalProperties": false
+            }
+        },
+        "home": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "$ref": "../worlds/types.json#/definitions/identifier"
+        },
+        "avatar": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "$ref": "../avatars/types.json#/definitions/identifier"
+        },
+        "tags": {
+            "type": [
+                "array",
+                "null"
+            ],
+            "items": {
+                "type": "string",
+                "pattern": "^usr:[a-zA-Z0-9_]+$",
+                "minLength": 5,
+                "maxLength": 64
+            },
+            "description": "List of tags associated with the user, each up to 32 characters long"
+        },
+        "presence": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "enum": ["oja", "ojf", "online", "busy", "dnd", "stream", "offline"],
+            "description": "User's presence status"
+        },
+        "presence_status": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "maxLength": 128,
+            "description": "Custom status message"
+        }
+    }
+}

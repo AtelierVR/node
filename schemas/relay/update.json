@@ -1,0 +1,46 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "relay/update",
+    "title": "Relay Update Schema",
+    "type": "object",
+    "properties": {
+        "max_instances": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Maximum number of instances allowed on this relay"
+        },
+        "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Port number the relay is listening on"
+        },
+        "use_address": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Public address clients should use to connect to this relay"
+        },
+        "clients": {
+            "type": "array",
+            "items": {
+                "$ref": "client.json"
+            },
+            "description": "List of connected clients"
+        },
+        "instances": {
+            "type": "array",
+            "items": {
+                "$ref": "instance.json"
+            },
+            "description": "List of active game instances"
+        }
+    },
+    "required": [
+        "max_instances",
+        "port",
+        "use_address",
+        "clients",
+        "instances"
+    ],
+    "additionalProperties": false
+}

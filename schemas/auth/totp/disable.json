@@ -1,0 +1,14 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "totp/disable",
+    "title": "TOTP Disable Schema",
+    "type": "object",
+    "properties": {
+        "factor_code": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$"
+        }
+    },
+    "required": [],
+    "additionalProperties": false
+}

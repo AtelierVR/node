@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Unsubscribe",
+  "description": "Unsubscribe from custom events via WebSocket",
+  "type": "object",
+  "required": ["events"],
+  "properties": {
+    "events": {
+      "type": "array",
+      "description": "List of event names to unsubscribe from",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "examples": [
+        ["user_status_changed"],
+        ["relay_status_change", "instance_created"],
+        ["message_received"]
+      ]
+    }
+  },
+  "additionalProperties": false
+}
