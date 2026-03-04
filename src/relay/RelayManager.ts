@@ -372,13 +372,14 @@ export default class RelayManager {
                 }
             }
 
-            // Verify instances exist in database
+            // Verify instances exist in database - filter out undefined/null values
+            const validInstancesFiltered = validInstances.filter((id): id is number => typeof id === 'number');
             const dbInstances = await this.app.database.instance.findMany({
-                where: { id: { in: validInstances } }
+                where: { id: { in: validInstancesFiltered } }
             });
 
             const validDbIds = new Set(dbInstances.map(i => i.id));
-            const invalidInstances = validInstances.filter(id => !validDbIds.has(id));
+            const invalidInstances = validInstancesFiltered.filter(id => !validDbIds.has(id));
 
             // Update database with valid instances
             if (validDbIds.size > 0) {
