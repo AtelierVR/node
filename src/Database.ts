@@ -61,6 +61,15 @@ export default class Database extends PrismaClient {
                 Debug.debug("Installing database schema...");
                 let migrate = child_process.spawn('npm', ['run', 'deploy']);
                 let success = await new Promise<boolean>((resolve, reject) => {
+                    
+                    migrate.stdout.on('data', (data) => {
+                        Debug.debug(`[Migrate] ${data}`);
+                    });
+
+                    migrate.stderr.on('data', (data) => {
+                        Debug.error(`[Migrate] ${data}`);
+                    });
+
                     migrate.on('close', (code) => {
                         if (code === 0) resolve(true);
                         else resolve(false);
