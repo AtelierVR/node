@@ -210,43 +210,43 @@ export default class User implements Omit<IUser, 'links'> {
     }
 
     canCreateWorld() {
-        return hasTag(this.getTags(), 'sys:can_world_create') && this.getBlacklist() === null;
+        return this.isAdmin() || hasTag(this.getTags(), 'sys:can_world_create') && this.getBlacklist() === null;
     }
 
     canCreateWorldAsset() {
-        return hasTag(this.getTags(), 'sys:can_world_asset_create') && this.getBlacklist() === null;
+        return this.isAdmin() || hasTag(this.getTags(), 'sys:can_world_asset_create') && this.getBlacklist() === null;
     }
 
     canDeleteWorld() {
-        return hasTag(this.getTags(), 'sys:can_world_delete') && this.getBlacklist() === null;
+        return this.isAdmin() || hasTag(this.getTags(), 'sys:can_world_delete') && this.getBlacklist() === null;
     }
 
     canUpdateWorld() {
-        return hasTag(this.getTags(), 'sys:can_world_edit') && this.getBlacklist() === null;
+        return this.isAdmin() || hasTag(this.getTags(), 'sys:can_world_edit') && this.getBlacklist() === null;
     }
 
     canUpdateWorldAsset() {
-        return hasTag(this.getTags(), 'sys:can_world_asset_update') && this.getBlacklist() === null;
+        return this.isAdmin() || hasTag(this.getTags(), 'sys:can_world_asset_update') && this.getBlacklist() === null;
     }
 
     canUploadWorldAssetFile() {
-        return this.canUploadFile() && this.canUpdateWorldAsset();
+        return this.isAdmin() || this.canUploadFile() && this.canUpdateWorldAsset();
     }
 
     canUploadFile() {
-        return hasTag(this.getTags(), 'sys:can_file_upload') && this.getBlacklist() === null;
+        return this.isAdmin() || hasTag(this.getTags(), 'sys:can_file_upload') && this.getBlacklist() === null;
     }
 
     canUpdateUser() {
-        return hasTag(this.getTags(), 'sys:can_self_edit') && this.getBlacklist() === null;
+        return this.isAdmin() || hasTag(this.getTags(), 'sys:can_self_edit') && this.getBlacklist() === null;
     }
 
     canCreateInstance() {
-        return hasTag(this.getTags(), 'sys:can_instance_create') && this.getBlacklist() === null;
+        return this.isAdmin() || hasTag(this.getTags(), 'sys:can_instance_create') && this.getBlacklist() === null;
     }
 
     canFetchExternal() {
-        return hasTag(this.getTags(), 'dft:fetch_external') && this.getBlacklist() === null;
+        return this.isAdmin() || hasTag(this.getTags(), 'dft:fetch_external') && this.getBlacklist() === null;
     }
 
     isAdmin() {
@@ -264,7 +264,7 @@ export default class User implements Omit<IUser, 'links'> {
     }
 
     useManualFollowValidation() {
-        return hasTag(this.getTags(), 'sys:manual_follow_validation');
+        return this.isAdmin() || hasTag(this.getTags(), 'sys:manual_follow_validation');
     }
 
     useAutoRejectFollow() {

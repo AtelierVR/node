@@ -97,13 +97,7 @@ export default class NetServerManager {
 
         return server;
     }
-
-    async findOrFetchByAddress(address: string): Promise<NetServer | null> {
-        let server = await this.findNetServerByAddress(address);
-        if (!server) return null;
-        return server;
-    }
-
+    
     async findNetServerByAddress(address: string): Promise<NetServer | null> {
         try {
             const server = await this.app.database.netServer.findFirst({ where: { address } });

@@ -218,7 +218,7 @@ export default class RelayManager {
                 verify: async () => await luser?.hasFingerprint(message.data.fingerprint) || false
             };
         } else {
-            var serv = await this.app.netServers.findOrFetchByAddress(message.data.server);
+            var serv = await this.app.netServers.findNetServerByAddress(message.data.server);
             if (!serv) return message.reply({
                 result: "invalid_user",
                 error: "Invalid server"

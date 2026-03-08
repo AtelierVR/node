@@ -369,8 +369,11 @@ export default class UserAPIWeb {
         if (!user.canFetchExternal())
             return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'fetch external user'));
 
-        let ns = await this.app.netServers.findNetServerByAddress(userIdentifier.server);
-        if (!ns) return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        let ns = await this.app.netServers.findOrInitServer(userIdentifier.server);
+        if (ns instanceof Error) {
+            Debug.error(`Failed to find or init NetServer for ${userIdentifier.server}: ${ns.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        }
 
         let nu = await this.app.netUsers.findOrFetch(userIdentifier.identifier, ns);
         if (!nu) return response.send(new ErrorMessage(ErrorCodes.UserNotFound));

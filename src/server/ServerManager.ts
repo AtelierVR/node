@@ -91,9 +91,10 @@ export class ServerManager {
         }
         if (!url) return new Error("URL is not valid");
 
-        Debug.log("fetching server", url.toString());
         try {
             url.pathname = '/api/server';
+            Debug.log("Fetching server", url.toString());
+
             const req = await request(url, {
                 method: 'GET',
                 headers: {
@@ -101,6 +102,7 @@ export class ServerManager {
                     ...(server ? await server.requestHeaders() : {})
                 }
             });
+
             if (req.statusCode === 200) {
                 const body = await req.body.json() as { data?: IRServer, error?: { message: string, code: number, status: number } };
                 if (body.error) return new Error(body.error.message);
@@ -182,6 +184,7 @@ export class ServerManager {
         const uriType = host[0].match(ipv4reg) ? 'IPv4' : host[0].match(ipv6reg) ? 'IPv6' : 'DNS';
 
         if (uriType === 'IPv4' || uriType === 'IPv6') {
+            Debug.log(`Finding master gateway for IP address ${host[0]} (${uriType}) for ${address}...`);
             let uri = new URL(`tcp://${host[0]}:${host[1] || Env.getPort()}`);
             let fmg = await this.findGM(uri.host, true);
             if (fmg) return fmg;
@@ -189,6 +192,7 @@ export class ServerManager {
         }
 
         if (host[0] === "localhost") {
+            Debug.log(`Finding master gateway for localhost for ${address}...`);
             let uri = new URL(`tcp://${host[0]}:${host[1] || Env.getPort()}`);
             let fmg = await this.findGM(uri.host, true);
             if (fmg) return fmg;
@@ -196,15 +200,17 @@ export class ServerManager {
         }
 
         if (uriType === 'DNS') {
+            Debug.log(`Finding master gateway for DNS address ${host[0]} for ${address}...`);
             let uri = new URL(`tcp://${host[0]}:${host[1] || Env.getPort()}`);
-            let fmg = await this.findGM(uri.host);
-            if (fmg) return fmg;
             let txt = await this.findTXT(`_nox.${uri.hostname}`);
             if (txt.length > 0)
                 for (const t of txt) {
+                    Debug.log(`Found TXT record for ${uri.hostname}:`, t);
                     let mg = t.getMasterGateway();
                     if (mg) return mg;
                 }
+            let fmg = await this.findGM(uri.host);
+            if (fmg) return fmg;
             return null;
         }
 
@@ -215,6 +221,7 @@ export class ServerManager {
         const protos = forceHTTP ? ['http'] : ['https', 'http'];
         for (const protocol of protos) {
             try {
+                Debug.log(`Finding master gateway for ${protocol.toUpperCase()} protocol for ${domain}...`);
                 const uri = new URL(`${protocol}://${domain}/.well-known/nox`);
                 const req = await request(uri);
                 if (req.statusCode === 200)
@@ -228,7 +235,7 @@ export class ServerManager {
 
     async findTXT(domain: string): Promise<TXTAnswer[]> {
         try {
-            Debug.log("Fetching TXT record for", domain);
+            Debug.log(`Fetching TXT record for ${domain}...`);
             const req = await request(`https://dns.google/resolve?name=${domain}&type=TXT`);
             if (req.statusCode === 200) {
                 const srv = await req.body.json() as TXT;
