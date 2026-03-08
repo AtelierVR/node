@@ -1,8 +1,8 @@
-version: '3'
-
 services:
   node:
     image: noxnode
+    build:
+      context: .
     container_name: nox_node
     env_file: .env
     ports:
@@ -33,12 +33,11 @@ services:
       - "${POSTGRES_PORT}:5432"
     restart: always
     volumes:
-      - noxdb:/var/lib/postgresql/data
+      - noxdb:/var/lib/postgresql
 
 volumes:
   noxdb:
 
 networks:
   noxbridge:
-    driver: bridge
-
+    name: nox_default

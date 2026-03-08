@@ -30,7 +30,6 @@
     "@types/qrcode": "^1.5.5",
     "@types/speakeasy": "^2.0.10",
     "@types/ws": "^8.5.12",
-    "prisma": "^6.5.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   },
@@ -48,6 +47,7 @@
     "socket.io": "^4.7.5",
     "speakeasy": "^2.0.0",
     "undici": "^6.19.7",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "prisma": "^6.5.0"
   }
 }
