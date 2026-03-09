@@ -152,8 +152,6 @@ export default class RelationManager {
         return null;
     }
 
-
-
     async requestLocalFollow(user: User, target: User): Promise<UserRelation | Error | false> {
         if (target.useAutoRejectFollow())
             return false;
@@ -197,7 +195,7 @@ export default class RelationManager {
             if (!infos)
                 return new Error("Failed to fetch server infos");
 
-            let response = await server.fetch<IMakeRelationResponse>('/api/relations', 'relations/request_response', {
+            let response = await server.fetch<IMakeRelationResponse>('/api/relations', 'relations/update_response', {
                 method: 'POST',
                 body
             });

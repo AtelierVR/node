@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "$id": "relations/create",
-    "title": "Relation Create Schema",
+    "$id": "relations/update",
+    "title": "Relation Update Schema",
     "type": "object",
     "properties": {
         "initiator": {
@@ -10,7 +10,12 @@
         },
         "type": {
             "type": "string",
-            "enum": ["follow", "unfollow", "follow_accept", "follow_refuse"]
+            "enum": [
+                "follow",
+                "unfollow",
+                "follow_accept",
+                "follow_refuse"
+            ]
         },
         "target": {
             "type": "integer",

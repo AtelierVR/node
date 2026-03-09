@@ -1,6 +1,6 @@
 {
-    "$id": "relations/request_response",
-    "title": "Relation Request Response Schema",
+    "$id": "relations/update_response",
+    "title": "Relation Update Response Schema",
     "type": "object",
     "properties": {
         "type": {

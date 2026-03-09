@@ -23,7 +23,7 @@ export default class RelationAPIWeb {
         this.app.http.express.server.post('/api/relations/:id/unfollow', (req, res) => this.handleUnfollow(req as Request<{ id: string }>, res as Response));
         this.app.http.express.server.post('/api/relations/:id/request', Express.json(), NetExpress.validate('relations/request'), (req, res) => this.handleRequest(req as Request<{ id: string }>, res as Response));
 
-        this.app.http.express.server.post('/api/relations', Express.json(), NetExpress.validate('relations/create'), (req, res) => this.handleRelation(req as Request, res as Response));
+        this.app.http.express.server.post('/api/relations', Express.json(), NetExpress.validate('relations/update'), (req, res) => this.handleRelation(req as Request, res as Response));
     }
 
     async handleRequest(request: Request<{ id: string }>, response: Response) {
