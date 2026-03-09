@@ -62,8 +62,8 @@ export default class NetServerManager {
 
         const serverAddress = Buffer.from(parts[0], 'base64').toString('utf-8');
         const publicMyKeyHash = parts[1];
-        const contentSign = parts[2];
-        const expires = new Date(parseInt(parts[3], 36));
+        const expires = new Date(parseInt(parts[2], 36));
+        const contentSign = parts[3];
         if (expires < new Date()) {
             Debug.error("Challenge expired");
             return null;
@@ -82,13 +82,13 @@ export default class NetServerManager {
 
         const sign = crypto.createVerify('RSA-SHA256');
         const content = [
-            serverAddress,
+            parts[0],
             myPublicKeyHash,
             expires.getTime().toString(36)
         ].join('.');
         sign.update(content);
 
-        if (!sign.verify(Security.publicKeyToPem(myPublicKey), contentSign, 'base64')) {
+        if (!sign.verify(Security.publicKeyToPem(server.publicKey), contentSign, 'base64')) {
             Debug.error("Signature verification failed");
             return null;
         }
