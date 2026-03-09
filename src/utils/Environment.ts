@@ -4,6 +4,7 @@ import { cwd } from "process";
 import UserIdentifier from "../users/UserIdentifier";
 import Debug from "./Debug";
 
+// Contact email shown in /.well-known/nox
 export function getContact() {
     return process.env.CONTACT || new UserIdentifier(getAdminId()).toString(getPreferedAddress());
 }
@@ -21,13 +22,15 @@ export function getAdminDisplay() {
 }
 
 export function getAdminPassword() {
-    return ((pass?: string) => pass && hash(pass))(process.env.ADMIN_PASSWORD)
+    return process.env.ADMIN_PASSWORD && hash(process.env.ADMIN_PASSWORD)
 }
 
+// Allow users registration
 export function getCanRegister() {
     return process.env.CAN_REGISTER === "true";
 }
 
+// Hide client IPs in logs
 export function getHideIP() {
     return process.env.HIDE_IP === 'true';
 }
@@ -55,10 +58,6 @@ export function getSessionExpiration() {
     return new Date(Date.now() + parseInt(process.env.SESSION_EXPIRATION || "2592000000"));
 }
 
-export function getRelayTimeoutLimit() {
-    return parseInt(process.env.RELAY_TIMEOUT_LIMIT || "15000");
-}
-
 export function getUploadTimeout() {
     return parseInt(process.env.UPLOAD_TIMEOUT || "300000"); // 5 minutes default
 }
@@ -74,6 +73,7 @@ export function getMaxFieldSize() {
 export function getMaxFiles() {
     return parseInt(process.env.MAX_FILES || "10"); // 10 files default
 }
+
 export function getDockerOptions(): object {
     return JSON.parse(process.env.DOCKER_OPTIONS || '{}');
 }
@@ -90,19 +90,16 @@ export function getDockerAddress(): string {
     return process.env.DOCKER_ADDRESS || '127.0.0.1';
 }
 
-export function getNodeIP(): string {
-    return process.env.NODE_IP || '127.0.0.1'
-}
-export function getRelayIP(): string {
-    return process.env.RELAY_IP || getNodeIP();
+export function getRelayMaxCount(): number {
+    return parseInt(process.env.RELAY_MAX_COUNT || '10');
 }
 
-export function getDockerPort(): number {
-    return parseInt(process.env.DOCKER_PORT || '23032');
+export function getRelayMinPort(): number {
+    return parseInt(process.env.RELAY_MIN_PORT || '30000');
 }
 
-export function getDockerMaxContainers(): number {
-    return parseInt(process.env.DOCKER_MAX_CONTAINERS || '100');
+export function getRelayMaxPort(): number {
+    return parseInt(process.env.RELAY_MAX_PORT || '40000');
 }
 
 export function getPort(): number {
@@ -130,7 +127,7 @@ export function getDescription() {
 }
 
 export function getIcon() {
-    return new URL(process.env.ICON_URL || `http${isSecure() ? 's' : ''}://${getBaseGateway()}/icon.png`);
+    return new URL(process.env.ICON_URL || `${getWebGateway()}/icon.png`);
 }
 
 export function useSSL() {
@@ -139,10 +136,6 @@ export function useSSL() {
 
 export function isSecure() {
     return process.env.SECURE === 'true';
-}
-
-export function getPublicKeyFile() {
-    return join(cwd(), process.env.PUBLICKEY_FILE || "certs/public.pem")
 }
 
 export function getPrivateKeyFile() {
@@ -180,16 +173,15 @@ export default {
     getCustomCORS,
     getIgnorePaths,
     getSessionExpiration,
-    getRelayTimeoutLimit,
     getUploadTimeout,
     getMaxFileSize,
     getMaxFieldSize,
     getMaxFiles,
     getDockerOptions,
     getDockerImage,
-    getNodeIP,
-    getDockerPort,
-    getDockerMaxContainers,
+    getRelayMaxCount,
+    getRelayMinPort,
+    getRelayMaxPort,
     getPort,
     getPreferedAddress,
     getBaseGateway,
@@ -199,14 +191,12 @@ export default {
     getIcon,
     useSSL,
     isSecure,
-    getPublicKeyFile,
     getPrivateKeyFile,
     getCertificateFile,
     getDefaultNetUserTags,
     getDefaultUserTags,
     getSupportedWorldAssetEngines,
     getSupportedWorldAssetPlatforms,
-    getRelayIP,
     getDockerNetwork,
     getDockerAddress
 }

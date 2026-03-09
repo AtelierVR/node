@@ -407,7 +407,7 @@ export default class DockerManager extends RuntimeManager {
                 for (const portInfo of container.Ports)
                     if (portInfo.PublicPort)
                         usedPorts.add(portInfo.PublicPort);
-        for (let port = 30000; port <= 40000; port++)
+        for (let port = Env.getRelayMinPort(); port <= Env.getRelayMaxPort(); port++)
             if (!usedPorts.has(port))
                 return port;
         return null;
@@ -427,7 +427,7 @@ export default class DockerManager extends RuntimeManager {
                 `NOX_TOKEN=${options.badgerToken}`,
                 `NOX_PORT=${options.port}`,
                 'NOX_MAX_TPS=24',
-                `NOX_NODE_GATEWAY=http://nox_node:${Env.getPort()}`,
+                `NOX_NODE_GATEWAY=${Env.getWebGateway()}`,
                 `NOX_DEBUG=true`
             ],
             name: `relay_${id}`,
@@ -441,7 +441,7 @@ export default class DockerManager extends RuntimeManager {
                 RestartPolicy: {
                     Name: 'always'
                 },
-                NetworkMode: 'nox_default'
+                NetworkMode: Env.getDockerNetwork()
             }
         };
     }

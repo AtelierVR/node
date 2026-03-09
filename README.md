@@ -94,7 +94,6 @@ A comprehensive authentication and relay management server built with Node.js an
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | Required |
 | `NODE_PORT` | Server port | `3000` |
-| `NODE_IP` | Server IP address | `localhost` |
 | `POSTGRES_*` | Database credentials | Required |
 | `EMAIL_*` | SMTP email configuration | Optional |
 | `SSL_*` | SSL certificate paths | Optional |
