@@ -174,11 +174,11 @@ export default class RelationManager {
             return false;
         if (target.useManualFollowValidation()) {
             for (let s of await target.getSockets())
-                s.emitData('request_follower_received', { user: user.toIdentifier().toString(), dev: 5 });
+                s.emitData('request_follower_received', { user: (await user.toIdentifier()).toString(), dev: 5 });
             return await this.createRelation(user, target, UserRelationType.REQUEST); // user request target
         }
         for (let s of await target.getSockets())
-            s.emitData('new_follower', { user: user.toIdentifier().toString(), dev: 4 });
+            s.emitData('new_follower', { user: (await user.toIdentifier()).toString(), dev: 4 });
         return await this.createRelation(user, target, UserRelationType.FOLLOW); // user follow target
     }
 
@@ -205,7 +205,7 @@ export default class RelationManager {
 
             if (response.data.type === 'follow_rejected') {
                 for (let s of await user.getSockets())
-                    s.sendData('reject_following', { user: target.toIdentifier().toString(), dev: 3 });
+                    s.sendData('reject_following', { user: (await target.toIdentifier()).toString(), dev: 3 });
                 return false;
             }
 
@@ -214,11 +214,11 @@ export default class RelationManager {
             if (response.data.type === 'follow_accepted') {
                 u = await this.createRelation(user, target, UserRelationType.FOLLOW);
                 for (let s of await user.getSockets())
-                    s.emitData('new_following', { user: target.toIdentifier().toString(), dev: 1 });
+                    s.emitData('new_following', { user: (await target.toIdentifier()).toString(), dev: 1 });
             } else if (response.data.type === 'follow_pending') {
                 u = await this.createRelation(user, target, UserRelationType.REQUEST);
                 for (let s of await user.getSockets())
-                    s.emitData('request_following_sent', { user: target.toIdentifier().toString(), dev: 2 });
+                    s.emitData('request_following_sent', { user: (await target.toIdentifier()).toString(), dev: 2 });
             }
 
             return u;
