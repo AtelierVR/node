@@ -47,9 +47,11 @@ export default class NetUser implements INetUser {
         return await this.app.netServers.findNetServerById(this.server_id) as NetServer;
     }
 
-    async fetchUser(fingerprint?: string): Promise<IRUser | null> {
+    async fetchUser(fingerprint?: string): Promise<IRUser | Error> {
         let server = await this.getNetServer();
-        return server ? await this.app.netUsers.fetchNetUserInfos(this.id, server, fingerprint) : null;
+        return server
+            ? await this.app.netUsers.fetchNetUserInfos(this.id, server, fingerprint)
+            : new Error('No server found');
     }
 
     async toIdentifier(): Promise<UserIdentifier> {

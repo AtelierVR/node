@@ -1,0 +1,74 @@
+{
+    "$id": "servers/info_response",
+    "title": "Server Info Response",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "string"
+        },
+        "title": {
+            "type": "string"
+        },
+        "description": {
+            "type": "string"
+        },
+        "address": {
+            "type": "string"
+        },
+        "gateways": {
+            "type": "object",
+            "properties": {
+                "http": {
+                    "type": "string",
+                    "format": "uri"
+                },
+                "ws": {
+                    "type": "string",
+                    "format": "uri"
+                },
+                "web": {
+                    "type": "string",
+                    "format": "uri"
+                }
+            },
+            "required": [
+                "http",
+                "ws",
+                "web"
+            ],
+            "additionalProperties": true
+        },
+        "features": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "version": {
+            "type": "string"
+        },
+        "ready_at": {
+            "type": "number"
+        },
+        "icon": {
+            "type": "string",
+            "format": "uri"
+        },
+        "certificate": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "id",
+        "title",
+        "description",
+        "address",
+        "gateways",
+        "features",
+        "version",
+        "ready_at",
+        "icon",
+        "certificate"
+    ],
+    "additionalProperties": true
+}

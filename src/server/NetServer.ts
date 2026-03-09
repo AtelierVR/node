@@ -4,6 +4,9 @@ import { IServer } from "../server/ServerManager";
 import crypto from "crypto";
 import { Security } from "../utils/Security";
 import Debug from "../utils/Debug";
+import { JSONSchemaType, Schema } from "ajv";
+import { Server } from "http";
+import { Dispatcher } from "undici";
 
 export default class NetServer implements INetServer {
 
@@ -42,6 +45,10 @@ export default class NetServer implements INetServer {
             return null;
         }
         return data;
+    }
+
+    async fetch<T>(endpoint: string | URL, schema: string | Schema | JSONSchemaType<IServer>, options?: RequestInit & { method?: Dispatcher.HttpMethod }) {
+        return await this.app.server.fetch<T>(endpoint, schema, this, options);
     }
 
     generateChallenge(): string {

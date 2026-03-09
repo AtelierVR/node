@@ -2,9 +2,7 @@ import Main from "../Main";
 import Debug from "../utils/Debug";
 import { PublicCertificate, Security } from "../utils/Security";
 import NetServer from "./NetServer";
-import forge from "node-forge";
 import crypto from "crypto";
-import { ErrorCode, ErrorCodes } from "../utils/Constants";
 
 export default class NetServerManager {
     constructor(private readonly app: Main) {
@@ -97,7 +95,7 @@ export default class NetServerManager {
 
         return server;
     }
-    
+
     async findNetServerByAddress(address: string): Promise<NetServer | null> {
         try {
             const server = await this.app.database.netServer.findFirst({ where: { address } });

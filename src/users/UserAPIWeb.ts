@@ -379,7 +379,10 @@ export default class UserAPIWeb {
         if (!nu) return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
 
         let infos = await nu.fetchUser();
-        if (!infos) return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        if (infos instanceof Error) {
+            Debug.error(`Failed to fetch user infos for ${userIdentifier.identifier} on server ${userIdentifier.server}: ${infos.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        }
 
         // Handle both old format (presence as string) and new format (presence as object)
         let presence: IPresence | undefined;

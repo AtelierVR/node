@@ -4,22 +4,23 @@
     "title": "Relation Create Schema",
     "type": "object",
     "properties": {
-        "user_id": {
+        "initiator": {
             "type": "integer",
             "minimum": 1
         },
         "type": {
             "type": "string",
-            "enum": ["follow", "friend", "block"]
+            "enum": ["follow", "unfollow", "follow_accept", "follow_refuse"]
         },
-        "message": {
-            "type": "string",
-            "maxLength": 500
+        "target": {
+            "type": "integer",
+            "minimum": 1
         }
     },
     "required": [
-        "user_id",
-        "type"
+        "initiator",
+        "type",
+        "target"
     ],
     "additionalProperties": false
 }

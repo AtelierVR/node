@@ -1,0 +1,136 @@
+{
+    "$id": "users/info_response",
+    "title": "User Info Response",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "username": {
+            "type": "string"
+        },
+        "display": {
+            "type": "string"
+        },
+        "server": {
+            "type": "string"
+        },
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "bio": {
+            "type": ["string", "null"]
+        },
+        "thumbnail": {
+            "type": ["string", "null"]
+        },
+        "banner": {
+            "type": ["string", "null"]
+        },
+        "pronoun": {
+            "type": ["string", "null"]
+        },
+        "links": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    }
+                },
+                "required": ["label", "value"],
+                "additionalProperties": true
+            }
+        },
+        "rank": {
+            "type": "integer"
+        },
+        "relations": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "out": {
+                            "type": ["string", "null"]
+                        },
+                        "in": {
+                            "type": ["string", "null"]
+                        }
+                    },
+                    "required": ["out", "in"],
+                    "additionalProperties": false
+                },
+                {
+                    "type": "null"
+                }
+            ]
+        },
+        "certificate": {
+            "type": "string"
+        },
+        "followers": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "following": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "presence": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": ["string", "null"]
+                }
+            },
+            "required": ["status", "text"],
+            "additionalProperties": true
+        },
+        "alias": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    }
+                },
+                "required": ["key", "value"],
+                "additionalProperties": true
+            }
+        }
+    },
+    "required": [
+        "id",
+        "username",
+        "display",
+        "server",
+        "tags",
+        "bio",
+        "thumbnail",
+        "banner",
+        "pronoun",
+        "links",
+        "rank",
+        "relations",
+        "certificate",
+        "followers",
+        "following",
+        "alias"
+    ],
+    "additionalProperties": true
+}

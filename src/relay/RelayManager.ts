@@ -155,7 +155,7 @@ export default class RelayManager {
     private onRelayLog(relay: Relay, message: WebMessage) {
         try {
             const logData = message.data;
-            
+
             // Émettre le log aux admins abonnés
             this.app.http.socket.emitSubscriber('relay_logs', {
                 relayId: relay.id,
@@ -175,7 +175,7 @@ export default class RelayManager {
     private onRelaySpecs(relay: Relay, message: WebMessage) {
         try {
             const specs = message.data;
-            
+
             // Transform specs to full format (c -> cpu, m -> memory, etc.)
             const transformedSpecs = {
                 cpu: specs.c,
@@ -184,7 +184,7 @@ export default class RelayManager {
                 download: specs.d,
                 storage: specs.s
             };
-            
+
             // Émettre les specs aux admins abonnés
             this.app.http.socket.emitSubscriber('relay_specs_update', {
                 relayId: relay.id,
@@ -225,14 +225,26 @@ export default class RelayManager {
             });
 
             var ruser = await this.app.netUsers.findOrFetch(message.data.user_id, serv);
-            var fuser = ruser ? await ruser.fetchUser() : null;
-            if (ruser && fuser) user = {
-                id: ruser.id,
-                server: serv.address,
-                display: fuser.display,
-                blacklist: ruser.getBlacklist.bind(ruser),
-                verify: async () => (await ruser?.fetchUser(message.data.fingerprint)) !== null
-            };
+            var fuser = ruser
+                ? await ruser.fetchUser()
+                : null;
+
+            if (fuser instanceof Error) {
+                Debug.error(`Failed to fetch user infos for ${identifier.identifier} on server ${identifier.server}: ${fuser.message}`);
+                return message.reply({
+                    result: "invalid_user",
+                    error: "Failed to fetch user infos"
+                });
+            }
+
+            if (ruser && fuser)
+                user = {
+                    id: ruser.id,
+                    server: serv.address,
+                    display: fuser.display,
+                    blacklist: ruser.getBlacklist.bind(ruser),
+                    verify: async () => (await ruser?.fetchUser(message.data.fingerprint)) !== null
+                };
         }
 
         if (!user) return message.reply({
@@ -332,8 +344,8 @@ export default class RelayManager {
                     }
 
                     const otherInstancesResult = await otherRelay.getInstances(1000, 0);
-                    const otherInstance = (otherInstancesResult instanceof Error) 
-                        ? null 
+                    const otherInstance = (otherInstancesResult instanceof Error)
+                        ? null
                         : otherInstancesResult.instances.find(i => i.id === conflict.node_id.toString());
                     const theirPlayers = otherInstance?.players.length || 0;
 

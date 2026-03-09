@@ -27,7 +27,11 @@ export default class NetUserManager {
         if (typeof user_ref === 'number') id = user_ref;
         else {
             let user = await this.fetchNetUserInfos(user_ref, server);
-            if (!user) return null;
+            if (user instanceof Error) {
+                Debug.error(`Failed to fetch user infos for reference ${user_ref} on server ${server.address}: ${user.message}`);
+                return null;
+            }
+            
             id = user.id;
         }
         return await this.findNetUserById(id, server.id)
@@ -50,40 +54,13 @@ export default class NetUserManager {
         return [];
     }
 
-    checkUserInfos(user: any): user is IRUser {
-        return typeof user.id === 'number' && UserManager.isValidId(user.id)
-            && typeof user.username === 'string' && Regex.Username.test(user.username)
-            && typeof user.display === 'string' && Regex.Display.test(user.display)
-            && typeof user.server === 'string'
-            && (user.bio === null || typeof user.bio === 'string')
-            && Array.isArray(user.tags)
-            && (user.thumbnail === null || (typeof user.thumbnail === 'string' && isValidURL(user.thumbnail)))
-            && (user.banner === null || (typeof user.banner === 'string' && isValidURL(user.banner)))
-            && Array.isArray(user.links) && user.links.every((link: any) => typeof link === 'string' && isValidURL(link))
-            && typeof user.rank === 'number' && user.rank >= 0 && user.rank < 1;
-    }
-
-    async fetchNetUserInfos(user_ref: number | string, server: NetServer, fingerprint?: string): Promise<IRUser | null> {
-        try {
-            let nsData = await server.fetchInfos();
-            if (!nsData) return null;
-            let url = nsData.gateways.http;
-            url.pathname = `/api/users/${user_ref}`;
-            if (fingerprint) url.searchParams.set('fp', fingerprint);
-            let res = await request(url, {
-                headers: {
-                    ...this.app.server.defaultHeaders,
-                    ...await server.requestHeaders()
-                }
-            });
-            if (res.statusCode !== 200) return null;
-            let body = await res.body.json() as { data?: IRUser, error?: any };
-            if (!body.data || body.error || !this.checkUserInfos(body.data)) return null;
-            return body.data;
-        } catch (e) {
-            Debug.error(e);
-            return null;
-        }
+    async fetchNetUserInfos(user_ref: number | string, server: NetServer, fingerprint?: string): Promise<IRUser | Error> {
+        let url = new URL(`/api/users/${user_ref}`, `http://${server.address}`);
+        if (fingerprint) url.searchParams.set('fp', fingerprint);
+        const res = await server.fetch<IRUser>(url, 'users/info_response');
+        if (res.error) return new Error(res.error.message);
+        if (!res.data) return new Error('No data received');
+        return res.data;
     }
 
     async createNetUser(user_id: number, server: NetServer): Promise<NetUser | null> {

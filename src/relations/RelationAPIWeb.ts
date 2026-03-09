@@ -10,6 +10,7 @@ import NetUser from "../users/NetUser";
 import { UserRelationType } from "@prisma/client";
 import UserManager from "../users/UserManager";
 import Express from "express";
+import Debug from "../utils/Debug";
 
 export default class RelationAPIWeb {
     constructor(private readonly app: Reileta, private readonly manager: RelationManager) {
@@ -103,10 +104,10 @@ export default class RelationAPIWeb {
                     note: 'you cannot follow this user',
                     retryAfter: 0
                 });
-            else if (rel === null)
+            else if (rel instanceof Error)
                 return response.send<IMakeRelationResponse>({
                     type: 'error',
-                    note: 'internal error',
+                    note: rel.message,
                     retryAfter: 0
                 });
             else if (rel.type === UserRelationType.FOLLOW)
@@ -308,8 +309,10 @@ export default class RelationAPIWeb {
             else target = await this.app.users.findUserById(iden.identifierAsId());
         } else {
             let server = await this.app.netServers.findOrInitServer(iden.server as string);
-            if (!(server instanceof NetServer))
+            if (server instanceof Error) {
+                Debug.error(`Failed to find or init server for ${iden.server}:`, server);
                 return response.send(new ErrorMessage(ErrorCodes.ServerNotFound, server.message));
+            }
             target = await this.app.netUsers.findOrFetch(iden.identifier, server);
         }
 
@@ -329,8 +332,10 @@ export default class RelationAPIWeb {
 
         if (relation === false)
             return response.send(new ErrorMessage(ErrorCodes.Rejected));
-        else if (relation === null)
+        else if (relation instanceof Error) {
+            Debug.error(`Failed to request follow:`, relation);
             return response.send(new ErrorMessage(ErrorCodes.InternalError, "create relation"));
+        }
 
         let address = this.app.server.getInfos().address;
         return response.send<IRelation>({
@@ -360,8 +365,10 @@ export default class RelationAPIWeb {
             else target = await this.app.users.findUserById(iden.identifierAsId());
         } else {
             let server = await this.app.netServers.findOrInitServer(iden.server as string);
-            if (!(server instanceof NetServer))
+            if (server instanceof Error) {
+                Debug.error(`Failed to find or init server for ${iden.server}:`, server);
                 return response.send(new ErrorMessage(ErrorCodes.ServerNotFound, server.message));
+            }
             target = await this.app.netUsers.findOrFetch(iden.identifier, server);
         }
 

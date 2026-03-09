@@ -103,6 +103,11 @@ export const ErrorCodes = {
         message: "The requested resource is not acceptable.",
         code: 21,
         status: 406
+    },
+    ServerNotReachable: {
+        message: "The server is not reachable.",
+        code: 22,
+        status: 503
     }
 };
 

@@ -154,7 +154,7 @@ export default class RelationManager {
 
 
 
-    async requestLocalFollow(user: User, target: User): Promise<UserRelation | null | false> {
+    async requestLocalFollow(user: User, target: User): Promise<UserRelation | Error | false> {
         if (target.useAutoRejectFollow())
             return false;
         if (target.useManualFollowValidation()) {
@@ -171,7 +171,7 @@ export default class RelationManager {
         return await this.createRelation(user, target, UserRelationType.FOLLOW); // user follow target
     }
 
-    async requestFollowedByNet(user: NetUser, target: User): Promise<UserRelation | null | false> {
+    async requestFollowedByNet(user: NetUser, target: User): Promise<UserRelation | Error | false> {
         if (target.useAutoRejectFollow())
             return false;
         if (target.useManualFollowValidation()) {
@@ -184,17 +184,20 @@ export default class RelationManager {
         return await this.createRelation(user, target, UserRelationType.FOLLOW); // user follow target
     }
 
-    async requestNetFollow(user: User, target: NetUser): Promise<UserRelation | null | false> {
+    async requestNetFollow(user: User, target: NetUser): Promise<UserRelation | Error | false> {
         try {
             let body: IMakeRelationRequest = {
                 type: 'follow',
                 initiator: user.id,
                 target: target.id
             }
+
             let server = await target.getNetServer();
             let infos = await server.fetchInfos();
-            if (!infos) return null;
-            let response = await request(new URL('/api/relation', infos.gateways.http), {
+            if (!infos) 
+                return new Error("Failed to fetch server infos");
+
+            let response = await request(new URL('/api/relations', infos.gateways.http), {
                 method: 'POST',
                 headers: {
                     ...this.app.server.defaultHeaders,
@@ -203,9 +206,12 @@ export default class RelationManager {
                 },
                 body: JSON.stringify(body)
             });
-            if (response.statusCode !== 200) return null;
+
+            if (response.statusCode !== 200) 
+                return new Error(`Unexpected status code ${response.statusCode}: ${await response.body.text()}`);
             var response_data = await response.body.json() as { data?: IMakeRelationResponse, error?: any };
-            if (response_data.error || !response_data.data) return null;
+            if (response_data.error || !response_data.data) 
+                return new Error(response_data.error?.message || "Invalid response from server");
 
             if (response_data.data.type === 'follow_rejected') {
                 for (let s of await user.getSockets())
@@ -213,7 +219,7 @@ export default class RelationManager {
                 return false;
             }
 
-            let u: UserRelation | null = null;
+            let u: UserRelation | Error = new Error("Unknown response type");
 
             if (response_data.data.type === 'follow_accepted') {
                 u = await this.createRelation(user, target, UserRelationType.FOLLOW);
@@ -224,9 +230,12 @@ export default class RelationManager {
                 for (let s of await user.getSockets())
                     s.emitData('request_following_sent', { user: target.toIdentifier().toString(), dev: 2 });
             }
+
             return u;
-        } catch { }
-        return null;
+        } catch (e) {
+            Debug.error(e);
+            return new Error("Failed to request net follow");
+        }
     }
 
     async createRelation(user: User | NetUser, target: User | NetUser, type: $Enums.UserRelationType) {
@@ -241,8 +250,8 @@ export default class RelationManager {
             return new UserRelation(relation, this.app);
         } catch (e) {
             Debug.error(e);
+            return new Error("Failed to create relation");
         }
-        return null;
     }
 
     async deleteRelation(id: string): Promise<boolean> {

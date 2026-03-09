@@ -1,5 +1,5 @@
 import crypto, { pbkdf2Sync, randomBytes, scryptSync } from "crypto";
-import { ErrorCode, LocalAddressRegex } from "./Constants";
+import { ErrorCode, ErrorCodes, LocalAddressRegex } from "./Constants";
 import child_process from "child_process";
 import { VerificationRequiredOutput } from "../auth/AuthManager";
 import Debug from "./Debug";
@@ -126,6 +126,9 @@ export class ErrorMessage {
             return typeof args[number] != 'undefined' ? args[number] : match;
         });
     }
+    
+    stack?: string | undefined;
+    cause?: unknown;
 
     get code() {
         return this.error.code;
@@ -157,6 +160,8 @@ export class ErrorMessage {
         };
     }
 }
+
+
 
 // createdAt: created_at, UserID: user_id
 export function normalizeText(text: string): string {

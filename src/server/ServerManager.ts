@@ -3,13 +3,47 @@ import { join } from "node:path";
 import { cwd } from "node:process";
 import Reileta from "../Main";
 import { isValidURL, isValidWSURL } from "../utils/Utils";
-import { request } from "undici";
+import { Dispatcher, request } from "undici";
 import { arch, platform } from "os";
 import NetServer from "./NetServer";
 import Env from "../utils/Environment";
 import Debug from "../utils/Debug";
 import { Security } from "../utils/Security";
 import User from "../users/User";
+import { ErrorCode, ErrorCodes } from "../utils/Constants";
+import { JSONSchemaType } from "ajv/dist/types/json-schema";
+import { Schema } from "ajv/dist/types";
+import Schemas from "../utils/Schemas";
+import Ajv, { ErrorObject } from "ajv/dist/core";
+
+export interface IApiResponse<T> {
+    data: T | null;
+    error: IApiError | undefined;
+    time: number;
+    request: string;
+}
+
+export interface IApiError {
+    code: ErrorCode["code"];
+    message: string;
+    status: ErrorCode["status"];
+}
+
+export interface IApiResponseSuccess<T> extends IApiResponse<T> {
+    data: T;
+    error: undefined;
+}
+
+export interface IApiResponseError<T> extends IApiResponse<T> {
+    data: T | null;
+    error: IApiError;
+}
+
+export interface ValidateResponseResult<T> {
+    valid: boolean;
+    errors: ErrorObject[] | null;
+    data: T;
+}
 
 export class ServerManager {
 
@@ -80,40 +114,130 @@ export class ServerManager {
         }
     }
 
-    async fetchServer(address: string, server?: NetServer): Promise<IServer | Error> {
-        let url: URL;
-        if (isValidURL(address))
-            url = new URL(address);
-        else {
-            let fmg = await this.findGatewayMaster(address);
-            if (!fmg) return new Error("Error to resolve the server");
-            url = fmg;
+    static async validate<T>(data: any, schema: Schema | JSONSchemaType<T> | string): Promise<ValidateResponseResult<T>> {
+        if (typeof schema === 'string') {
+            let sch = await Schemas.load(schema);
+            if (!sch) {
+                Debug.error(`Schema ${schema} not found`);
+                return {
+                    valid: false,
+                    errors: null,
+                    data: data
+                };
+            }
+            schema = sch;
         }
-        if (!url) return new Error("URL is not valid");
 
+        const ajv = new Ajv({ allErrors: true, strict: false });
+        const validate = ajv.compile<T>(schema);
+        const valid = validate(data);
+
+        if (!valid) {
+            let errors = validate.errors || [];
+            Debug.dir(data, { depth: null, colors: true });
+            Debug.error(errors);
+            return {
+                valid: false,
+                errors,
+                data
+            };
+        }
+
+        return {
+            valid: true,
+            errors: null,
+            data: data as T
+        };
+    }
+
+
+    async fetch<T>(endpoint: string | URL, schema: Schema | JSONSchemaType<T> | string, server: NetServer | string, options?: RequestInit & { method?: Dispatcher.HttpMethod }): Promise<IApiResponse<T>> {
         try {
-            url.pathname = '/api/server';
-            Debug.log("Fetching server", url.toString());
+            let url: URL;
+
+            if (typeof server === 'string') {
+                if (isValidURL(server)) {
+                    url = new URL(server);
+                } else {
+                    let fmg = await this.findGatewayMaster(server);
+                    if (!fmg)
+                        throw new Error("Error to resolve the server");
+                    url = fmg;
+                }
+            } else {
+                if (isValidURL(server.address)) {
+                    url = new URL(server.address);
+                } else {
+                    let fmg = await this.findGatewayMaster(server.address);
+                    if (!fmg)
+                        throw new Error("Error to resolve the server");
+                    url = fmg;
+                }
+            }
+
+            if (!url)
+                throw new Error("URL is not valid");
+
+            url = ServerManager.mergeURL(url, endpoint);
 
             const req = await request(url, {
-                method: 'GET',
+                method: options?.method || 'GET',
                 headers: {
                     ...this.defaultHeaders,
-                    ...(server ? await server.requestHeaders() : {})
-                }
+                    ...(server && typeof server !== 'string' ? await server.requestHeaders() : {}),
+                    ...options?.headers
+                },
+                body: options?.body
+                    ? JSON.stringify(options.body)
+                    : undefined,
             });
 
-            if (req.statusCode === 200) {
-                const body = await req.body.json() as { data?: IRServer, error?: { message: string, code: number, status: number } };
-                if (body.error) return new Error(body.error.message);
-                const data = this.checkServer(body.data);
-                if (data) return data;
-                return new Error("The server is not valid (invalid data)");
+            const body = await req.body.json() as IApiResponse<T>;
+            const validation = await ServerManager.validate<T>(body.data, schema);
+            if (!validation.valid) {
+                return {
+                    data: null,
+                    error: {
+                        code: ErrorCodes.InvalidField.code,
+                        message: "Invalid response from server",
+                        status: ErrorCodes.InvalidField.status
+                    },
+                    time: body.time,
+                    request: url.toString()
+                }
             }
-            return new Error("The server is not ready");
+
+            return {
+                data: body.data,
+                error: body.error,
+                time: body.time,
+                request: url.toString()
+            }
         } catch (e: any) {
-            return new Error("The server is not valid (" + e.toString() + ")");
+            return {
+                data: null,
+                error: {
+                    code: ErrorCodes.ServerNotReachable.code,
+                    message: e.message,
+                    status: ErrorCodes.ServerNotReachable.status
+                },
+                time: Date.now(),
+                request: endpoint instanceof URL ? endpoint.pathname : endpoint
+            }
         }
+    }
+
+    static mergeURL(base: URL, endpoint: string | URL): URL {
+        if (endpoint instanceof URL) 
+            return new URL(endpoint.pathname + endpoint.search + endpoint.hash, base);
+        return new URL(endpoint, base);
+    }
+
+    async fetchServer(address: string, server?: NetServer): Promise<IServer | Error> {
+        const res = await this.fetch<IServer>('/api/server', 'servers/info_response', server || address);
+        if (res.error) return new Error(res.error.message);
+        if (!res.data) return new Error("No data received");
+        return res.data;
     }
 
     get defaultHeaders() {
@@ -122,58 +246,6 @@ export class ServerManager {
             'X-Nox-Id': this.getInfos().id,
             'X-Nox-Address': this.getInfos().address,
             'X-Nox-Version': this.getInfos().version,
-        }
-    }
-
-    checkServer(server?: IRServer): IServer | null {
-        let tests: any = {
-            obj: !server
-        }
-        if (server)
-            tests = {
-                ...tests,
-                id: !server.id || typeof server.id !== 'string',
-                title: !server.title || typeof server.title !== 'string',
-                description: !server.description || typeof server.description !== 'string',
-                address: !server.address || typeof server.address !== 'string',
-                gateways: !server.gateways || typeof server.gateways !== 'object',
-                version: !server.version || typeof server.version !== 'string',
-                ready_at: !server.ready_at || typeof server.ready_at !== 'number',
-                icon: !server.icon || !isValidURL(server.icon),
-                certificate: !server.certificate || typeof server.certificate !== 'string',
-                features: !server.features || !Array.isArray(server.features) || server.features.some(f => typeof f !== 'string')
-            }
-        else return null;
-
-        if (server?.gateways)
-            tests = {
-                ...tests,
-                gateways_http: !server.gateways.http || !isValidURL(server.gateways.http),
-                gateways_ws: !server.gateways.ws || !isValidWSURL(server.gateways.ws),
-                gateways_web: !server.gateways.web || !isValidURL(server.gateways.web)
-            }
-
-
-        if (Object.values(tests).some(t => t)) {
-            Debug.error('Invalid server data', tests);
-            return null;
-        }
-
-        return {
-            id: server.id,
-            title: server.title,
-            description: server.description,
-            address: server.address,
-            gateways: {
-                http: new URL(server.gateways.http),
-                ws: new URL(server.gateways.ws),
-                web: new URL(server.gateways.web)
-            },
-            features: server.features,
-            version: server.version,
-            ready_at: new Date(server.ready_at),
-            icon: new URL(server.icon),
-            certificate: server.certificate,
         }
     }
 
