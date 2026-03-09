@@ -199,7 +199,7 @@ export default class RelationManager {
 
             let response = await server.fetch<IMakeRelationResponse>('/api/relations', 'relations/request_response', {
                 method: 'POST',
-                body: JSON.stringify(body)
+                body
             });
 
             if (response.error || !response.data)

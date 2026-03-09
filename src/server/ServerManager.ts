@@ -45,6 +45,12 @@ export interface ValidateResponseResult<T> {
     data: T;
 }
 
+export interface RequestOptions {
+    method?: Dispatcher.HttpMethod;
+    headers?: Record<string, string>;
+    body?: any;
+};
+
 export class ServerManager {
 
     api_web: ServerAPIWeb;
@@ -151,7 +157,7 @@ export class ServerManager {
     }
 
 
-    async fetch<T>(endpoint: string | URL, schema: Schema | JSONSchemaType<T> | string, server: NetServer | string, options?: RequestInit & { method?: Dispatcher.HttpMethod }): Promise<IApiResponse<T>> {
+    async fetch<T>(endpoint: string | URL, schema: Schema | JSONSchemaType<T> | string, server: NetServer | string, options?: RequestOptions): Promise<IApiResponse<T>> {
         try {
             let url: URL;
 
@@ -185,6 +191,7 @@ export class ServerManager {
                 headers: {
                     ...this.defaultHeaders,
                     ...(server && typeof server !== 'string' ? await server.requestHeaders() : {}),
+                    ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
                     ...options?.headers
                 },
                 body: options?.body
@@ -228,7 +235,7 @@ export class ServerManager {
     }
 
     static mergeURL(base: URL, endpoint: string | URL): URL {
-        if (endpoint instanceof URL) 
+        if (endpoint instanceof URL)
             return new URL(endpoint.pathname + endpoint.search + endpoint.hash, base);
         return new URL(endpoint, base);
     }
