@@ -194,26 +194,18 @@ export default class RelationManager {
 
             let server = await target.getNetServer();
             let infos = await server.fetchInfos();
-            if (!infos) 
+            if (!infos)
                 return new Error("Failed to fetch server infos");
 
-            let response = await request(new URL('/api/relations', infos.gateways.http), {
+            let response = await server.fetch<IMakeRelationResponse>('/api/relations', 'relations/request_response', {
                 method: 'POST',
-                headers: {
-                    ...this.app.server.defaultHeaders,
-                    ...await server.requestHeaders(),
-                    'Content-Type': 'application/json',
-                },
                 body: JSON.stringify(body)
             });
 
-            if (response.statusCode !== 200) 
-                return new Error(`Unexpected status code ${response.statusCode}: ${await response.body.text()}`);
-            var response_data = await response.body.json() as { data?: IMakeRelationResponse, error?: any };
-            if (response_data.error || !response_data.data) 
-                return new Error(response_data.error?.message || "Invalid response from server");
+            if (response.error || !response.data)
+                return new Error(response.error?.message || "Invalid response from server");
 
-            if (response_data.data.type === 'follow_rejected') {
+            if (response.data.type === 'follow_rejected') {
                 for (let s of await user.getSockets())
                     s.sendData('reject_following', { user: target.toIdentifier().toString(), dev: 3 });
                 return false;
@@ -221,11 +213,11 @@ export default class RelationManager {
 
             let u: UserRelation | Error = new Error("Unknown response type");
 
-            if (response_data.data.type === 'follow_accepted') {
+            if (response.data.type === 'follow_accepted') {
                 u = await this.createRelation(user, target, UserRelationType.FOLLOW);
                 for (let s of await user.getSockets())
                     s.emitData('new_following', { user: target.toIdentifier().toString(), dev: 1 });
-            } else if (response_data.data.type === 'follow_pending') {
+            } else if (response.data.type === 'follow_pending') {
                 u = await this.createRelation(user, target, UserRelationType.REQUEST);
                 for (let s of await user.getSockets())
                     s.emitData('request_following_sent', { user: target.toIdentifier().toString(), dev: 2 });

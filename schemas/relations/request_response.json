@@ -1,0 +1,30 @@
+{
+    "$id": "relations/request_response",
+    "title": "Relation Request Response Schema",
+    "type": "object",
+    "properties": {
+        "type": {
+            "type": "string",
+            "enum": [
+                "follow_accepted",
+                "follow_rejected",
+                "follow_pending",
+                "unfollow_accepted",
+                "error",
+                "ok"
+            ]
+        },
+        "retryAfter": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "note": {
+            "type": "string",
+            "maxLength": 500
+        }
+    },
+    "required": [
+        "type"
+    ],
+    "additionalProperties": true
+}
