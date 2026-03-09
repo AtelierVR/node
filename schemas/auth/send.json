@@ -1,0 +1,15 @@
+{
+    "$id": "auth/send",
+    "title": "Send Verification Code Schema",
+    "type": "object",
+    "properties": {
+        "target": {
+            "type": "number",
+            "minimum": 1
+        }
+    },
+    "required": [
+        "target"
+    ],
+    "additionalProperties": true
+}

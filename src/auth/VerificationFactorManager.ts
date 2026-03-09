@@ -17,6 +17,13 @@ export interface VerificationMethod {
     enabled: boolean;
     /** Whether codes can be sent via this method (false for TOTP, true for email) */
     can_send: boolean;
+    /** Additional data needed to send verification codes (e.g., email address) */
+    send_data?: {
+        /** The target identifier for sending codes */
+        target: number;
+        /** Any additional fields required for sending codes via this method */
+        [key: string]: any;
+    };
 }
 
 /**
@@ -83,7 +90,10 @@ export default class VerificationFactorManager {
             name: 'Email Verification',
             description: 'Receive a verification code via email',
             enabled: !!user.email && user.email_verified,
-            can_send: true
+            can_send: true,
+            send_data: {
+                target: user.id
+            }
         });
 
         return methods.filter(m => m.enabled);

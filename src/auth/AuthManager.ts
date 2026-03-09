@@ -103,18 +103,16 @@ export default class AuthManager {
 
         // Si la vérification est requise, le factor_code DOIT être fourni et valide
         if (this.verification.isVerificationRequired(user)) {
-            if (!input.factor_code) {
+            if (!input.factor_code) 
                 return {
                     verification_required: true,
                     methods: this.verification.getAvailableVerificationMethods(user),
                     message: "Please verify your identity using one of the available methods."
                 };
-            }
             
             const verifyResult = await this.verification.verifyFactorCode(user, input.factor_code);
-            if (!verifyResult.success) {
+            if (!verifyResult.success) 
                 return new ErrorMessage(ErrorCodes.InvalidField, "factor_code", verifyResult.message);
-            }
         }
 
         return await this.createSuccessfulLogin(user, input.public_key);
@@ -206,7 +204,21 @@ export interface VerificationRequiredOutput {
         name: string;
         /** Whether this method is currently enabled for the user */
         enabled: boolean;
+        /** Whether the user can use this method for verification (e.g., has email set up) */
+        can_send: boolean;
+        /** Additional data specific to the verification method */
+        send_data?: VerificationRequiredSendData;
     }>;
     /** Message to display to the user explaining the verification requirement */
     message: string;
+}
+
+/**
+ * Input data structure for resending verification codes or similar actions
+ * Contains the target identifier and any additional data needed for the action
+ * This is used for endpoints that require sending codes or performing actions based on user input
+ */
+export interface VerificationRequiredSendData {
+    target: number;
+    [key: string]: any;
 }

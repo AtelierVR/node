@@ -206,7 +206,7 @@ export default class EmailManager {
         }
 
         const webGatewayUrl = new URL(Env.getWebGateway());
-        const verificationUrl = `${webGatewayUrl.origin}/verify-email?token=${verificationToken}`;
+        const verificationUrl = `${webGatewayUrl.origin}/confirmation?type=email&token=${verificationToken}`;
 
         return await this.sendTemplatedEmail(
             user.email,

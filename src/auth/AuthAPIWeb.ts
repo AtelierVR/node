@@ -7,7 +7,7 @@ import { getCanRegister, isSecure } from "../utils/Environment";
 import { presenceToApi } from "../utils/Presence";
 import { Security } from "../utils/Security";
 import { ErrorMessage } from "../utils/Utils";
-import AuthManager, { InputLogin, InputRegister } from "./AuthManager";
+import AuthManager, { InputLogin, InputRegister, VerificationRequiredSendData } from "./AuthManager";
 import Session from "./sessions/Session";
 import Express from "express";
 
@@ -27,7 +27,7 @@ export default class AuthAPIWeb {
         this.app.http.express.server.post('/api/auth/login', Express.json(), NetExpress.validate<InputLogin>('auth/login'), (req, res) => this.handleLogin(req as Request, res as Response));
         this.app.http.express.server.post('/api/auth/register', Express.json(), NetExpress.validate<InputRegister>('auth/register'), (req, res) => this.handleRegister(req as Request, res as Response));
         this.app.http.express.server.get('/api/auth/logout', (req, res) => this.handleLogout(req as Request, res as Response));
-        this.app.http.express.server.get('/api/auth/:type/send', (req, res) => this.handleSendCode(req as Request<{ type: string }>, res as Response));
+        this.app.http.express.server.post('/api/auth/:type/send', Express.json(), NetExpress.validate<VerificationRequiredSendData>('auth/send'), (req, res) => this.handleSendCode(req as Request<{ type: string }, VerificationRequiredSendData>, res as Response));
     }
 
     /**
@@ -37,10 +37,8 @@ export default class AuthAPIWeb {
      * @param request - HTTP request containing the verification method type in params
      * @param response - HTTP response object for sending the result
      */
-    async handleSendCode(request: Request<{ type: string }>, response: Response) {
-        if (!request.data.isBearer())
-            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
-        const user = await request.data.getData() as User | null;
+    async handleSendCode(request: Request<{ type: string }, VerificationRequiredSendData>, response: Response) {
+        let user = await this.app.users.findUserById(request.body.target);
         if (!user) return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
 
         const success = await this.app.auth.verification.sendVerificationCode(user, request.params.type);

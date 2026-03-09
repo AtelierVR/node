@@ -23,8 +23,8 @@ export default class EmailAPIWeb {
         this.app.http.express.server.post("/api/admin/email/test", Express.json(), NetExpress.validate('email/test'), (req, res) => this.handleTestEmail(req as Request<{}>, res as Response));
 
         // Email verification endpoints
-        this.app.http.express.server.get("/api/auth/email/verify", (req, res) => this.handleVerifyEmail(req as Request, res as Response));
-        this.app.http.express.server.post("/api/email/resend-verification", Express.json(), (req, res) => this.handleResendVerification(req as Request, res as Response));
+        this.app.http.express.server.get("/api/email/confirmation", (req, res) => this.handleVerifyEmail(req as Request, res as Response));
+        this.app.http.express.server.post("/api/email/resend", Express.json(), (req, res) => this.handleResendVerification(req as Request, res as Response));
     }
 
     /**
