@@ -53,6 +53,18 @@ export default class RelayManager {
             if (!user || !('getTags' in user)) return false;
             return user.getTags().includes('sys:admin');
         });
+
+        // TODO: restrict to admins only - relay client / player lifecycle events
+        const adminValidator = async (socket: WebSocket) => {
+            if (!socket.data.isBearer()) return false;
+            const user = await socket.data.getData() as User | null;
+            if (!user || !('getTags' in user)) return false;
+            return user.getTags().includes('sys:admin');
+        };
+        this.app.http.socket.addSubscriber('relay_client_connected', adminValidator);
+        this.app.http.socket.addSubscriber('relay_client_disconnected', adminValidator);
+        this.app.http.socket.addSubscriber('relay_player_join', adminValidator);
+        this.app.http.socket.addSubscriber('relay_player_leave', adminValidator);
     }
 
     private async checkRuntimes() {
@@ -149,6 +161,14 @@ export default class RelayManager {
             this.onRelayLog(relay, message);
         else if (message.type === 'specs')
             this.onRelaySpecs(relay, message);
+        else if (message.type === 'client_connected')
+            this.onRelayClientConnected(relay, message);
+        else if (message.type === 'client_disconnected')
+            this.onRelayClientDisconnected(relay, message);
+        else if (message.type === 'player_join')
+            this.onRelayPlayerJoin(relay, message);
+        else if (message.type === 'player_leave')
+            this.onRelayPlayerLeave(relay, message);
     }
 
     /**
@@ -195,6 +215,84 @@ export default class RelayManager {
             });
         } catch (error) {
             Debug.error('Error handling relay specs:', error);
+        }
+    }
+
+    /**
+     * Handler: a QUIC client connected to the relay.
+     */
+    private onRelayClientConnected(relay: Relay, message: WebMessage) {
+        try {
+            this.app.http.socket.emitSubscriber('relay_client_connected', {
+                relay_id: relay.id,
+                timestamp: Date.now(),
+                client: {
+                    id: message.data.id,
+                    address: message.data.address,
+                },
+            });
+        } catch (error) {
+            Debug.error('Error handling relay client_connected:', error);
+        }
+    }
+
+    /**
+     * Handler: a QUIC client disconnected from the relay.
+     */
+    private onRelayClientDisconnected(relay: Relay, message: WebMessage) {
+        try {
+            this.app.http.socket.emitSubscriber('relay_client_disconnected', {
+                relay_id: relay.id,
+                timestamp: Date.now(),
+                client: {
+                    id: message.data.id,
+                    address: message.data.address,
+                    user: message.data.user ?? null,
+                },
+            });
+        } catch (error) {
+            Debug.error('Error handling relay client_disconnected:', error);
+        }
+    }
+
+    /**
+     * Handler: a player joined an instance on the relay.
+     */
+    private onRelayPlayerJoin(relay: Relay, message: WebMessage) {
+        try {
+            this.app.http.socket.emitSubscriber('relay_player_join', {
+                relay_id: relay.id,
+                timestamp: Date.now(),
+                player: {
+                    client_id: message.data.client_id,
+                    player_id: message.data.player_id,
+                    instance_id: message.data.instance_id,
+                    user: message.data.user ?? null,
+                    display: message.data.display,
+                },
+            });
+        } catch (error) {
+            Debug.error('Error handling relay player_join:', error);
+        }
+    }
+
+    /**
+     * Handler: a player left an instance on the relay.
+     */
+    private onRelayPlayerLeave(relay: Relay, message: WebMessage) {
+        try {
+            this.app.http.socket.emitSubscriber('relay_player_leave', {
+                relay_id: relay.id,
+                timestamp: Date.now(),
+                player: {
+                    client_id: message.data.client_id,
+                    player_id: message.data.player_id,
+                    instance_id: message.data.instance_id,
+                    user: message.data.user ?? null,
+                },
+            });
+        } catch (error) {
+            Debug.error('Error handling relay player_leave:', error);
         }
     }
 
