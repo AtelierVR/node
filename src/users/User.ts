@@ -264,7 +264,7 @@ export default class User implements Omit<IUser, 'links'> {
     }
 
     useManualFollowValidation() {
-        return this.isAdmin() || hasTag(this.getTags(), 'sys:manual_follow_validation');
+        return hasTag(this.getTags(), 'sys:manual_follow_validation');
     }
 
     useAutoRejectFollow() {
