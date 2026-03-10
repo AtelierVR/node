@@ -3,6 +3,10 @@ import { getPreferedAddress } from "../utils/Environment";
 import { isLocalAddress } from "../utils/Utils";
 
 export default class WorldIdentifier {
+    static InvalidId = 0;
+    static NoVersion = 65535;
+
+
     constructor(identifier: number, server?: string, variables?: { [key: string]: string }) {
         this.identifier = identifier;
         this.server = server || undefined;
@@ -32,6 +36,21 @@ export default class WorldIdentifier {
             || isLocalAddress(this.server)
             || this.server === SafeLocalAddress
             || getPreferedAddress() === this.server;
+    }
+
+    get version() {
+        return typeof this.variables["v"] != "undefined" 
+            ? parseInt(this.variables["v"]) 
+            : WorldIdentifier.NoVersion 
+    }
+
+    set version(value) {
+        value = ~~value;
+        if (value < 0) 
+            throw new Error("Version cannot be a nevative orand float");
+        if (value > WorldIdentifier.NoVersion)
+            delete this.variables["v"];
+        this.variables["v"] = value.toString();
     }
 
     toString(defaultserver?: string): string {

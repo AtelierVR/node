@@ -512,10 +512,10 @@ export default class UserAPIWeb {
             input.home = undefined;
 
         if (input.avatar) {
-            var wi = AvatarIdentifier.fromString(input.avatar);
-            if (!wi) return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'avatar', 'AvatarIdentifier'));
-            if (wi.server === this.app.server.getInfos().address) wi.server = undefined;
-            input.avatar = wi.toString();
+            var ai = AvatarIdentifier.fromString(input.avatar);
+            if (!ai) return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'avatar', 'AvatarIdentifier'));
+            if (ai.server === this.app.server.getInfos().address) ai.server = undefined;
+            input.avatar = ai.toString();
         } else if (!input.avatar && input.avatar !== null)
             input.avatar = undefined;
 
