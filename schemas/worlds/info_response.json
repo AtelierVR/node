@@ -1,0 +1,77 @@
+{
+    "$id": "worlds/info_response",
+    "title": "World Info Response",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "title": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "description": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "server": {
+            "type": "string"
+        },
+        "capacity": {
+            "type": "integer"
+        },
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "thumbnail": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "alias": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "key",
+                    "value"
+                ]
+            }
+        },
+        "owner": {
+            "type": "string"
+        },
+        "contributors": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        }
+    },
+    "required": [
+        "id",
+        "server",
+        "capacity",
+        "tags",
+        "owner",
+        "contributors",
+        "alias"
+    ]
+}

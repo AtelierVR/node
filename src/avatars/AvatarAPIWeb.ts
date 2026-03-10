@@ -10,10 +10,11 @@ import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createGunzip } from 'node:zlib';
 import Avatar from './Avatar';
+import AvatarIdentifier from './AvatarIdentifier';
 import Debug from '../utils/Debug';
 import processingQueue, { ProcessingStatus } from '../assets/AssetProcessingQueue';
 import { AvatarAssetProcessor } from './AvatarAssetProcessor';
-import { 
+import {
     ProcessingJobActiveResponse,
     ProcessingJobCompletedResponse,
     ProcessingJobFailedResponse,
@@ -26,10 +27,10 @@ export default class AvatarAPIWeb {
     constructor(private readonly app: Reileta, private readonly manager: AvatarManager) {
         // Créer le processeur pour les assets d'avatar
         this.avatarProcessor = new AvatarAssetProcessor(manager);
-        
+
         // Enregistrer le processeur dans la queue globale
         processingQueue.registerProcessor('avatar', this.avatarProcessor);
-        
+
         // Routes API
         this.app.http.express.server.get('/api/avatars', (req, res) => this.searchHandler(req as Request, res as Response));
         this.app.http.express.server.put('/api/avatars', Express.json(), NetExpress.validate('avatars/create'), (req, res) => this.handleCreateAvatar(req as Request, res as Response));
@@ -121,45 +122,45 @@ export default class AvatarAPIWeb {
     async handleDownloadAvatarAssetFile(request: Request<{ avatar_id: string, asset_id: string }>, response: Response) {
         let avatar_id: number = /^\d+$/.test(request.params.avatar_id) ? parseInt(request.params.avatar_id) : 0;
         let asset_id: number = /^\d+$/.test(request.params.asset_id) ? parseInt(request.params.asset_id) : 0;
-        
+
         if (!AvatarManager.isValidAvatarId(avatar_id))
             return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'avatar_id', 'avatar id'));
         if (!AvatarManager.isValidAssetId(asset_id))
             return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'asset_id', 'asset id'));
-        
+
         let avatar = await this.manager.findAvatarById(avatar_id);
         if (!avatar)
             return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
-        
+
         let asset = await this.manager.findAvatarAssetById(asset_id);
         if (!asset || asset.avatar_id !== avatar_id)
             return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar Asset'));
-        
+
         let file = asset.getFile();
         if (!file)
             return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar Asset File'));
-        
+
         // Vérifier si le fichier est compressé
         const isCompressed = file.endsWith('.gz');
-        
+
         // Vérifier si le client accepte gzip
         const acceptEncoding = request.header('accept-encoding') || '';
         const clientAcceptsGzip = acceptEncoding.includes('gzip');
-        
+
         if (isCompressed) {
             // Ajouter le hash dans les headers
             if (asset.hash) {
                 response.set('X-File-Hash', asset.hash);
             }
-            
+
             if (clientAcceptsGzip) {
                 // Le client accepte gzip, envoyer le fichier compressé tel quel
                 response.set('Content-Type', 'application/octet-stream');
                 response.set('Content-Encoding', 'gzip');
-                
+
                 const fileStream = createReadStream(file);
                 fileStream.pipe(response);
-                
+
                 fileStream.on('error', (error) => {
                     Debug.error('Stream error:', error);
                     if (!response.headersSent) {
@@ -170,19 +171,19 @@ export default class AvatarAPIWeb {
                 // Le client ne supporte pas gzip, décompresser à la volée
                 response.set('Content-Type', 'application/octet-stream');
                 // Pas de Content-Encoding car on décompresse
-                
+
                 const fileStream = createReadStream(file);
                 const gunzip = createGunzip();
-                
+
                 fileStream.pipe(gunzip).pipe(response);
-                
+
                 fileStream.on('error', (error) => {
                     Debug.error('Stream error:', error);
                     if (!response.headersSent) {
                         response.status(500).send(new ErrorMessage(ErrorCodes.InternalError, 'stream file'));
                     }
                 });
-                
+
                 gunzip.on('error', (error) => {
                     Debug.error('Gunzip error:', error);
                     if (!response.headersSent) {
@@ -205,12 +206,12 @@ export default class AvatarAPIWeb {
         if (!offset || typeof offset !== 'string') offset = '0';
         if (!/^\d+$/.test(limit)) return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'query', 'limit'));
         if (!/^\d+$/.test(offset)) return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'query', 'offset'));
-        
+
         var ilimit = parseInt(limit);
         var ioffset = parseInt(offset);
         if (ilimit > 100) ilimit = 100;
         if (ioffset < 0) ioffset = 0;
-        
+
         let ids: string[] = [];
         let querys: string | undefined = typeof query === 'string' && query.length > 0 ? query : undefined;
 
@@ -224,7 +225,7 @@ export default class AvatarAPIWeb {
                     return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'id', 'search'));
                 ids.push(i);
             }
-        
+
         let results: { avatars: Avatar[]; total: number; } = { avatars: [], total: 0 };
         if (ids.length > 0)
             results = await this.manager.searchAvatarsByIds(ids.map(id => parseInt(id)), ilimit, ioffset);
@@ -237,15 +238,16 @@ export default class AvatarAPIWeb {
             total: results.total,
             search: query,
             ids: ids,
-            avatars: results.avatars.map<IRAvatar>(avatar => ({
+            avatars: await Promise.all(results.avatars.map<Promise<IRAvatar>>(async avatar => ({
                 id: avatar.id,
                 title: avatar.title || null,
                 description: avatar.description || null,
                 server: address,
                 thumbnail: avatar.getThumbnail()?.href || null,
                 tags: avatar.getTags(),
+                alias: await avatar.alias(),
                 owner: avatar.ownerIdentifier.toString(address),
-            }))
+            })))
         });
     }
 
@@ -255,17 +257,17 @@ export default class AvatarAPIWeb {
         const user = await request.data.getData() as User | null;
         if (!user || !user.canCreateWorld()) // Using world permission for now
             return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'create avatars'));
-        
+
         var data: IMakeAvatar = {
             id: request.body.id || undefined,
             title: request.body.title,
             description: request.body.description || undefined,
             thumbnail: request.body.thumbnail || undefined
         };
-        
+
         Debug.log('create avatar', data, request.body);
         let avatar = await this.manager.createAvatar(data, user);
-        
+
         if (avatar)
             return response.send<IRAvatar>({
                 id: avatar.id,
@@ -274,9 +276,10 @@ export default class AvatarAPIWeb {
                 server: this.app.server.getInfos().address,
                 thumbnail: avatar.getThumbnail()?.href || null,
                 tags: avatar.getTags(),
+                alias: await avatar.alias(),
                 owner: avatar.ownerIdentifier.toString(this.app.server.getInfos().address),
             });
-        
+
         return response.send(new ErrorMessage(ErrorCodes.InternalError, 'create avatar'));
     }
 
@@ -286,7 +289,7 @@ export default class AvatarAPIWeb {
         const user = await request.data.getData() as User | null;
         if (!user || !user.canDeleteWorld()) // Using world permission for now
             return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'delete avatars'));
-        
+
         let id: number = /^\d+$/.test(request.params.avatar_id) ? parseInt(request.params.avatar_id) : 0;
         let avatar = null;
         if (AvatarManager.isValidAvatarId(id))
@@ -295,7 +298,7 @@ export default class AvatarAPIWeb {
             return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
         if (!(await avatar.IsOwner(user)))
             return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'delete avatars'));
-        
+
         await avatar.delete();
         return response.send({ success: true });
     }
@@ -306,7 +309,7 @@ export default class AvatarAPIWeb {
         const user = await request.data.getData() as User | null;
         if (!user || !user.canUpdateWorld()) // Using world permission for now
             return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'update avatars'));
-        
+
         let id: number = /^\d+$/.test(request.params.avatar_id) ? parseInt(request.params.avatar_id) : 0;
         let avatar: Avatar | null = null;
         if (AvatarManager.isValidAvatarId(id))
@@ -326,10 +329,10 @@ export default class AvatarAPIWeb {
         avatar.title = data.title || avatar.title;
         avatar.description = data.description || avatar.description;
         avatar.thumbnail = data.thumbnail || avatar.thumbnail;
-        
+
         if (!await avatar.save())
             return response.send(new ErrorMessage(ErrorCodes.InternalError, 'update avatar'));
-        
+
         return response.send<IRAvatar>({
             id: avatar.id,
             title: avatar.title || null,
@@ -337,15 +340,41 @@ export default class AvatarAPIWeb {
             server: this.app.server.getInfos().address,
             thumbnail: avatar.getThumbnail()?.href || null,
             tags: avatar.getTags(),
+            alias: await avatar.alias(),
             owner: avatar.ownerIdentifier.toString(this.app.server.getInfos().address),
         });
     }
 
+    async handleNetAvatar(request: Request<{ avatar_id: string }>, response: Response, avatarIdentifier: AvatarIdentifier) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+        const user = await request.data.getData() as User | null;
+        if (!user)
+            return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        if (!user.canFetchExternal())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'fetch external avatar'));
+        const ns = await this.app.netServers.findOrInitServer(avatarIdentifier.server!);
+        if (ns instanceof Error) {
+            Debug.error(`Failed to find or init NetServer for ${avatarIdentifier.server}: ${ns.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        }
+        const url = new URL(`/api/avatars/${avatarIdentifier.identifier}`, `http://${ns.address}`);
+        const res = await ns.fetch<IRAvatar>(url, 'avatars/info_response');
+        if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
+        if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
+        return response.send<IRAvatar>(res.data);
+    }
+
     async handleAvatar(request: Request<{ avatar_id: string }>, response: Response) {
-        let id: number = /^\d+$/.test(request.params.avatar_id) ? parseInt(request.params.avatar_id) : 0;
+        const avatarIdentifier = AvatarIdentifier.fromString(request.params.avatar_id);
+        if (!avatarIdentifier)
+            return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'avatar_id', 'avatar id'));
+        if (!avatarIdentifier.isLocal())
+            return this.handleNetAvatar(request, response, avatarIdentifier);
+        let id = avatarIdentifier.identifier;
         if (!AvatarManager.isValidAvatarId(id))
             return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'avatar_id', 'avatar id'));
-        
+
         let avatar = await this.manager.findAvatarById(id);
         if (avatar) {
             return response.send<IRAvatar>({
@@ -355,6 +384,7 @@ export default class AvatarAPIWeb {
                 server: this.app.server.getInfos().address,
                 thumbnail: avatar.getThumbnail()?.href || null,
                 tags: avatar.getTags(),
+                alias: await avatar.alias(),
                 owner: avatar.ownerIdentifier.toString(this.app.server.getInfos().address),
             });
         }
@@ -370,7 +400,7 @@ export default class AvatarAPIWeb {
         const user = await request.data.getData() as User | null;
         if (!user || !user.canCreateWorldAsset()) // Using world asset permission for now
             return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'create avatar assets'));
-        
+
         var data: IMakeAvatarAsset = {
             id: request.body.id || undefined,
             version: request.body.version,
@@ -381,7 +411,7 @@ export default class AvatarAPIWeb {
             size: request.body.size || undefined,
             avatar_id: id
         };
-        
+
         Debug.log('create avatar asset', data, request.body);
         data.avatar_id = id;
         const avatar = await this.manager.findAvatarById(id);
@@ -389,15 +419,15 @@ export default class AvatarAPIWeb {
             return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
         if (!(await avatar.IsOwner(user)))
             return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'create avatar assets'));
-        
+
         const check = await this.manager.findAvatarAssetByIndex(id, data.version, data.engine, data.platform);
         Debug.log('check', check, data);
         if (check)
             return response.send(new ErrorMessage(ErrorCodes.AlreadyExists, 'avatar asset', 'version, engine or platform'));
-        
+
         Debug.log('create avatar asset', data);
         let asset = await this.manager.createAvatarAsset(data);
-        
+
         if (asset)
             return response.send<IRAvatarAsset>({
                 id: asset.id,
@@ -412,7 +442,7 @@ export default class AvatarAPIWeb {
                 hash: asset.getHash() || null,
                 size: asset.getSize() || null
             });
-        
+
         return response.send(new ErrorMessage(ErrorCodes.InternalError, 'create avatar asset'));
     }
 
@@ -452,7 +482,7 @@ export default class AvatarAPIWeb {
             return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
         if (!(await avatar.IsOwner(user)))
             return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'upload avatar assets'));
-        
+
         // Vérification de l'asset
         let asset = await this.manager.findAvatarAssetById(asset_id);
         if (!asset || asset.avatar_id !== avatar_id)
@@ -511,7 +541,7 @@ export default class AvatarAPIWeb {
 
         if (job) {
             const status = job.progress.status || ProcessingStatus.PENDING;
-            
+
             // Job échoué
             if (status === ProcessingStatus.FAILED) {
                 return response.send<ProcessingJobFailedResponse>({
@@ -524,7 +554,7 @@ export default class AvatarAPIWeb {
                     completed_at: job.done_at!.getTime()
                 });
             }
-            
+
             // Job terminé avec succès
             if (status === ProcessingStatus.COMPLETED) {
                 return response.send<ProcessingJobCompletedResponse>({
@@ -538,7 +568,7 @@ export default class AvatarAPIWeb {
                     completed_at: job.done_at!.getTime()
                 });
             }
-            
+
             // Job en cours ou en attente
             return response.send<ProcessingJobActiveResponse>({
                 status: status as ProcessingStatus.PENDING | ProcessingStatus.PROCESSING,
@@ -648,6 +678,10 @@ interface IRAvatar {
     server: string;
     thumbnail: string | null;
     tags: string[];
+    alias: {
+        key: string;
+        value: string;
+    }[]
     owner: string;
 }
 

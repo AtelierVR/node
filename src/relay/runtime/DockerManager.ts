@@ -426,6 +426,7 @@ export default class DockerManager extends RuntimeManager {
             Env: [
                 `NOX_TOKEN=${options.badgerToken}`,
                 `NOX_PORT=${options.port}`,
+                `NOX_NODE_ADDRESS=${this.app.server.getInfos().address}`,
                 'NOX_MAX_TPS=24',
                 `NOX_NODE_GATEWAY=${Env.getWebGateway()}`,
                 `NOX_DEBUG=true`

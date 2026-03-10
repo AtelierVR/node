@@ -8,8 +8,10 @@ import { ErrorCodes } from "../utils/Constants";
 import { ErrorMessage, stringify } from "../utils/Utils";
 import WorldIdentifier from "../worlds/WorldIdentifier";
 import Instance from "./Instance";
+import InstanceIdentifier from "./InstanceIdentifier";
 import InstanceManager from "./InstanceManager";
 import Express from 'express';
+import Debug from '../utils/Debug';
 
 export default class InstanceAPIWeb {
     constructor(private readonly app: Reileta, private readonly manager: InstanceManager) {
@@ -47,7 +49,7 @@ export default class InstanceAPIWeb {
             var relay = await instance.getRelay();
             let addr = await relay?.getAddress() || null;
             let hasInstance = relay ? await relay.hasInstance(instance.id) : false;
-            
+
             // Get instance details if it exists on the relay
             let relayInstanceData = null;
             if (hasInstance && relay) {
@@ -67,6 +69,7 @@ export default class InstanceAPIWeb {
                 capacity: instance.capacity,
                 owner: instance.ownerIdentifier.toString(this.app.server.getInfos().address),
                 tags: instance.getTags(),
+                alias: await instance.alias(),
                 world: instance.worldIdentifier.toString(this.app.server.getInfos().address),
                 connection: addr && hasInstance && relay ? {
                     method: 'relay',
@@ -96,7 +99,34 @@ export default class InstanceAPIWeb {
         });
     }
 
+    async handleNetInstance(request: Request<{ search: string }>, response: Response, instanceIdentifier: InstanceIdentifier) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+        const user = await request.data.getData() as User | null;
+        if (!user)
+            return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        if (!user.canFetchExternal())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'fetch external instance'));
+        const ns = await this.app.netServers.findOrInitServer(instanceIdentifier.server!);
+        if (ns instanceof Error) {
+            Debug.error(`Failed to find or init NetServer for ${instanceIdentifier.server}: ${ns.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        }
+        const searchParam = instanceIdentifier.isName()
+            ? `#${instanceIdentifier.identifier}`
+            : instanceIdentifier.identifier.toString();
+        const url = new URL(`/api/instances/${searchParam}`, `http://${ns.address}`);
+        const res = await ns.fetch<IRInstance>(url, 'instances/info_response');
+        if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Instance'));
+        if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Instance'));
+        return response.send<IRInstance>(res.data);
+    }
+
     async handleInstance(request: Request<{ search: string }>, response: Response) {
+        const instanceIdentifier = InstanceIdentifier.fromString(request.params.search);
+        if (instanceIdentifier && !instanceIdentifier.isLocal())
+            return this.handleNetInstance(request, response, instanceIdentifier);
+
         let instance: Instance | null = null;
 
         if (request.params.search.startsWith("#")) {
@@ -116,7 +146,7 @@ export default class InstanceAPIWeb {
         let addr = await relay?.getAddress() || null;
         let hasInstance = relay ? await relay.hasInstance(instance.id) : false;
         let http = this.app.server.getInfos().gateways.http;
-        
+
         // Get instance details if it exists on the relay
         let relayInstanceData = null;
         if (hasInstance && relay) {
@@ -136,6 +166,7 @@ export default class InstanceAPIWeb {
             owner: instance.ownerIdentifier.toString(this.app.server.getInfos().address),
             capacity: instance.capacity,
             tags: instance.getTags(),
+            alias: await instance.alias(),
             world: instance.worldIdentifier.toString(this.app.server.getInfos().address),
             connection: addr && hasInstance && relay ? {
                 method: 'relay',
@@ -208,6 +239,7 @@ export default class InstanceAPIWeb {
             capacity: result.capacity,
             owner: result.ownerIdentifier.toString(this.app.server.getInfos().address),
             tags: result.getTags(),
+            alias: await result.alias(),
             world: result.worldIdentifier.toString(this.app.server.getInfos().address),
             connection: null,
             client_count: 0,
@@ -229,6 +261,10 @@ export interface IRInstance {
     owner: string;
     tags: string[];
     world: string;
+    alias: {
+        key: string;
+        value: string;
+    }[]
 
     connection: IRConnection | null;
     client_count: number;

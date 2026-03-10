@@ -9,11 +9,12 @@ import { readFileSync } from 'fs';
 import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import World from './World';
+import WorldIdentifier from './WorldIdentifier';
 import UserIdentifier from '../users/UserIdentifier';
 import Debug from '../utils/Debug';
 import processingQueue, { ProcessingStatus } from '../assets/AssetProcessingQueue';
 import { WorldAssetProcessor } from './WorldAssetProcessor';
-import { 
+import {
     AnyProcessingJobResponse,
     ProcessingJobActiveResponse,
     ProcessingJobCompletedResponse,
@@ -169,17 +170,18 @@ export default class WorldAPIWeb {
             ids: ids,
             limit: ilimit,
             offset: ioffset,
-            worlds: results.worlds.map<IRWorld>(world => ({
+            worlds: await Promise.all<IRWorld>(results.worlds.map<Promise<IRWorld>>(async world => ({
                 id: world.id,
                 title: world.title,
                 description: world.description,
                 server: address,
                 capacity: world.capacity,
                 tags: world.getTags(),
+                alias: await world.alias(),
                 owner: world.ownerIdentifier.toString(address),
                 contributors: world.contributor_refs.map(ref => UserIdentifier.fromString(ref).toString(address)),
                 thumbnail: world.getThumbnail(http)?.href || null,
-            }))
+            })))
         });
     }
 
@@ -221,6 +223,7 @@ export default class WorldAPIWeb {
             thumbnail: world.getThumbnail(http)?.href || null,
             capacity: world.capacity,
             tags: world.getTags(),
+            alias: await world.alias(),
             owner: world.ownerIdentifier.toString(address),
             contributors: world.contributor_refs.map(ref => UserIdentifier.fromString(ref).toString(address)),
         });
@@ -287,13 +290,39 @@ export default class WorldAPIWeb {
             thumbnail: world.getThumbnail(http)?.href || null,
             capacity: world.capacity,
             tags: world.getTags(),
+            alias: await world.alias(),
             owner: world.ownerIdentifier.toString(address),
             contributors: world.contributor_refs.map(ref => UserIdentifier.fromString(ref).toString(address)),
         });
     }
 
+    async handleNetWorld(request: Request<{ world_id: string }>, response: Response, worldIdentifier: WorldIdentifier) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+        const user = await request.data.getData() as User | null;
+        if (!user)
+            return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        if (!user.canFetchExternal())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'fetch external world'));
+        const ns = await this.app.netServers.findOrInitServer(worldIdentifier.server!);
+        if (ns instanceof Error) {
+            Debug.error(`Failed to find or init NetServer for ${worldIdentifier.server}: ${ns.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        }
+        const url = new URL(`/api/worlds/${worldIdentifier.identifier}`, `http://${ns.address}`);
+        const res = await ns.fetch<IRWorld>(url, 'worlds/info_response');
+        if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
+        if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
+        return response.send<IRWorld>(res.data);
+    }
+
     async handleWorld(request: Request<{ world_id: string }>, response: Response) {
-        let id: number = /^\d+$/.test(request.params.world_id) ? parseInt(request.params.world_id) : 0;
+        const worldIdentifier = WorldIdentifier.fromString(request.params.world_id);
+        if (!worldIdentifier)
+            return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'world_id', 'world id'));
+        if (!worldIdentifier.isLocal())
+            return this.handleNetWorld(request, response, worldIdentifier);
+        let id = worldIdentifier.identifier;
         if (!WorldManager.isValidWorldId(id))
             return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'world_id', 'world id'));
         let world = await this.manager.findWorldById(id);
@@ -308,6 +337,7 @@ export default class WorldAPIWeb {
                 thumbnail: world.getThumbnail(http)?.href || null,
                 capacity: world.capacity,
                 tags: world.getTags(),
+                alias: await world.alias(),
                 owner: world.ownerIdentifier.toString(address),
                 contributors: world.contributor_refs.map(ref => UserIdentifier.fromString(ref).toString(address)),
             });
@@ -445,7 +475,7 @@ export default class WorldAPIWeb {
 
         if (job) {
             const status = job.progress.status || ProcessingStatus.PENDING;
-            
+
             // Job échoué
             if (status === ProcessingStatus.FAILED) {
                 return response.send<ProcessingJobFailedResponse>({
@@ -458,7 +488,7 @@ export default class WorldAPIWeb {
                     completed_at: job.done_at!.getTime()
                 });
             }
-            
+
             // Job terminé avec succès
             if (status === ProcessingStatus.COMPLETED) {
                 return response.send<ProcessingJobCompletedResponse>({
@@ -472,7 +502,7 @@ export default class WorldAPIWeb {
                     completed_at: job.done_at!.getTime()
                 });
             }
-            
+
             // Job en cours ou en attente
             return response.send<ProcessingJobActiveResponse>({
                 status: status as ProcessingStatus.PENDING | ProcessingStatus.PROCESSING,
@@ -592,6 +622,10 @@ export interface IRWorld {
     capacity: number;
     tags: string[];
     thumbnail: string | null;
+    alias: {
+        key: string;
+        value: string;
+    }[];
     owner: string;
     contributors: string[];
     server: string;

@@ -1,0 +1,66 @@
+{
+    "$id": "avatars/info_response",
+    "title": "Avatar Info Response",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "title": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "description": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "server": {
+            "type": "string"
+        },
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "thumbnail": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "alias": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "key",
+                    "value"
+                ]
+            }
+        },
+        "owner": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "id",
+        "server",
+        "tags",
+        "owner",
+        "alias"
+    ]
+}

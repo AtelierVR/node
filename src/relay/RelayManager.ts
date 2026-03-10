@@ -10,6 +10,8 @@ import UserIdentifier from '../users/UserIdentifier';
 import { IUserBlacklist } from '../users/User';
 import Debug from '../utils/Debug';
 import User from '../users/User';
+import WorldIdentifier from '../worlds/WorldIdentifier';
+import { SafeLocalAddress } from '../utils/Constants';
 
 export default class RelayManager {
     public runtimes: RuntimeManager[] = [];
@@ -493,19 +495,24 @@ export default class RelayManager {
         let assigned = instances.slice(0, count);
 
         Debug.log(`Assigning instances [${assigned.map(i => i.id).join(', ')}] to relay #${relay.id} (requested: ${count}, available: ${instances.length})`);
-        return message.reply({
+        let o = assigned.map(i => {
+            const w = WorldIdentifier.fromString(i.world_ref) || undefined;
+            return {
+                id: i.id,
+                password: i.password,
+                capacity: i.capacity,
+                world: {
+                    id: w?.identifier ?? WorldIdentifier.InvalidId,
+                    address: w?.server ?? SafeLocalAddress,
+                    version: w?.version ?? WorldIdentifier.NoVersion
+                }
+            };
+        });
+        console.log(o);
+
+        message.reply({
             success: true,
-            instances: assigned.map(i => {
-                const worldParts = (i.world_ref ?? '').split('@');
-                const worldId = parseInt(worldParts[0]) || 0;
-                const worldAddress = worldParts[1] ?? '';
-                return {
-                    id: i.id,
-                    password: i.password,
-                    capacity: i.capacity,
-                    world: { id: worldId, address: worldAddress, version: 0 }
-                };
-            })
+            instances: o
         });
     }
 }
