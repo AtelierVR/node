@@ -107,11 +107,11 @@ export class ServerManager {
                 web: new URL(Env.getWebGateway())
             },
             features: [
-                'world',
-                'instance',
-                'server',
                 'user',
-                'avatar'
+                'world',
+                'avatar',
+                'instance',
+                'server'
             ],
             version: ServerManager.version,
             ready_at: this.app.ready_at || new Date(),

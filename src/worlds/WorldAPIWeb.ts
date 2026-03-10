@@ -13,7 +13,7 @@ import UserIdentifier from '../users/UserIdentifier';
 import Debug from '../utils/Debug';
 import processingQueue, { ProcessingStatus } from '../assets/AssetProcessingQueue';
 import { WorldAssetProcessor } from './WorldAssetProcessor';
-import { 
+import {
     AnyProcessingJobResponse,
     ProcessingJobActiveResponse,
     ProcessingJobCompletedResponse,
@@ -169,17 +169,18 @@ export default class WorldAPIWeb {
             ids: ids,
             limit: ilimit,
             offset: ioffset,
-            worlds: results.worlds.map<IRWorld>(world => ({
+            worlds: await Promise.all<IRWorld>(results.worlds.map<Promise<IRWorld>>(async world => ({
                 id: world.id,
                 title: world.title,
                 description: world.description,
                 server: address,
                 capacity: world.capacity,
                 tags: world.getTags(),
+                alias: await world.alias(),
                 owner: world.ownerIdentifier.toString(address),
                 contributors: world.contributor_refs.map(ref => UserIdentifier.fromString(ref).toString(address)),
                 thumbnail: world.getThumbnail(http)?.href || null,
-            }))
+            })))
         });
     }
 
@@ -221,6 +222,7 @@ export default class WorldAPIWeb {
             thumbnail: world.getThumbnail(http)?.href || null,
             capacity: world.capacity,
             tags: world.getTags(),
+            alias: await world.alias(),
             owner: world.ownerIdentifier.toString(address),
             contributors: world.contributor_refs.map(ref => UserIdentifier.fromString(ref).toString(address)),
         });
@@ -287,6 +289,7 @@ export default class WorldAPIWeb {
             thumbnail: world.getThumbnail(http)?.href || null,
             capacity: world.capacity,
             tags: world.getTags(),
+            alias: await world.alias(),
             owner: world.ownerIdentifier.toString(address),
             contributors: world.contributor_refs.map(ref => UserIdentifier.fromString(ref).toString(address)),
         });
@@ -308,6 +311,7 @@ export default class WorldAPIWeb {
                 thumbnail: world.getThumbnail(http)?.href || null,
                 capacity: world.capacity,
                 tags: world.getTags(),
+                alias: await world.alias(),
                 owner: world.ownerIdentifier.toString(address),
                 contributors: world.contributor_refs.map(ref => UserIdentifier.fromString(ref).toString(address)),
             });
@@ -445,7 +449,7 @@ export default class WorldAPIWeb {
 
         if (job) {
             const status = job.progress.status || ProcessingStatus.PENDING;
-            
+
             // Job échoué
             if (status === ProcessingStatus.FAILED) {
                 return response.send<ProcessingJobFailedResponse>({
@@ -458,7 +462,7 @@ export default class WorldAPIWeb {
                     completed_at: job.done_at!.getTime()
                 });
             }
-            
+
             // Job terminé avec succès
             if (status === ProcessingStatus.COMPLETED) {
                 return response.send<ProcessingJobCompletedResponse>({
@@ -472,7 +476,7 @@ export default class WorldAPIWeb {
                     completed_at: job.done_at!.getTime()
                 });
             }
-            
+
             // Job en cours ou en attente
             return response.send<ProcessingJobActiveResponse>({
                 status: status as ProcessingStatus.PENDING | ProcessingStatus.PROCESSING,
@@ -592,6 +596,10 @@ export interface IRWorld {
     capacity: number;
     tags: string[];
     thumbnail: string | null;
+    alias: {
+        key: string;
+        value: string;
+    }[];
     owner: string;
     contributors: string[];
     server: string;

@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, copyFileSync, rmSync, statSync } from 'fs';
 import { join } from 'path';
 import WorldManager from './WorldManager';
 import Debug from '../utils/Debug';
+import WorldIdentifier from './WorldIdentifier';
 
 export default class World implements IWorld {
     constructor(world: IWorld, private readonly app: Main) {
@@ -23,7 +24,7 @@ export default class World implements IWorld {
         this.created_at = world.created_at;
         this.updated_at = world.updated_at;
     }
-    
+
     created_at: Date;
     updated_at: Date;
     id: number;
@@ -186,4 +187,27 @@ export default class World implements IWorld {
             ext: matchs[3]
         };
     }
+
+    toIdentifier(): WorldIdentifier {
+        return new WorldIdentifier(this.id, undefined);
+    }
+
+    async alias() {
+        var infos = this.app.server.getInfos();
+        return [
+            {
+                key: "profile",
+                value: `${infos.gateways.web.origin}/w/${this.id}`
+            },
+            {
+                key: "api",
+                value: `${infos.gateways.http.origin}/api/worlds/${this.id}`
+            },
+            {
+                key: "iid",
+                value: this.toIdentifier().toString(infos.address)
+            }
+        ]
+    }
+
 }

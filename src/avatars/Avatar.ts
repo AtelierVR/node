@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, copyFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import AvatarManager from './AvatarManager';
 import Debug from '../utils/Debug';
+import AvatarIdentifier from './AvatarIdentifier';
 
 export default class Avatar implements IAvatar {
     constructor(avatar: IAvatar, private readonly app: Main) {
@@ -21,7 +22,7 @@ export default class Avatar implements IAvatar {
         this.created_at = avatar.created_at;
         this.updated_at = avatar.updated_at;
     }
-    
+
     created_at: Date;
     updated_at: Date;
     id: number;
@@ -113,7 +114,7 @@ export default class Avatar implements IAvatar {
 
     setThumbnailFile(file: any, hash: string): boolean {
         try {
-            if (!existsSync(AvatarManager.AssetFolder)) 
+            if (!existsSync(AvatarManager.AssetFolder))
                 mkdirSync(AvatarManager.AssetFolder, { recursive: true });
             let ext = file.originalname.split('.').pop();
             let type = file.mimetype.split('/').pop();
@@ -137,4 +138,27 @@ export default class Avatar implements IAvatar {
             ext: matchs[3]
         };
     }
+
+    toIdentifier(): AvatarIdentifier {
+        return new AvatarIdentifier(this.id, undefined);
+    }
+
+    async alias() {
+        var infos = this.app.server.getInfos();
+        return [
+            {
+                key: "profile",
+                value: `${infos.gateways.web.origin}/a/${this.id}`
+            },
+            {
+                key: "api",
+                value: `${infos.gateways.http.origin}/api/avatars/${this.id}`
+            },
+            {
+                key: "iid",
+                value: this.toIdentifier().toString(infos.address)
+            }
+        ]
+    }
+
 }

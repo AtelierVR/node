@@ -7,6 +7,7 @@ import { JsonValue } from "@prisma/client/runtime/library";
 import { join } from "node:path";
 import InstanceManager from "./InstanceManager";
 import { statSync } from "node:fs";
+import InstanceIdentifier from "./InstanceIdentifier";
 
 export default class Instance implements IInstance {
     constructor(instance: IInstance, private readonly app: Main) {
@@ -113,6 +114,29 @@ export default class Instance implements IInstance {
             }
         });
     }
+
+    toIdentifier(): InstanceIdentifier {
+        return new InstanceIdentifier(this.id, undefined);
+    }
+
+    async alias() {
+        var infos = this.app.server.getInfos();
+        return [
+            {
+                key: "profile",
+                value: `${infos.gateways.web.origin}/i/${this.name || this.id}`
+            },
+            {
+                key: "api",
+                value: `${infos.gateways.http.origin}/api/instances/${this.id}`
+            },
+            {
+                key: "iid",
+                value: this.toIdentifier().toString(infos.address)
+            }
+        ]
+    }
+
 }
 
 export interface InstanceCache {

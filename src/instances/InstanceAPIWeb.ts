@@ -47,7 +47,7 @@ export default class InstanceAPIWeb {
             var relay = await instance.getRelay();
             let addr = await relay?.getAddress() || null;
             let hasInstance = relay ? await relay.hasInstance(instance.id) : false;
-            
+
             // Get instance details if it exists on the relay
             let relayInstanceData = null;
             if (hasInstance && relay) {
@@ -67,6 +67,7 @@ export default class InstanceAPIWeb {
                 capacity: instance.capacity,
                 owner: instance.ownerIdentifier.toString(this.app.server.getInfos().address),
                 tags: instance.getTags(),
+                alias: await instance.alias(),
                 world: instance.worldIdentifier.toString(this.app.server.getInfos().address),
                 connection: addr && hasInstance && relay ? {
                     method: 'relay',
@@ -116,7 +117,7 @@ export default class InstanceAPIWeb {
         let addr = await relay?.getAddress() || null;
         let hasInstance = relay ? await relay.hasInstance(instance.id) : false;
         let http = this.app.server.getInfos().gateways.http;
-        
+
         // Get instance details if it exists on the relay
         let relayInstanceData = null;
         if (hasInstance && relay) {
@@ -136,6 +137,7 @@ export default class InstanceAPIWeb {
             owner: instance.ownerIdentifier.toString(this.app.server.getInfos().address),
             capacity: instance.capacity,
             tags: instance.getTags(),
+            alias: await instance.alias(),
             world: instance.worldIdentifier.toString(this.app.server.getInfos().address),
             connection: addr && hasInstance && relay ? {
                 method: 'relay',
@@ -208,6 +210,7 @@ export default class InstanceAPIWeb {
             capacity: result.capacity,
             owner: result.ownerIdentifier.toString(this.app.server.getInfos().address),
             tags: result.getTags(),
+            alias: await result.alias(),
             world: result.worldIdentifier.toString(this.app.server.getInfos().address),
             connection: null,
             client_count: 0,
@@ -229,6 +232,10 @@ export interface IRInstance {
     owner: string;
     tags: string[];
     world: string;
+    alias: {
+        key: string;
+        value: string;
+    }[]
 
     connection: IRConnection | null;
     client_count: number;
