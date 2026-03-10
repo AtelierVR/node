@@ -1,0 +1,92 @@
+{
+    "$id": "instances/info_response",
+    "title": "Instance Info Response",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "title": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "description": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "thumbnail": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "name": {
+            "type": "string"
+        },
+        "server": {
+            "type": "string"
+        },
+        "capacity": {
+            "type": "integer"
+        },
+        "owner": {
+            "type": "string"
+        },
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "world": {
+            "type": "string"
+        },
+        "alias": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "key",
+                    "value"
+                ]
+            }
+        },
+        "connection": {
+            "type": [
+                "object",
+                "null"
+            ]
+        },
+        "client_count": {
+            "type": "integer"
+        },
+        "players": {
+            "type": "array"
+        }
+    },
+    "required": [
+        "id",
+        "server",
+        "name",
+        "capacity",
+        "owner",
+        "tags",
+        "world",
+        "client_count",
+        "players",
+        "alias"
+    ]
+}

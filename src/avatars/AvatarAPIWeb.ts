@@ -10,6 +10,7 @@ import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createGunzip } from 'node:zlib';
 import Avatar from './Avatar';
+import AvatarIdentifier from './AvatarIdentifier';
 import Debug from '../utils/Debug';
 import processingQueue, { ProcessingStatus } from '../assets/AssetProcessingQueue';
 import { AvatarAssetProcessor } from './AvatarAssetProcessor';
@@ -344,8 +345,33 @@ export default class AvatarAPIWeb {
         });
     }
 
+    async handleNetAvatar(request: Request<{ avatar_id: string }>, response: Response, avatarIdentifier: AvatarIdentifier) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+        const user = await request.data.getData() as User | null;
+        if (!user)
+            return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        if (!user.canFetchExternal())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'fetch external avatar'));
+        const ns = await this.app.netServers.findOrInitServer(avatarIdentifier.server!);
+        if (ns instanceof Error) {
+            Debug.error(`Failed to find or init NetServer for ${avatarIdentifier.server}: ${ns.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        }
+        const url = new URL(`/api/avatars/${avatarIdentifier.identifier}`, `http://${ns.address}`);
+        const res = await ns.fetch<IRAvatar>(url, 'avatars/info_response');
+        if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
+        if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
+        return response.send<IRAvatar>(res.data);
+    }
+
     async handleAvatar(request: Request<{ avatar_id: string }>, response: Response) {
-        let id: number = /^\d+$/.test(request.params.avatar_id) ? parseInt(request.params.avatar_id) : 0;
+        const avatarIdentifier = AvatarIdentifier.fromString(request.params.avatar_id);
+        if (!avatarIdentifier)
+            return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'avatar_id', 'avatar id'));
+        if (!avatarIdentifier.isLocal())
+            return this.handleNetAvatar(request, response, avatarIdentifier);
+        let id = avatarIdentifier.identifier;
         if (!AvatarManager.isValidAvatarId(id))
             return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'avatar_id', 'avatar id'));
 

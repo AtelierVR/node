@@ -8,8 +8,10 @@ import { ErrorCodes } from "../utils/Constants";
 import { ErrorMessage, stringify } from "../utils/Utils";
 import WorldIdentifier from "../worlds/WorldIdentifier";
 import Instance from "./Instance";
+import InstanceIdentifier from "./InstanceIdentifier";
 import InstanceManager from "./InstanceManager";
 import Express from 'express';
+import Debug from '../utils/Debug';
 
 export default class InstanceAPIWeb {
     constructor(private readonly app: Reileta, private readonly manager: InstanceManager) {
@@ -97,7 +99,34 @@ export default class InstanceAPIWeb {
         });
     }
 
+    async handleNetInstance(request: Request<{ search: string }>, response: Response, instanceIdentifier: InstanceIdentifier) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+        const user = await request.data.getData() as User | null;
+        if (!user)
+            return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        if (!user.canFetchExternal())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'fetch external instance'));
+        const ns = await this.app.netServers.findOrInitServer(instanceIdentifier.server!);
+        if (ns instanceof Error) {
+            Debug.error(`Failed to find or init NetServer for ${instanceIdentifier.server}: ${ns.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        }
+        const searchParam = instanceIdentifier.isName()
+            ? `#${instanceIdentifier.identifier}`
+            : instanceIdentifier.identifier.toString();
+        const url = new URL(`/api/instances/${searchParam}`, `http://${ns.address}`);
+        const res = await ns.fetch<IRInstance>(url, 'instances/info_response');
+        if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Instance'));
+        if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Instance'));
+        return response.send<IRInstance>(res.data);
+    }
+
     async handleInstance(request: Request<{ search: string }>, response: Response) {
+        const instanceIdentifier = InstanceIdentifier.fromString(request.params.search);
+        if (instanceIdentifier && !instanceIdentifier.isLocal())
+            return this.handleNetInstance(request, response, instanceIdentifier);
+
         let instance: Instance | null = null;
 
         if (request.params.search.startsWith("#")) {

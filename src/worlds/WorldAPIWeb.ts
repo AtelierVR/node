@@ -9,6 +9,7 @@ import { readFileSync } from 'fs';
 import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import World from './World';
+import WorldIdentifier from './WorldIdentifier';
 import UserIdentifier from '../users/UserIdentifier';
 import Debug from '../utils/Debug';
 import processingQueue, { ProcessingStatus } from '../assets/AssetProcessingQueue';
@@ -295,8 +296,33 @@ export default class WorldAPIWeb {
         });
     }
 
+    async handleNetWorld(request: Request<{ world_id: string }>, response: Response, worldIdentifier: WorldIdentifier) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+        const user = await request.data.getData() as User | null;
+        if (!user)
+            return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        if (!user.canFetchExternal())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'fetch external world'));
+        const ns = await this.app.netServers.findOrInitServer(worldIdentifier.server!);
+        if (ns instanceof Error) {
+            Debug.error(`Failed to find or init NetServer for ${worldIdentifier.server}: ${ns.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        }
+        const url = new URL(`/api/worlds/${worldIdentifier.identifier}`, `http://${ns.address}`);
+        const res = await ns.fetch<IRWorld>(url, 'worlds/info_response');
+        if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
+        if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
+        return response.send<IRWorld>(res.data);
+    }
+
     async handleWorld(request: Request<{ world_id: string }>, response: Response) {
-        let id: number = /^\d+$/.test(request.params.world_id) ? parseInt(request.params.world_id) : 0;
+        const worldIdentifier = WorldIdentifier.fromString(request.params.world_id);
+        if (!worldIdentifier)
+            return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'world_id', 'world id'));
+        if (!worldIdentifier.isLocal())
+            return this.handleNetWorld(request, response, worldIdentifier);
+        let id = worldIdentifier.identifier;
         if (!WorldManager.isValidWorldId(id))
             return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'world_id', 'world id'));
         let world = await this.manager.findWorldById(id);
