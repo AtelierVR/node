@@ -55,8 +55,37 @@ export default class AvatarAPIWeb {
         return new Date(now + 5000); // Prochain retry dans 5 secondes
     }
 
+    async handleNetAvatarAssets(request: Request<{ avatar_id: string }>, response: Response, avatarIdentifier: AvatarIdentifier) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+        const user = await request.data.getData() as User | null;
+        if (!user)
+            return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        if (!user.canFetchExternal())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'fetch external avatar assets'));
+        const ns = await this.app.netServers.findOrInitServer(avatarIdentifier.server!);
+        if (ns instanceof Error) {
+            Debug.error(`Failed to find or init NetServer for ${avatarIdentifier.server}: ${ns.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        }
+        const url = new URL(`/api/avatars/${avatarIdentifier.identifier}/assets`, `http://${ns.address}`);
+        for (const [key, value] of Object.entries(request.query)) {
+            if (typeof value === 'string') url.searchParams.set(key, value);
+            else if (Array.isArray(value)) value.forEach(v => url.searchParams.append(key, v.toString()));
+        }
+        const res = await ns.fetch<any>(url, 'avatars/assets_response');
+        if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
+        if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
+        return response.send(res.data);
+    }
+
     async handleAvatarAsset(request: Request<{ avatar_id: string }>, response: Response) {
-        let avatar_id: number = /^\d+$/.test(request.params.avatar_id) ? parseInt(request.params.avatar_id) : 0;
+        const avatarIdentifier = AvatarIdentifier.fromString(request.params.avatar_id);
+        if (!avatarIdentifier)
+            return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'avatar_id', 'avatar id'));
+        if (!avatarIdentifier.isLocal())
+            return this.handleNetAvatarAssets(request, response, avatarIdentifier);
+        let avatar_id = avatarIdentifier.identifier;
         let offset: number = typeof request.query.offset === 'string' && /^\d+$/.test(request.query.offset) ? parseInt(request.query.offset) : 0;
         let limit: number = typeof request.query.limit === 'string' && /^\d+$/.test(request.query.limit) ? parseInt(request.query.limit) : 10;
         let show_empty: boolean = request.query.hasOwnProperty('empty') && (request.query.empty === 'true' || request.query.empty === '');

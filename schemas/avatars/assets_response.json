@@ -1,0 +1,75 @@
+{
+    "$id": "avatars/assets_response",
+    "title": "Avatar Assets Response",
+    "type": "object",
+    "properties": {
+        "total": {
+            "type": "integer"
+        },
+        "limit": {
+            "type": "integer"
+        },
+        "offset": {
+            "type": "integer"
+        },
+        "assets": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "version": {
+                        "type": "integer"
+                    },
+                    "engine": {
+                        "type": "string"
+                    },
+                    "platform": {
+                        "type": "string"
+                    },
+                    "is_empty": {
+                        "type": "boolean"
+                    },
+                    "url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "hash": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "size": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "features": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": [
+                    "id",
+                    "version",
+                    "engine",
+                    "platform"
+                ]
+            }
+        }
+    },
+    "required": [
+        "total",
+        "limit",
+        "offset",
+        "assets"
+    ]
+}

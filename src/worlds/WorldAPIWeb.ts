@@ -50,8 +50,37 @@ export default class WorldAPIWeb {
         return new Date(now + 5000);
     }
 
+    async handleNetWorldAssets(request: Request<{ world_id: string }>, response: Response, worldIdentifier: WorldIdentifier) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+        const user = await request.data.getData() as User | null;
+        if (!user)
+            return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
+        if (!user.canFetchExternal())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'fetch external world assets'));
+        const ns = await this.app.netServers.findOrInitServer(worldIdentifier.server!);
+        if (ns instanceof Error) {
+            Debug.error(`Failed to find or init NetServer for ${worldIdentifier.server}: ${ns.message}`);
+            return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
+        }
+        const url = new URL(`/api/worlds/${worldIdentifier.identifier}/assets`, `http://${ns.address}`);
+        for (const [key, value] of Object.entries(request.query)) {
+            if (typeof value === 'string') url.searchParams.set(key, value);
+            else if (Array.isArray(value)) value.forEach(v => url.searchParams.append(key, v.toString()));
+        }
+        const res = await ns.fetch<any>(url, 'worlds/assets_response');
+        if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
+        if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
+        return response.send(res.data);
+    }
+
     async handleWorldAsset(request: Request<{ world_id: string }>, response: Response) {
-        let world_id: number = /^\d+$/.test(request.params.world_id) ? parseInt(request.params.world_id) : 0;
+        const worldIdentifier = WorldIdentifier.fromString(request.params.world_id);
+        if (!worldIdentifier)
+            return response.send(new ErrorMessage(ErrorCodes.InvalidField, 'world_id', 'world id'));
+        if (!worldIdentifier.isLocal())
+            return this.handleNetWorldAssets(request, response, worldIdentifier);
+        let world_id = worldIdentifier.identifier;
         let offset: number = typeof request.query.offset === 'string' && /^\d+$/.test(request.query.offset) ? parseInt(request.query.offset) : 0;
         let limit: number = typeof request.query.limit === 'string' && /^\d+$/.test(request.query.limit) ? parseInt(request.query.limit) : 10;
         let show_empty: boolean = request.query.hasOwnProperty('empty') && (request.query.empty === 'true' || request.query.empty === '');
