@@ -53,7 +53,7 @@ export default class InstanceAPIWeb {
             // Get instance details if it exists on the relay
             let relayInstanceData = null;
             if (hasInstance && relay) {
-                const instancesResult = await relay.getInstances(1, 0);
+                const instancesResult = await relay.getInstances(1000, 0);
                 if (!(instancesResult instanceof Error)) {
                     relayInstanceData = instancesResult.instances.find(i => i.id === instance.id.toString());
                 }
@@ -81,9 +81,9 @@ export default class InstanceAPIWeb {
                 } : null,
                 client_count: relayInstanceData?.players.length || 0,
                 players: relayInstanceData?.players
-                    .filter(p => !(p.flags & 0x01) && !(p.flags & 0x02)) // filter out is_bot and hide_in_list flags
+                    .filter(p => !(p.flags & 0x01) && !(p.flags & 0x200)) // filter out is_bot and hide_in_list flags
                     .map(p => ({
-                        user: null, // TODO: resolve user from client_id if needed
+                        user: p.user ?? null,
                         display: p.display
                     })) || []
             });
@@ -150,7 +150,7 @@ export default class InstanceAPIWeb {
         // Get instance details if it exists on the relay
         let relayInstanceData = null;
         if (hasInstance && relay) {
-            const instancesResult = await relay.getInstances(1, 0);
+            const instancesResult = await relay.getInstances(1000, 0);
             if (!(instancesResult instanceof Error)) {
                 relayInstanceData = instancesResult.instances.find(i => i.id === instance.id.toString());
             }
@@ -178,9 +178,9 @@ export default class InstanceAPIWeb {
             } : null,
             client_count: relayInstanceData?.players.length || 0,
             players: relayInstanceData?.players
-                .filter(p => !(p.flags & 0x01) && !(p.flags & 0x02)) // filter out is_bot and hide_in_list flags
+                .filter(p => !(p.flags & 0x01) && !(p.flags & 0x200)) // filter out is_bot and hide_in_list flags
                 .map(p => ({
-                    user: null, // TODO: resolve user from client_id if needed
+                    user: p.user ?? null,
                     display: p.display
                 })) || []
         });

@@ -118,7 +118,8 @@ export default class Relay implements IRelay {
                     id: p.i,
                     client_id: p.c,
                     display: p.d,
-                    flags: p.f
+                    flags: p.f,
+                    user: p.u ?? null
                 })),
                 flags: i.f,
                 world: i.w,
@@ -297,6 +298,7 @@ interface RelayInstanceResponse {
             c: string; // client ID
             d: string; // display name
             f: number; // flags
+            u?: string;// user identifier (e.g. "1@hactazia.fr")
         }[];
         f: number;  // flags
         w: string;  // world
@@ -321,6 +323,7 @@ export interface RelayInstance {
         client_id: string;
         display: string;
         flags: number;
+        user: string | null;
     }[];
     flags: number;
     world: string;
