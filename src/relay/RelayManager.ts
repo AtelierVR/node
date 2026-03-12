@@ -180,11 +180,11 @@ export default class RelayManager {
 
             // Émettre le log aux admins abonnés
             this.app.http.socket.emitSubscriber('relay_logs', {
-                relayId: relay.id,
-                timestamp: logData.Timestamp,
-                level: logData.Level,
-                message: logData.Message,
-                tag: logData.Tag
+                relay_id: relay.id,
+                time: logData.a,
+                level: logData.l,
+                message: logData.m,
+                tag: logData.t
             });
         } catch (error) {
             Debug.error('Error handling relay log:', error);
@@ -196,22 +196,11 @@ export default class RelayManager {
      */
     private onRelaySpecs(relay: Relay, message: WebMessage) {
         try {
-            const specs = message.data;
-
-            // Transform specs to full format (c -> cpu, m -> memory, etc.)
-            const transformedSpecs = {
-                cpu: specs.c,
-                memory: specs.m,
-                upload: specs.u,
-                download: specs.d,
-                storage: specs.s
-            };
-
             // Émettre les specs aux admins abonnés
             this.app.http.socket.emitSubscriber('relay_specs_update', {
-                relayId: relay.id,
-                timestamp: Date.now(),
-                specs: transformedSpecs
+                relay_id: relay.id,
+                time: Date.now(),
+                details: message.data
             });
         } catch (error) {
             Debug.error('Error handling relay specs:', error);
@@ -225,7 +214,7 @@ export default class RelayManager {
         try {
             this.app.http.socket.emitSubscriber('relay_client_connected', {
                 relay_id: relay.id,
-                timestamp: Date.now(),
+                time: Date.now(),
                 client: {
                     id: message.data.id,
                     address: message.data.address,
@@ -243,7 +232,7 @@ export default class RelayManager {
         try {
             this.app.http.socket.emitSubscriber('relay_client_disconnected', {
                 relay_id: relay.id,
-                timestamp: Date.now(),
+                time: Date.now(),
                 client: {
                     id: message.data.id,
                     address: message.data.address,
@@ -262,7 +251,7 @@ export default class RelayManager {
         try {
             this.app.http.socket.emitSubscriber('relay_player_join', {
                 relay_id: relay.id,
-                timestamp: Date.now(),
+                time: Date.now(),
                 player: {
                     client_id: message.data.client_id,
                     player_id: message.data.player_id,
@@ -283,7 +272,7 @@ export default class RelayManager {
         try {
             this.app.http.socket.emitSubscriber('relay_player_leave', {
                 relay_id: relay.id,
-                timestamp: Date.now(),
+                time: Date.now(),
                 player: {
                     client_id: message.data.client_id,
                     player_id: message.data.player_id,
@@ -522,7 +511,7 @@ export default class RelayManager {
             await this.notifyAdmins('relay_status_change', {
                 relay_id: relay.id,
                 status: 'ready',
-                timestamp: Date.now(),
+                time: Date.now(),
                 relay: await relay.toJSON()
             });
 

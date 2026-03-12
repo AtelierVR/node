@@ -3,7 +3,7 @@ import NetExpress, { Request, Response } from "../network/NetExpress";
 import User from "../users/User";
 import { ErrorCodes } from "../utils/Constants";
 import { ErrorMessage } from "../utils/Utils";
-import Relay from "./Relay";
+import Relay, { RelaySpecs } from "./Relay";
 import Express from "express";
 
 export default class RelayAPIWeb {
@@ -58,7 +58,7 @@ export default class RelayAPIWeb {
             return response.send(new ErrorMessage(ErrorCodes.NotFound, "Relay not found"));
 
         const relay = new Relay(relayData, this.app);
-        
+
         const since = request.query.since ? parseInt(request.query.since as string) : undefined;
         const limit = request.query.limit ? parseInt(request.query.limit as string) : 100;
 
@@ -194,7 +194,7 @@ export default class RelayAPIWeb {
 
         const relay = new Relay(relayData, this.app);
         const success = await relay.stop();
-        
+
         if (!success)
             return response.send(new ErrorMessage(ErrorCodes.InternalError, "Failed to stop relay"));
 
@@ -220,7 +220,7 @@ export default class RelayAPIWeb {
 
         const relay = new Relay(relayData, this.app);
         const success = await relay.restart();
-        
+
         if (!success)
             return response.send(new ErrorMessage(ErrorCodes.InternalError, "Failed to restart relay"));
 
@@ -249,7 +249,7 @@ export default class RelayAPIWeb {
             return response.send(new ErrorMessage(ErrorCodes.NotFound, "Relay not found"));
 
         const relay = new Relay(relayData, this.app);
-        
+
         const result = await relay.sendCommand(body.content);
         if (result instanceof Error)
             return response.send(new ErrorMessage(ErrorCodes.InternalError, result.message));
@@ -264,8 +264,8 @@ export interface RRelay {
     runtime: string;
     running: boolean;
     status: RRelayStatus | string;
-    address: { 
-        [protocol: string]: string 
+    address: {
+        [protocol: string]: string
     };
 }
 
@@ -285,13 +285,7 @@ export interface RRelayStatus {
     protocol: number;
     uptime: number;
     response: number;
-    specs: {
-        cpu: number;
-        memory: [number, number];
-        upload: [number, number];
-        download: [number, number];
-        storage: [number, number];
-    };
+    specs: RelaySpecs;
 }
 
 export interface RRelayInstanceSummary {

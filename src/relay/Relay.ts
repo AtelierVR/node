@@ -85,7 +85,7 @@ export default class Relay implements IRelay {
         const socket = await this.getSocket();
         if (!socket) return new Error("Relay is not connected");
         const response = await socket.sendData<{ limit: number, offset: number }, RelayClientResponse>(
-            "get_clients", 
+            "get_clients",
             { limit, offset }
         );
         if (response instanceof Error) return response;
@@ -155,7 +155,7 @@ export default class Relay implements IRelay {
         if (!this.lastSocketDisconnection) return false;
         if (this.lastSocketConnection && this.lastSocketConnection > this.lastSocketDisconnection)
             return false; // Relay is currently connected
-        
+
         const now = new Date();
         const timeSinceDisconnection = (now.getTime() - this.lastSocketDisconnection.getTime()) / 1000;
         return timeSinceDisconnection < gracePeriodSeconds;
@@ -169,15 +169,15 @@ export default class Relay implements IRelay {
         const now = new Date();
         const timeSinceCreation = (now.getTime() - this.created_at.getTime()) / 1000;
         const STARTUP_GRACE_PERIOD = 60; // 60 seconds for relay to start and connect
-        
+
         if (timeSinceCreation < STARTUP_GRACE_PERIOD) {
             return false; // Still in startup grace period
         }
-        
+
         // Check if recently disconnected (grace period)
-        if (this.isRecentlyDisconnected(60)) 
+        if (this.isRecentlyDisconnected(60))
             return false; // Still in grace period after disconnect
-        
+
         // Check if socket is connected
         const socket = await this.getSocket();
         return !socket;
@@ -212,8 +212,8 @@ export default class Relay implements IRelay {
     async toJSON(): Promise<RRelay> {
         let connected = await this.isConnected();
         const status = await this.getStatus();
-        
-        if (status instanceof Error) 
+
+        if (status instanceof Error)
             return {
                 id: this.id,
                 runtime: (await this.getRuntime())?.getName() || 'unknown',
@@ -236,11 +236,10 @@ export default class Relay implements IRelay {
                 uptime: status.u,
                 response: status.t,
                 specs: {
-                    cpu: status.s.c,
-                    memory: status.s.m,
-                    upload: status.s.u,
-                    download: status.s.d,
-                    storage: status.s.s
+                    c: status.s.c,
+                    m: status.s.m,
+                    u: status.s.u,
+                    d: status.s.d,
                 }
             },
             address: await this.getAddress()
@@ -269,11 +268,22 @@ export interface RelayLog {
 }
 
 export interface RelaySpecs {
-    c: number; // CPU usage percentage of the relay process (0-100)
-    m: [number, number]; // Memory usage [used, total] in bytes
-    u: [number, number]; // Upload usage [used, total] in bytes/s
-    d: [number, number]; // Download usage [used, total] in bytes/s
-    s: [number, number]; // Storage usage [used, total] in bytes
+    c: {
+        u: number;
+        c: number;
+    };
+    m: {
+        u: number;
+        t: number;
+    };
+    u: {
+        u: number;
+        b: number;
+    };
+    d: {
+        u: number;
+        b: number;
+    };
 }
 
 // Response types from Rust relay
