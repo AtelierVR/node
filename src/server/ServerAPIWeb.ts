@@ -136,9 +136,10 @@ export class ServerAPIWeb {
                 label: def.label,
                 description: ('description' in def ? (def as any).description : null) ?? null,
                 default: defaultValue,
-                env: envValue,
-                db: dbValue,
+                environment: envValue,
+                override: dbValue,
                 forced: isForced,
+                risky: ('risky' in def ? (def as any).risky : false) ?? false,
             };
         });
 
@@ -243,9 +244,10 @@ export interface IRConfigEntry {
     label: string;
     description: string | null;
     default: string;
-    env: string | null;
-    db: string | null;
+    environment: string | null;
+    override: string | null;
     forced: boolean;
+    risky: boolean;
 }
 
 export type ConfigsResponse = IRConfigEntry[];

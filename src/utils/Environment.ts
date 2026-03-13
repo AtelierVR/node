@@ -14,6 +14,8 @@ export interface ConfigDefinition<T = unknown> {
     label: string;
     /** Optional longer description */
     description?: string;
+    /** If true, this config is sensitive or infrastructure-critical and should be hidden by default in admin UIs. */
+    risky?: boolean;
     /**
      * Default value (or a zero-argument function that computes it dynamically).
      * Passed through `convert` when neither env nor DB provides a value.
@@ -70,6 +72,7 @@ export const CONFIG_DEFINITIONS = [
         label: 'Admin User ID',
         description: 'Numeric database ID of the admin user (created on first start).',
         default: '1',
+        risky: true,
         convert: toNumber,
     },
     {
@@ -89,6 +92,7 @@ export const CONFIG_DEFINITIONS = [
         label: 'Admin Password',
         description: 'Plain-text password — stored as a SHA-256 hash internally.',
         default: '',
+        risky: true,
         convert: (v): string | undefined => (v ? hash(v) : undefined),
     },
     {
@@ -205,6 +209,7 @@ export const CONFIG_DEFINITIONS = [
         key: 'NODE_PORT',
         label: 'HTTP Server Port',
         default: '53032',
+        risky: true,
         convert: toNumber,
     },
     {
@@ -212,6 +217,7 @@ export const CONFIG_DEFINITIONS = [
         label: 'Public Address',
         description: 'host:port the server is reachable at. Defaults to localhost:<NODE_PORT>.',
         default: () => `localhost:${rawEnv('NODE_PORT', '53032')}`,
+        risky: true,
         convert: toString,
     },
     {
@@ -219,6 +225,7 @@ export const CONFIG_DEFINITIONS = [
         label: 'API Gateway',
         description: 'host:port for the HTTP API gateway. Defaults to ADDRESS.',
         default: () => rawEnv('ADDRESS', `localhost:${rawEnv('NODE_PORT', '53032')}`),
+        risky: true,
         convert: toString,
     },
     {
@@ -229,6 +236,7 @@ export const CONFIG_DEFINITIONS = [
             const gw = rawEnv('GATEWAY', rawEnv('ADDRESS', `localhost:${rawEnv('NODE_PORT', '53032')}`));
             return `http${rawEnv('SECURE') === 'true' ? 's' : ''}://${gw}`;
         },
+        risky: true,
         convert: toString,
     },
     {
@@ -259,6 +267,7 @@ export const CONFIG_DEFINITIONS = [
         label: 'Enable SSL / TLS',
         description: 'Set to "true" to serve HTTPS.',
         default: 'false',
+        risky: true,
         convert: toBool,
     },
     {
@@ -266,18 +275,21 @@ export const CONFIG_DEFINITIONS = [
         label: 'Mark as Secure (HTTPS)',
         description: 'Controls whether URLs are built with https://. Distinct from USE_SSL. Used with Nginx or other reverse proxies that handle TLS termination.',
         default: 'false',
+        risky: true,
         convert: toBool,
     },
     {
         key: 'PRIVATEKEY_FILE',
         label: 'Private Key File Path',
         default: 'certs/private.pem',
+        risky: true,
         convert: toPath,
     },
     {
         key: 'CERTIFICATE_FILE',
         label: 'Certificate File Path',
         default: 'certs/cert.pem',
+        risky: true,
         convert: toPath,
     },
     {
