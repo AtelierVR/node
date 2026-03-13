@@ -38,15 +38,15 @@ const rawEnv = (key: string, fallback = ''): string => {
 
 const tryJson =
     <T>(fallback: T) =>
-    (v: string): T => {
-        if (!v || v.trim() === '') return fallback;
-        try {
-            return JSON.parse(v) as T;
-        } catch {
-            Debug.error('[Env] Failed to parse JSON config value:', v);
-            return fallback;
-        }
-    };
+        (v: string): T => {
+            if (!v || v.trim() === '') return fallback;
+            try {
+                return JSON.parse(v) as T;
+            } catch {
+                Debug.error('[Env] Failed to parse JSON config value:', v);
+                return fallback;
+            }
+        };
 
 const splitList = (v: string): string[] =>
     v ? v.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -367,6 +367,38 @@ export class Env {
         Env._db = null;
     }
 
+    // ─── DB overrides ─────────────────────────────────────────────────────────
+
+    /**
+     * Persist a DB override for `key`.
+     * If `value` is `null`, the override is deleted (falls back to env/default).
+     */
+    static async set(key: ConfigKey, value: string | null): Promise<void> {
+        if (!Env._db) throw new Error('[Env] Database not available');
+        if (value === null) {
+            await Env._db.config.deleteMany({ where: { key } });
+        } else await Env._db.config.upsert({
+            where: { key },
+            update: { value },
+            create: { key, value },
+        });
+    }
+
+    /**
+     * Delete a DB override for `key`, restoring env/default resolution.
+     */
+    static async delete(key: ConfigKey): Promise<void> {
+        return Env.set(key, null);
+    }
+
+    /**
+     * Return all current DB override rows.
+     */
+    static async listOverrides(): Promise<{ key: string; value: string }[]> {
+        if (!Env._db) return [];
+        return Env._db.config.findMany();
+    }
+
     // ─── Core resolvers ───────────────────────────────────────────────────────
 
     /**
@@ -381,11 +413,11 @@ export class Env {
         const raw = (process.env as Record<string, string | undefined>)[key as string];
 
         // 1. Forced env — `!` prefix bypasses DB lookup
-        if (raw !== undefined && raw.startsWith('!')) 
+        if (raw !== undefined && raw.startsWith('!'))
             return def.convert(raw.slice(1)) as ConfigType<K>;
 
         // 2. DB override
-        if (Env._db) 
+        if (Env._db)
             try {
                 const row = await Env._db.config.findUnique({ where: { key } });
                 if (row !== null) return def.convert(row.value) as ConfigType<K>;
@@ -394,7 +426,7 @@ export class Env {
             }
 
         // 3. Env var
-        if (raw !== undefined && raw !== '') 
+        if (raw !== undefined && raw !== '')
             return def.convert(raw) as ConfigType<K>;
 
         // 4. Default

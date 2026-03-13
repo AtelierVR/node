@@ -1,9 +1,7 @@
-import e from "express";
 import Reileta from "../Main";
 import { Request, Response } from "../network/NetExpress";
-import Env from "../utils/Environment";
+import Env, { CONFIG_DEFINITIONS } from "../utils/Environment";
 import { ServerManager } from "./ServerManager";
-import { Security } from "../utils/Security";
 import Debug from "../utils/Debug";
 import { ErrorMessage } from "../utils/Utils";
 import { ErrorCodes } from "../utils/Constants";
@@ -14,6 +12,8 @@ export class ServerAPIWeb {
         this.app.http.express.server.get('/.well-known/nox', (req, res) => this.wellKnownAVR(req as Request, res as Response));
         this.app.http.express.server.get('/api/server', (req, res) => this.getInfo(res as Response));
         this.app.http.express.server.get('/api/server/logs', (req, res) => this.getLogs(req as Request, res as Response));
+        this.app.http.express.server.get('/api/server/configs', (req, res) => this.getConfigs(req as Request, res as Response));
+        this.app.http.express.server.patch('/api/server/configs', (req, res) => this.patchConfigs(req as Request, res as Response));
     }
 
     /**
@@ -107,6 +107,84 @@ export class ServerAPIWeb {
             total: logs.length,
         });
     }
+
+    /**
+     * Get server configs (admin only)
+     * @param request 
+     * @param response 
+     */
+    async getConfigs(request: Request, response: Response) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+
+        const user = await request.data.getData() as User | null;
+        if (!user || !user.isAdmin())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'admin access required'));
+
+        const overrides = await Env.listOverrides();
+        const overrideMap = new Map(overrides.map(o => [o.key, o.value]));
+
+        const configs: IRConfigEntry[] = CONFIG_DEFINITIONS.map(def => {
+            const envRaw = (process.env as Record<string, string | undefined>)[def.key];
+            const isForced = envRaw !== undefined && envRaw.startsWith('!');
+            const envValue = isForced ? envRaw!.slice(1) : (envRaw || null);
+            const dbValue = overrideMap.get(def.key) ?? null;
+            const defaultValue = typeof def.default === 'function' ? def.default() : def.default;
+
+            return {
+                key: def.key,
+                label: def.label,
+                description: ('description' in def ? (def as any).description : null) ?? null,
+                default: defaultValue,
+                env: envValue,
+                db: dbValue,
+                forced: isForced,
+            };
+        });
+
+        response.send<ConfigsResponse>(configs);
+    }
+
+    /**
+     * Patch server configs (admin only)
+     * Body: { key: string, value: string | null }[]
+     * @param request 
+     * @param response 
+     */
+    async patchConfigs(request: Request, response: Response) {
+        if (!request.data.isBearer())
+            return response.send(new ErrorMessage(ErrorCodes.NotLogged));
+
+        const user = await request.data.getData() as User | null;
+        if (!user || !user.isAdmin())
+            return response.send(new ErrorMessage(ErrorCodes.UnAuthorized, 'admin access required'));
+
+        const body = request.body;
+        if (!Array.isArray(body))
+            return response.send(new ErrorMessage(ErrorCodes.InvalidRequest, 'body must be an array'));
+
+        const validKeys = new Set(CONFIG_DEFINITIONS.map(d => d.key));
+        const results: { key: string; ok: boolean; error?: string }[] = [];
+
+        for (const item of body as { key: string; value: string | null }[]) {
+            if (typeof item.key !== 'string' || !validKeys.has(item.key as any)) {
+                results.push({ key: item.key ?? '?', ok: false, error: 'unknown key' });
+                continue;
+            }
+            if (item.value !== null && typeof item.value !== 'string') {
+                results.push({ key: item.key, ok: false, error: 'value must be a string or null' });
+                continue;
+            }
+            try {
+                await Env.set(item.key as any, item.value);
+                results.push({ key: item.key, ok: true });
+            } catch (e: any) {
+                results.push({ key: item.key, ok: false, error: e?.message ?? 'internal error' });
+            }
+        }
+
+        response.send<PatchConfigsResponse>({ results });
+    }
 }
 
 export interface LogsResponse {
@@ -158,4 +236,20 @@ export interface IRServer {
     ready_at: number;
     icon: string;
     certificate: string;
+}
+
+export interface IRConfigEntry {
+    key: string;
+    label: string;
+    description: string | null;
+    default: string;
+    env: string | null;
+    db: string | null;
+    forced: boolean;
+}
+
+export type ConfigsResponse = IRConfigEntry[];
+
+export interface PatchConfigsResponse {
+    results: { key: string; ok: boolean; error?: string }[];
 }
