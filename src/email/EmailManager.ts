@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { cwd } from 'node:process';
 import Main from '../Main';
 import User from '../users/User';
-import * as Env from '../utils/Environment';
+import Env from '../utils/Environment';
 import EmailAPIWeb from './EmailAPIWeb';
 import EmailVerificationManager from './EmailVerificationManager';
 import Debug from '../utils/Debug';
@@ -205,7 +205,7 @@ export default class EmailManager {
             return false;
         }
 
-        const webGatewayUrl = new URL(Env.getWebGateway());
+        const webGatewayUrl = new URL(Env.sync('WEB_GATEWAY'));
         const verificationUrl = `${webGatewayUrl.origin}/confirmation?type=email&token=${verificationToken}`;
 
         return await this.sendTemplatedEmail(
@@ -215,10 +215,10 @@ export default class EmailManager {
                 username: user.username,
                 display: user.display,
                 verificationUrl,
-                serverName: Env.getName(),
+                serverName: Env.sync('TITLE'),
                 serverUrl: webGatewayUrl.origin
             },
-            `Verify your email address - ${Env.getName()}`
+            `Verify your email address - ${Env.sync('TITLE')}`
         );
     }
 
@@ -235,7 +235,7 @@ export default class EmailManager {
             return false;
         }
 
-        const webGatewayUrl = new URL(Env.getWebGateway());
+        const webGatewayUrl = new URL(Env.sync('WEB_GATEWAY'));
         const resetUrl = `${webGatewayUrl.origin}/reset-password?token=${resetToken}`;
 
         return await this.sendTemplatedEmail(
@@ -245,11 +245,11 @@ export default class EmailManager {
                 username: user.username,
                 display: user.display,
                 resetUrl,
-                serverName: Env.getName(),
+                serverName: Env.sync('TITLE'),
                 serverUrl: webGatewayUrl.origin,
                 expiresIn: '1 hour'
             },
-            `Reset your password - ${Env.getName()}`
+            `Reset your password - ${Env.sync('TITLE')}`
         );
     }
 
@@ -264,7 +264,7 @@ export default class EmailManager {
             return false;
         }
 
-        const webGatewayUrl = new URL(Env.getWebGateway());
+        const webGatewayUrl = new URL(Env.sync('WEB_GATEWAY'));
 
         return await this.sendTemplatedEmail(
             user.email,
@@ -272,11 +272,11 @@ export default class EmailManager {
             {
                 username: user.username,
                 display: user.display,
-                serverName: Env.getName(),
+                serverName: Env.sync('TITLE'),
                 serverUrl: webGatewayUrl.origin,
                 loginUrl: `${webGatewayUrl.origin}/login`
             },
-            `Welcome to ${Env.getName()}!`
+            `Welcome to ${Env.sync('TITLE')}!`
         );
     }
 
@@ -300,11 +300,11 @@ export default class EmailManager {
                 username: user.username,
                 display: user.display,
                 verificationCode: code,
-                serverName: Env.getName(),
-                serverUrl: `${Env.isSecure() ? 'https' : 'http'}://${Env.getBaseGateway()}`,
+                serverName: Env.sync('TITLE'),
+                serverUrl: `${Env.sync('SECURE') ? 'https' : 'http'}://${Env.sync('GATEWAY')}`,
                 expiresIn: '10 minutes'
             },
-            `Verification Code - ${Env.getName()}`
+            `Verification Code - ${Env.sync('TITLE')}`
         );
     }    /**
      * Load email template from file
@@ -353,7 +353,7 @@ export default class EmailManager {
      */
     private getFromAddress(): string {
         const fromEmail = process.env.EMAIL_FROM || process.env.EMAIL_USER;
-        const fromName = process.env.EMAIL_FROM_NAME || Env.getName();
+        const fromName = process.env.EMAIL_FROM_NAME || Env.sync('TITLE');
 
         if (fromName && fromEmail) {
             return `"${fromName}" <${fromEmail}>`;

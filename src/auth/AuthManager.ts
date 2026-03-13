@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import Reileta from "../Main";
 import User from "../users/User";
 import { ErrorCodes } from "../utils/Constants";
-import { getSessionExpiration } from "../utils/Environment";
+import Env from "../utils/Environment";
 import { ErrorMessage, sha256, verify } from "../utils/Utils";
 import AuthAPIWeb from "./AuthAPIWeb";
 import Session from "./sessions/Session";
@@ -129,7 +129,7 @@ export default class AuthManager {
         let session = await this.app.sessions.createTokenSession({
             user_id: user.id,
             token: SessionManager.generateToken(),
-            expires: getSessionExpiration(),
+            expires: new Date(Date.now() + Env.sync('SESSION_EXPIRATION')),
             created_at: new Date(),
             updated_at: new Date(),
             public_key: public_key

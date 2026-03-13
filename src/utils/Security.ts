@@ -35,15 +35,15 @@ export class Security {
      * Get the private RSA key
      */
     static get privateKey(): forge.pki.rsa.PrivateKey {
-        if (!existsSync(Env.getPrivateKeyFile()))
+        if (!existsSync(Env.sync('PRIVATEKEY_FILE')))
             this.storeCertificate(this.generateCertificate());
-        return forge.pki.privateKeyFromPem(readFileSync(Env.getPrivateKeyFile(), "utf-8"));
+        return forge.pki.privateKeyFromPem(readFileSync(Env.sync('PRIVATEKEY_FILE'), "utf-8"));
     }
 
     static get publicCertificate(): PublicCertificate {
-        if (!existsSync(Env.getCertificateFile()))
+        if (!existsSync(Env.sync('CERTIFICATE_FILE')))
             this.storeCertificate(this.generateCertificate());
-        return forge.pki.certificateFromPem(readFileSync(Env.getCertificateFile(), "utf-8")) as PublicCertificate;
+        return forge.pki.certificateFromPem(readFileSync(Env.sync('CERTIFICATE_FILE'), "utf-8")) as PublicCertificate;
     }
 
     static get publicKey(): forge.pki.rsa.PublicKey {
@@ -105,12 +105,12 @@ export class Security {
     }
 
     static storeCertificate(certificate: forge.pki.Certificate) {
-        var parentPrivate = join(Env.getPrivateKeyFile(), '..');
-        var parentCert = join(Env.getCertificateFile(), '..');
+        var parentPrivate = join(Env.sync('PRIVATEKEY_FILE'), '..');
+        var parentCert = join(Env.sync('CERTIFICATE_FILE'), '..');
         if (!existsSync(parentPrivate)) mkdirSync(parentPrivate, { recursive: true });
         if (!existsSync(parentCert)) mkdirSync(parentCert, { recursive: true });
-        writeFileSync(Env.getPrivateKeyFile(), Security.privateToPem(certificate.privateKey as forge.pki.rsa.PrivateKey), 'utf-8');
-        writeFileSync(Env.getCertificateFile(), Security.certificateToPem(certificate), 'utf-8');
+        writeFileSync(Env.sync('PRIVATEKEY_FILE'), Security.privateToPem(certificate.privateKey as forge.pki.rsa.PrivateKey), 'utf-8');
+        writeFileSync(Env.sync('CERTIFICATE_FILE'), Security.certificateToPem(certificate), 'utf-8');
     }
 
     /**
@@ -144,7 +144,7 @@ export class Security {
         cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);
         let attr = [{
             name: 'commonName',
-            value: Env.getName() || 'A Nox Node Server',
+            value: Env.sync('TITLE') || 'A Nox Node Server',
         }];
         cert.setSubject(attr);
         cert.setIssuer(attr); // Self-signed

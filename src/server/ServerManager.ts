@@ -98,13 +98,13 @@ export class ServerManager {
     getInfos(): IServer {
         return {
             id: Security.compactPublicKey(Security.publicKeyToPem(Security.publicKey)).slice(0, 24),
-            title: Env.getName(),
-            description: Env.getDescription(),
-            address: Env.getPreferedAddress(),
+            title: Env.sync('TITLE'),
+            description: Env.sync('DESCRIPTION'),
+            address: Env.sync('ADDRESS'),
             gateways: {
-                http: new URL(`http${Env.isSecure() ? 's' : ''}://` + Env.getBaseGateway()),
-                ws: new URL('/api/ws', `ws${Env.isSecure() ? 's' : ''}://` + Env.getBaseGateway()),
-                web: new URL(Env.getWebGateway())
+                http: new URL(`http${Env.sync('SECURE') ? 's' : ''}://` + Env.sync('GATEWAY')),
+                ws: new URL('/api/ws', `ws${Env.sync('SECURE') ? 's' : ''}://` + Env.sync('GATEWAY')),
+                web: new URL(Env.sync('WEB_GATEWAY'))
             },
             features: [
                 'user',
@@ -115,7 +115,7 @@ export class ServerManager {
             ],
             version: ServerManager.version,
             ready_at: this.app.ready_at || new Date(),
-            icon: Env.getIcon(),
+            icon: new URL(Env.sync('ICON_URL')),
             certificate: Security.compactCertificate(Security.certificateToPem(Security.publicCertificate))
         }
     }
@@ -264,7 +264,7 @@ export class ServerManager {
 
         if (uriType === 'IPv4' || uriType === 'IPv6') {
             Debug.log(`Finding master gateway for IP address ${host[0]} (${uriType}) for ${address}...`);
-            let uri = new URL(`tcp://${host[0]}:${host[1] || Env.getPort()}`);
+            let uri = new URL(`tcp://${host[0]}:${host[1] || Env.sync('NODE_PORT')}`);
             let fmg = await this.findGM(uri.host, true);
             if (fmg) return fmg;
             return null;
@@ -272,7 +272,7 @@ export class ServerManager {
 
         if (host[0] === "localhost") {
             Debug.log(`Finding master gateway for localhost for ${address}...`);
-            let uri = new URL(`tcp://${host[0]}:${host[1] || Env.getPort()}`);
+            let uri = new URL(`tcp://${host[0]}:${host[1] || Env.sync('NODE_PORT')}`);
             let fmg = await this.findGM(uri.host, true);
             if (fmg) return fmg;
             return null;
@@ -280,7 +280,7 @@ export class ServerManager {
 
         if (uriType === 'DNS') {
             Debug.log(`Finding master gateway for DNS address ${host[0]} for ${address}...`);
-            let uri = new URL(`tcp://${host[0]}:${host[1] || Env.getPort()}`);
+            let uri = new URL(`tcp://${host[0]}:${host[1] || Env.sync('NODE_PORT')}`);
             let txt = await this.findTXT(`_nox.${uri.hostname}`);
             if (txt.length > 0)
                 for (const t of txt) {
@@ -420,7 +420,7 @@ export interface IServer {
 
 
 export function isOwnServerAddress(address: string): boolean {
-    if (address === Env.getPreferedAddress())
+    if (address === Env.sync('ADDRESS'))
         return true;
     return [
         /127\.\d+\.\d+\.\d+/,

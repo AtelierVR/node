@@ -1,7 +1,7 @@
 import EmailManager from '../email/EmailManager';
 import User from '../users/User';
 import Debug from '../utils/Debug';
-import * as Env from '../utils/Environment';
+import Env from '../utils/Environment';
 
 /**
  * Extension du système de notifications pour inclure l'envoi d'emails
@@ -41,13 +41,13 @@ export class EmailNotificationService {
         const variables = {
             username: user.username,
             display: user.display,
-            serverName: Env.getName(),
-            serverUrl: `${Env.isSecure() ? 'https' : 'http'}://${Env.getBaseGateway()}`,
+            serverName: Env.sync('TITLE'),
+            serverUrl: `${Env.sync('SECURE') ? 'https' : 'http'}://${Env.sync('GATEWAY')}`,
             notificationType: notification.type,
             notificationTitle: notification.title,
             notificationMessage: notification.message,
             timestamp: new Date().toLocaleString('fr-FR'),
-            dashboardUrl: `${Env.isSecure() ? 'https' : 'http'}://${Env.getBaseGateway()}/dashboard`,
+            dashboardUrl: `${Env.sync('SECURE') ? 'https' : 'http'}://${Env.sync('GATEWAY')}/dashboard`,
             ...notification.data
         };
 
@@ -55,7 +55,7 @@ export class EmailNotificationService {
             user.email,
             'notification',
             variables,
-            `${notification.title} - ${Env.getName()}`
+            `${notification.title} - ${Env.sync('TITLE')}`
         );
     }
 
@@ -84,8 +84,8 @@ export class EmailNotificationService {
         const variables = {
             username: user.username,
             display: user.display,
-            serverName: Env.getName(),
-            serverUrl: `${Env.isSecure() ? 'https' : 'http'}://${Env.getBaseGateway()}`,
+            serverName: Env.sync('TITLE'),
+            serverUrl: `${Env.sync('SECURE') ? 'https' : 'http'}://${Env.sync('GATEWAY')}`,
             actionType: action.type,
             description: action.description,
             deadline: action.deadline,
@@ -124,13 +124,13 @@ export class EmailNotificationService {
         const variables = {
             username: user.username,
             display: user.display,
-            serverName: Env.getName(),
-            serverUrl: `${Env.isSecure() ? 'https' : 'http'}://${Env.getBaseGateway()}`,
+            serverName: Env.sync('TITLE'),
+            serverUrl: `${Env.sync('SECURE') ? 'https' : 'http'}://${Env.sync('GATEWAY')}`,
             activityType: activity.type,
             timestamp: activity.timestamp,
             location: activity.location,
             ipAddress: activity.ipAddress,
-            securityUrl: `${Env.isSecure() ? 'https' : 'http'}://${Env.getBaseGateway()}/security`
+            securityUrl: `${Env.sync('SECURE') ? 'https' : 'http'}://${Env.sync('GATEWAY')}/security`
         };
 
         return await this.emailManager.sendTemplatedEmail(

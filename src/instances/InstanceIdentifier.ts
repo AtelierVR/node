@@ -1,5 +1,5 @@
 import { SafeLocalAddress } from "../utils/Constants";
-import { getPreferedAddress } from "../utils/Environment";
+import Env from "../utils/Environment";
 import { isLocalAddress } from "../utils/Utils";
 import InstanceManager from "./InstanceManager";
 
@@ -48,7 +48,7 @@ export default class InstanceIdentifier {
         return this.server === undefined
             || isLocalAddress(this.server)
             || this.server === SafeLocalAddress
-            || getPreferedAddress() === this.server;
+            || Env.sync('ADDRESS') === this.server;
     }
 
     isName(): boolean {

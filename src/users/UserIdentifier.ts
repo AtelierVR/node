@@ -1,5 +1,5 @@
 import { ErrorCodes, SafeLocalAddress } from "../utils/Constants";
-import { getPreferedAddress } from "../utils/Environment";
+import Env from "../utils/Environment";
 import { ErrorMessage, isLocalAddress } from "../utils/Utils";
 
 export default class UserIdentifier {
@@ -37,7 +37,7 @@ export default class UserIdentifier {
         return this.server === undefined
             || isLocalAddress(this.server)
             || this.server === SafeLocalAddress
-            || getPreferedAddress() === this.server;
+            || Env.sync('ADDRESS') === this.server;
     }
 
     toString(defaultserver?: string): string {

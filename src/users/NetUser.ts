@@ -27,7 +27,7 @@ export default class NetUser implements INetUser {
     getTags(): string[] {
         return [
             ...this.tags,
-            ...Env.getDefaultNetUserTags(),
+            ...Env.sync('DEFAULT_NETUSER_TAGS'),
             ...(this.rank === 0 ? ['sys:unverified'] : []),
             ...(this.getBlacklist() ? ['sys:blacklisted'] : [])
         ];

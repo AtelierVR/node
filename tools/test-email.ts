@@ -1,5 +1,5 @@
 import Main from '../src/Main';
-import * as Env from '../src/utils/Environment';
+import Env from '../src/utils/Environment';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -160,7 +160,7 @@ If you received this email, the simple email functionality is working correctly.
      * Test templated email sending
      */
     async testTemplatedEmail(): Promise<boolean> {
-        const serverUrl = new URL(`http${Env.isSecure() ? 's' : ''}://` + Env.getBaseGateway())
+        const serverUrl = new URL(`http${Env.sync('SECURE') ? 's' : ''}://` + Env.sync('GATEWAY'))
         const templateVariables = {
             username: 'test-user',
             display: 'Test User',
@@ -179,7 +179,7 @@ If you received this email, the simple email functionality is working correctly.
      */
     async testEmailVerification(): Promise<boolean> {
         const verificationToken = 'test-verification-token-' + Date.now();
-        const verificationUrl = `${Env.isSecure() ? 'https' : 'http'}://${Env.getBaseGateway()}/verify-email?token=${verificationToken}`;
+        const verificationUrl = `${Env.sync('SECURE') ? 'https' : 'http'}://${Env.sync('GATEWAY')}/verify-email?token=${verificationToken}`;
 
         return await this.app!.emails.sendTemplatedEmail(
             this.testEmail,
@@ -188,10 +188,10 @@ If you received this email, the simple email functionality is working correctly.
                 username: 'test-user',
                 display: 'Test User',
                 verificationUrl,
-                serverName: Env.getName(),
-                serverUrl: `${Env.isSecure() ? 'https' : 'http'}://${Env.getBaseGateway()}`
+                serverName: Env.sync('TITLE'),
+                serverUrl: `${Env.sync('SECURE') ? 'https' : 'http'}://${Env.sync('GATEWAY')}`
             },
-            `Verify your email address - ${Env.getName()}`
+            `Verify your email address - ${Env.sync('TITLE')}`
         );
     }/**
      * List available email templates

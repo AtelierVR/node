@@ -34,7 +34,7 @@ export default class Relay implements IRelay {
         return Object.fromEntries(
             Object.entries(status.a).map(([proto, addr]) => [
                 proto.toLowerCase(),
-                addr.replace(/^(0\.0\.0\.0:|::1:|:::)/, Environment.getDockerAddress() + ":")
+                addr.replace(/^(0\.0\.0\.0:|::1:|:::)/, Environment.sync('DOCKER_ADDRESS') + ":")
             ] as [string, string])
         );
     }

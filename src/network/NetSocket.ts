@@ -6,7 +6,7 @@ import { IncomingMessage } from "http";
 import User from "../users/User";
 import { IRUserMe } from "../users/UserAPIWeb";
 import Debug from "../utils/Debug";
-import { getHideIP } from "../utils/Environment";
+import Env from "../utils/Environment";
 import { presenceToApi } from "../utils/Presence";
 import { Security } from "../utils/Security";
 import Relay from "../relay/Relay";
@@ -121,7 +121,7 @@ export default class NetSocket {
                 },
                 alias: await user.alias(),
             });
-            Debug.log(`[${getHideIP() ? `<hidden>` : socket.data.ip}] SOCKET Connected as '${user.username}'`);
+            Debug.log(`[${Env.sync('HIDE_IP') ? `<hidden>` : socket.data.ip}] SOCKET Connected as '${user.username}'`);
             return;
         }
 
@@ -132,7 +132,7 @@ export default class NetSocket {
                 id: relay.id,
                 node_address: this.app.server.getInfos().address
             });
-            Debug.log(`[${getHideIP() ? `<hidden>` : socket.data.ip}] SOCKET Connected as 'Relay #${relay.id}'`);
+            Debug.log(`[${Env.sync('HIDE_IP') ? `<hidden>` : socket.data.ip}] SOCKET Connected as 'Relay #${relay.id}'`);
 
             // Simple notification that relay socket is connected
             // Full status will be sent after sync in RelayManager.onSyncInstances
@@ -146,7 +146,7 @@ export default class NetSocket {
             return;
         }
 
-        Debug.log(`[${getHideIP() ? `<hidden>` : socket.data.ip}] SOCKET Connected as 'Guest'`);
+        Debug.log(`[${Env.sync('HIDE_IP') ? `<hidden>` : socket.data.ip}] SOCKET Connected as 'Guest'`);
     }
 
     onMessage(socket: WebSocket, raw: RawData) {
@@ -260,9 +260,9 @@ export default class NetSocket {
         });
 
         if (addedEvents.length > 0)
-            Debug.debug(`[${getHideIP() ? '<hidden>' : socket.data.ip}] Subscribed to events: ${addedEvents.join(', ')}`);
+            Debug.debug(`[${Env.sync('HIDE_IP') ? '<hidden>' : socket.data.ip}] Subscribed to events: ${addedEvents.join(', ')}`);
         if (deniedEvents.length > 0)
-            Debug.debug(`[${getHideIP() ? '<hidden>' : socket.data.ip}] Denied subscription to events: ${deniedEvents.join(', ')}`);
+            Debug.debug(`[${Env.sync('HIDE_IP') ? '<hidden>' : socket.data.ip}] Denied subscription to events: ${deniedEvents.join(', ')}`);
     }
 
     /**
@@ -296,7 +296,7 @@ export default class NetSocket {
             total: socketSubscriptions.size
         });
 
-        Debug.debug(`[${getHideIP() ? '<hidden>' : socket.data.ip}] Unsubscribed from events: ${removedEvents.join(', ')}`);
+        Debug.debug(`[${Env.sync('HIDE_IP') ? '<hidden>' : socket.data.ip}] Unsubscribed from events: ${removedEvents.join(', ')}`);
     }
 
     /**

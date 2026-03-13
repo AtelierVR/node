@@ -35,7 +35,7 @@ export default class DockerManager extends RuntimeManager {
 
     constructor(app: Main) {
         super(app);
-        this.docker = new Docker(Env.getDockerOptions());
+        this.docker = new Docker(Env.sync('DOCKER_OPTIONS'));
         this.app.on('ready', this.onReady.bind(this));
     }
 
@@ -407,7 +407,7 @@ export default class DockerManager extends RuntimeManager {
                 for (const portInfo of container.Ports)
                     if (portInfo.PublicPort)
                         usedPorts.add(portInfo.PublicPort);
-        for (let port = Env.getRelayMinPort(); port <= Env.getRelayMaxPort(); port++)
+        for (let port = Env.sync('RELAY_MIN_PORT'); port <= Env.sync('RELAY_MAX_PORT'); port++)
             if (!usedPorts.has(port))
                 return port;
         return null;
@@ -416,7 +416,7 @@ export default class DockerManager extends RuntimeManager {
     private buildContainerConfig(options: RelayContainerOptions): Docker.ContainerCreateOptions {
         let id = randomBytes(4).toString('hex');
         return {
-            Image: Env.getDockerImage(),
+            Image: Env.sync('DOCKER_IMAGE'),
             Labels: {
                 'nox.relay.id': options.relayId.toString(),
                 'nox.relay.process': id,
@@ -428,7 +428,7 @@ export default class DockerManager extends RuntimeManager {
                 `NOX_PORT=${options.port}`,
                 `NOX_NODE_ADDRESS=${this.app.server.getInfos().address}`,
                 'NOX_MAX_TPS=24',
-                `NOX_NODE_GATEWAY=${Env.getWebGateway()}`,
+                `NOX_NODE_GATEWAY=${Env.sync('WEB_GATEWAY')}`,
                 `NOX_DEBUG=true`
             ],
             name: `relay_${id}`,
@@ -442,7 +442,7 @@ export default class DockerManager extends RuntimeManager {
                 RestartPolicy: {
                     Name: 'always'
                 },
-                NetworkMode: Env.getDockerNetwork()
+                NetworkMode: Env.sync('DOCKER_NETWORK')
             }
         };
     }

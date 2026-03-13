@@ -92,11 +92,11 @@ export default class WorldManager {
     static AssetFolder = join(cwd(), 'assets');
 
     static isValidEngine(engine: string): boolean {
-        return Env.getSupportedWorldAssetEngines().includes(engine);
+        return Env.sync('SUPPORTED_WORLD_ASSET_ENGINE').includes(engine);
     }
 
     static isValidPlatform(platform: string): boolean {
-        return Env.getSupportedWorldAssetPlatforms().includes(platform);
+        return Env.sync('SUPPORTED_WORLD_ASSET_PLATFORM').includes(platform);
     }
 
     async createWorld(body: IMakeWorld, user: User): Promise<World | null> {

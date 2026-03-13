@@ -136,7 +136,7 @@ export default class User implements Omit<IUser, 'links'> {
     getTags(): string[] {
         return UserManager.getOverallTags([
             ...this.tags,
-            ...Env.getDefaultUserTags(),
+            ...Env.sync('DEFAULT_USER_TAGS'),
             ...(this.rank === 0 ? ['sys:unverified'] : []),
             ...(this.getBlacklist() ? ['sys:blacklisted'] : [])
         ]);
@@ -250,7 +250,7 @@ export default class User implements Omit<IUser, 'links'> {
     }
 
     isAdmin() {
-        return this.id === Env.getAdminId() || hasTag(this.getTags(), 'sys:admin');
+        return this.id === Env.sync('ADMIN_ID') || hasTag(this.getTags(), 'sys:admin');
     }
 
     async update(): Promise<User | null> {

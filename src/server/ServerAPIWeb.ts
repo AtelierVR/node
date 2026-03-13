@@ -1,7 +1,7 @@
 import e from "express";
 import Reileta from "../Main";
 import { Request, Response } from "../network/NetExpress";
-import { getContact, getPort, getPreferedAddress } from "../utils/Environment";
+import Env from "../utils/Environment";
 import { ServerManager } from "./ServerManager";
 import { Security } from "../utils/Security";
 import Debug from "../utils/Debug";
@@ -26,8 +26,8 @@ export class ServerAPIWeb {
         const status = this.manager.getStatus();
         response.oldsend({
             address: infos.address,
-            contact: getContact(),
-            port: getPort(),
+            contact: Env.sync('CONTACT'),
+            port: Env.sync('NODE_PORT'),
             endpoints: {
                 wellknown: new URL(`/.well-known/nox`, this.app.server.getInfos().gateways.http).href,
                 server: new URL(`/api/server`, this.app.server.getInfos().gateways.http).href,

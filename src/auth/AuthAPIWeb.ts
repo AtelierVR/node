@@ -3,7 +3,7 @@ import NetExpress, { Request, Response } from "../network/NetExpress";
 import User from "../users/User";
 import { IRUserMe } from "../users/UserAPIWeb";
 import { ErrorCodes } from "../utils/Constants";
-import { getCanRegister, isSecure } from "../utils/Environment";
+import Env from "../utils/Environment";
 import { presenceToApi } from "../utils/Presence";
 import { Security } from "../utils/Security";
 import { ErrorMessage } from "../utils/Utils";
@@ -58,7 +58,7 @@ export default class AuthAPIWeb {
      * @param response - HTTP response object for sending the authentication result
      */
     async handleRegister(request: Request, response: Response) {
-        if (getCanRegister() === false)
+        if (Env.sync('CAN_REGISTER') === false)
             return response.send(new ErrorMessage(ErrorCodes.ServiceDisabled));
         const register = await this.manager.register(request.body);
         if (register instanceof ErrorMessage)
@@ -122,7 +122,7 @@ export default class AuthAPIWeb {
     async handleRegisterAndLogin(response: Response, session: Session, user: User) {
         response.cookie('_uid', session.token, {
             expires: session.expires,
-            secure: isSecure(),
+            secure: Env.sync('SECURE'),
             sameSite: 'strict',
             httpOnly: true
         });

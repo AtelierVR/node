@@ -390,3 +390,13 @@ model ConversationReference {
 
   @@unique([id, server, user_id], name: "id_server_user_id")
 }
+
+/// Runtime-editable configuration override.
+/// A row here takes precedence over the matching environment variable
+/// (unless the env value starts with '!' to force-pin it).
+model Config {
+  key        String   @id
+  value      String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}

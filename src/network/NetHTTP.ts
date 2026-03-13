@@ -23,13 +23,13 @@ export default class NetHTTP {
 
     constructor(private readonly app: Reileta) {
         this.express = new NetExpress(this.app, this);
-        this.server = Env.useSSL() ? this.initWithSSL() : this.initUnsecure();
+        this.server = Env.sync('USE_SSL') ? this.initWithSSL() : this.initUnsecure();
         this.socket = new NetSocket(this.app, this);
         this.app.emit('http:init', this.server);
         this.express.server.use((req, res, next) => this.onRequest(req as Request, res as Response, next));
         this.express.server.use(Express.static(join(cwd(), 'public')));
         this.express.server.get('/schemas/:name', (req, res) => this.serveSchema(req as Request<{ name: string }>, res as Response));
-        for (const [k, v] of Object.entries(Env.getCustomCORS()) as any) {
+        for (const [k, v] of Object.entries(Env.sync('CUSTOM_CORS')) as any) {
             Debug.debug(`Adding CORS for ${k} -> ${JSON.stringify(v)}`);
             this.express.server.use(k, cors(v));
         }
@@ -66,8 +66,8 @@ export default class NetHTTP {
             else return response.sendStatus(503);
         }
         request.data = new NetData(this.app, request);
-        if (!Env.getIgnorePaths().some(pattern => new RegExp(pattern).test(request.url.split('?')[0])))
-            Debug.log(`[${Env.getHideIP() ? `<hidden>` : request.data.ip}] ${request.method} ${request.url}`);
+        if (!Env.sync('IGNORE_LOG_PATHS').some(pattern => new RegExp(pattern).test(request.url.split('?')[0])))
+            Debug.log(`[${Env.sync('HIDE_IP') ? `<hidden>` : request.data.ip}] ${request.method} ${request.url}`);
         return next();
     }
 
@@ -102,9 +102,9 @@ export default class NetHTTP {
         return res.send(new ErrorMessage(ErrorCodes.NotImplemented));
     }
 
-    start(port = Env.getPort()) {
+    start(port = Env.sync('NODE_PORT')) {
         // Configure server timeouts
-        this.server.timeout = Env.getUploadTimeout();
+        this.server.timeout = Env.sync('UPLOAD_TIMEOUT');
         this.server.keepAliveTimeout = 65000; // 65 seconds
         this.server.headersTimeout = 66000; // 66 seconds
 

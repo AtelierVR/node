@@ -46,9 +46,9 @@ export default class NetExpress {
         this.upload = multer({
             storage: storage,
             limits: {
-                fileSize: Env.getMaxFileSize(),
-                fieldSize: Env.getMaxFieldSize(),
-                files: Env.getMaxFiles(),
+                fileSize: Env.sync('MAX_FILE_SIZE'),
+                fieldSize: Env.sync('MAX_FIELD_SIZE'),
+                files: Env.sync('MAX_FILES'),
             }
         });
     }
@@ -59,11 +59,11 @@ export default class NetExpress {
                 Debug.error(`Multer error: ${err.code} - ${err.message}`);
                 switch (err.code) {
                     case 'LIMIT_FILE_SIZE':
-                        return res.send(new ErrorMessage(ErrorCodes.InvalidField, 'file', `File too large. Maximum size is ${Env.getMaxFileSize()} bytes`));
+                        return res.send(new ErrorMessage(ErrorCodes.InvalidField, 'file', `File too large. Maximum size is ${Env.sync('MAX_FILE_SIZE')} bytes`));
                     case 'LIMIT_FILE_COUNT':
-                        return res.send(new ErrorMessage(ErrorCodes.InvalidField, 'files', `Too many files. Maximum is ${Env.getMaxFiles()}`));
+                        return res.send(new ErrorMessage(ErrorCodes.InvalidField, 'files', `Too many files. Maximum is ${Env.sync('MAX_FILES')}`));
                     case 'LIMIT_FIELD_VALUE':
-                        return res.send(new ErrorMessage(ErrorCodes.InvalidField, 'field', `Field value too large. Maximum size is ${Env.getMaxFieldSize()} bytes`));
+                        return res.send(new ErrorMessage(ErrorCodes.InvalidField, 'field', `Field value too large. Maximum size is ${Env.sync('MAX_FIELD_SIZE')} bytes`));
                     case 'LIMIT_UNEXPECTED_FILE':
                         return res.send(new ErrorMessage(ErrorCodes.InvalidField, 'file', 'Unexpected file field'));
                     default:
@@ -76,7 +76,7 @@ export default class NetExpress {
 
     static uploadTimeout() {
         return async (req: any, res: any, next: any) => {
-            const timeout = Env.getUploadTimeout();
+            const timeout = Env.sync('UPLOAD_TIMEOUT');
             const timer = setTimeout(() => {
                 if (!res.headersSent) {
                     Debug.error(`Upload timeout after ${timeout}ms for ${req.url}`);

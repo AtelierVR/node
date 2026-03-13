@@ -1,5 +1,5 @@
 import { SafeLocalAddress } from "../utils/Constants";
-import { getPreferedAddress } from "../utils/Environment";
+import Env from "../utils/Environment";
 import { isLocalAddress } from "../utils/Utils";
 
 export default class WorldIdentifier {
@@ -35,7 +35,7 @@ export default class WorldIdentifier {
         return this.server === undefined
             || isLocalAddress(this.server)
             || this.server === SafeLocalAddress
-            || getPreferedAddress() === this.server;
+            || Env.sync('ADDRESS') === this.server;
     }
 
     get version() {

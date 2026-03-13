@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { getAdminDisplay, getAdminId, getAdminPassword, getAdminUsername } from "./utils/Environment";
+import Env from "./utils/Environment";
 import UserManager from "./users/UserManager";
 import Main from "./Main";
 import Debug from "./utils/Debug";
@@ -60,15 +60,18 @@ export class Database {
             return new Error(msg);
         }
 
+        // Inject client into Env so DB-override config resolution works.
+        Env.setDatabase(provider.getClient());
+
         let updated = false;
         while (!updated) {
             try {
-                let admin_id = getAdminId();
+                let admin_id = Env.sync('ADMIN_ID');
                 if (!admin_id || !UserManager.isValidId(admin_id))
                     admin_id = 1;
 
                 const cert = Security.generateSubCertificate(
-                    getAdminUsername(),
+                    Env.sync('ADMIN_USERNAME'),
                     `${admin_id}@${this.app.server.getInfos().address}`,
                     1,
                 );
@@ -89,9 +92,9 @@ export class Database {
                         where: { id: admin_id },
                         create: {
                             id: admin_id,
-                            username: getAdminUsername(),
-                            display: getAdminDisplay(),
-                            password: getAdminPassword(),
+                            username: Env.sync('ADMIN_USERNAME'),
+                            display: Env.sync('ADMIN_DISPLAY'),
+                            password: Env.sync('ADMIN_PASSWORD'),
                             links: [this.app.server.getInfos().gateways.http.toString()],
                             cert_blob: Security.certificateToDer(cert),
                             cert_expires: cert.validity.notAfter,
@@ -99,9 +102,9 @@ export class Database {
                             tags: ["sys:admin"],
                         },
                         update: {
-                            username: getAdminUsername(),
-                            display: getAdminDisplay(),
-                            password: getAdminPassword(),
+                            username: Env.sync('ADMIN_USERNAME'),
+                            display: Env.sync('ADMIN_DISPLAY'),
+                            password: Env.sync('ADMIN_PASSWORD'),
                             links: [this.app.server.getInfos().gateways.http.toString()],
                             tags: mergedTags,
                         },
