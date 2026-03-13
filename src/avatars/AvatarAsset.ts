@@ -37,13 +37,13 @@ export default class AvatarAsset implements IAvatarAsset {
 
     isEmpty(): boolean {
         return !this.url
-            || (!isValidURL(this.url) && !this.url.startsWith('file://'))
+            || (!isValidURL(this.url) && !this.app.storage.files.isLocalFile(this.url))
             || this.size <= 0
             || !this.hash;
     }
 
     getURL(): URL | null {
-        if (this.url && !this.isEmpty() && !this.url.startsWith('file://'))
+        if (this.url && !this.isEmpty() && !this.app.storage.files.isLocalFile(this.url))
             try {
                 return new URL(this.url);
             } catch { }
@@ -113,13 +113,13 @@ export default class AvatarAsset implements IAvatarAsset {
         const existingAsset = await this.app.database.avatarAsset.findFirst({
             where: { 
                 hash: hash,
-                url: { startsWith: 'file://' },
+                url: { startsWith: this.app.storage.files.keyToUrl('') },
                 NOT: { id: this.id }
             }
         });
 
         if (existingAsset && existingAsset.url) {
-            const existingPath = existingAsset.url.replace('file://', '');
+            const existingPath = this.app.storage.files.urlToKey(existingAsset.url);
             const fullPath = join(AvatarManager.AssetFolder, 'avatars', existingAsset.avatar_id.toString(), existingPath);
             if (existsSync(fullPath)) {
                 Debug.log(`Found existing file for hash ${hash} in asset ${existingAsset.id}`);
@@ -144,7 +144,7 @@ export default class AvatarAsset implements IAvatarAsset {
             if (existingFile) {
                 // File already exists, just reference it
                 this.size = file.size;
-                this.url = `file://${hash}`;
+                this.url = this.app.storage.files.keyToUrl(hash);
                 this.hash = hash;
                 
                 // Clean up the uploaded temp file
@@ -168,14 +168,14 @@ export default class AvatarAsset implements IAvatarAsset {
                 
                 rmSync(file.path);
                 this.size = file.size;
-                this.url = `file://${hash}.gz`;
+                this.url = this.app.storage.files.keyToUrl(`${hash}.gz`);
                 this.hash = hash;
             } else {
                 // Copy without compression for small files
                 copyFileSync(file.path, targetPath);
                 rmSync(file.path);
                 this.size = file.size;
-                this.url = `file://${hash}`;
+                this.url = this.app.storage.files.keyToUrl(hash);
                 this.hash = hash;
             }
 
@@ -196,7 +196,7 @@ export default class AvatarAsset implements IAvatarAsset {
             copyFileSync(file.path, targetPath);
             rmSync(file.path);
             this.size = file.size;
-            this.url = `file://${hash}`;
+            this.url = this.app.storage.files.keyToUrl(hash);
             this.hash = hash;
             return true;
         } catch (e) {
@@ -206,8 +206,8 @@ export default class AvatarAsset implements IAvatarAsset {
     }
 
     getFile() {
-        if (!this.url || !this.url.startsWith('file://') || this.isEmpty()) return null;
-        const filename = this.url.replace('file://', '');
+        if (!this.url || !this.app.storage.files.isLocalFile(this.url) || this.isEmpty()) return null;
+        const filename = this.app.storage.files.urlToKey(this.url);
         return join(AvatarManager.AssetFolder, 'avatars', this.avatar_id.toString(), filename);
     }
 

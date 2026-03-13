@@ -152,12 +152,12 @@ export default class World implements IWorld {
     }
 
     isLocalThumbnail(): boolean {
-        return this.thumbnail?.startsWith('file://') || false;
+        return this.app.storage.files.isLocalFile(this.thumbnail ?? '');
     }
 
     getLocalThumbnailPath(): string | null {
         if (!this.isLocalThumbnail()) return null;
-        let path = this.thumbnail?.replace('file://', '');
+        let path = this.app.storage.files.urlToKey(this.thumbnail as string);
         if (!path) return null;
         return join(WorldManager.AssetFolder, path);
     }
@@ -170,7 +170,7 @@ export default class World implements IWorld {
             let filename = `${hash}-${type}.${ext}`;
             copyFileSync(file.path, join(WorldManager.AssetFolder, filename));
             rmSync(file.path);
-            this.thumbnail = `file://${filename}`;
+            this.thumbnail = this.app.storage.files.keyToUrl(filename);
             return true;
         } catch (e) {
             Debug.error('Error setting thumbnail file:', e);

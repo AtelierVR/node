@@ -38,7 +38,7 @@ export default class Avatar implements IAvatar {
 
     getThumbnail(): URL | null {
         if (this.thumbnail) {
-            if (this.thumbnail.startsWith('file://')) {
+            if (this.app.storage.files.isLocalFile(this.thumbnail)) {
                 // For local files, return a URL pointing to our API endpoint
                 try {
                     return new URL(`/api/avatars/${this.id}/thumbnail`, this.app.server.getInfos().gateways.http);
@@ -102,12 +102,12 @@ export default class Avatar implements IAvatar {
     }
 
     isLocalThumbnail(): boolean {
-        return this.thumbnail?.startsWith('file://') || false;
+        return this.app.storage.files.isLocalFile(this.thumbnail ?? '');
     }
 
     getLocalThumbnailPath(): string | null {
         if (!this.isLocalThumbnail()) return null;
-        let path = this.thumbnail?.replace('file://', '');
+        let path = this.app.storage.files.urlToKey(this.thumbnail as string);
         if (!path) return null;
         return join(AvatarManager.AssetFolder, path);
     }
@@ -121,7 +121,7 @@ export default class Avatar implements IAvatar {
             let filename = `${hash}-${type}.${ext}`;
             copyFileSync(file.path, join(AvatarManager.AssetFolder, filename));
             rmSync(file.path);
-            this.thumbnail = `file://${filename}`;
+            this.thumbnail = this.app.storage.files.keyToUrl(filename);
             return true;
         } catch (e) {
             Debug.error('Error setting thumbnail file:', e);

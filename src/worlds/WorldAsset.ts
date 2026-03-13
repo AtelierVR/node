@@ -37,7 +37,7 @@ export default class WorldAsset implements IRWorldAsset {
 
     isEmpty(): boolean {
         return !this.url
-            || (!isValidURL(this.url) && !this.url.startsWith('file://'))
+            || (!isValidURL(this.url) && !this.app.storage.files.isLocalFile(this.url))
             || this.size <= 0
             || !this.hash;
     }
@@ -47,7 +47,7 @@ export default class WorldAsset implements IRWorldAsset {
     }
 
     getURL(): URL | null {
-        if (this.url && !this.isEmpty() && !this.url.startsWith('file://'))
+        if (this.url && !this.isEmpty() && !this.app.storage.files.isLocalFile(this.url))
             try {
                 return new URL(this.url);
             } catch { }
@@ -68,7 +68,7 @@ export default class WorldAsset implements IRWorldAsset {
             copyFileSync(file.path, join(WorldManager.AssetFolder, hash));
             rmSync(file.path);
             this.size = file.size;
-            this.url = `file://${hash}`;
+            this.url = this.app.storage.files.keyToUrl(hash);
             this.hash = hash;
             return true;
         } catch (e) {
@@ -99,7 +99,7 @@ export default class WorldAsset implements IRWorldAsset {
     }
 
     getFile() {
-        if (!this.url || !this.url.startsWith('file://') || this.isEmpty()) return null;
+        if (!this.url || !this.app.storage.files.isLocalFile(this.url) || this.isEmpty()) return null;
         return join(WorldManager.AssetFolder, this.hash as string);
     }
 }

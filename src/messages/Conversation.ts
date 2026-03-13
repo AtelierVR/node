@@ -88,7 +88,7 @@ export default class Conversation implements IConversation {
      */
     getThumbnail(): URL | null {
         if (this.thumbnail) {
-            if (this.thumbnail.startsWith('file://')) {
+            if (this.app.storage.files.isLocalFile(this.thumbnail)) {
                 // For local files, return a URL pointing to our API endpoint
                 try {
                     return new URL(`/api/messages/conversations/${this.id}/thumbnail`, this.app.server.getInfos().gateways.http);

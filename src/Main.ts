@@ -20,6 +20,7 @@ import PresenceManager from "./presence/PresenceManager";
 import RelationManager from "./relations/RelationManager";
 import DeviceManager from "./auth/devices/DeviceManager";
 import Database from "./Database";
+import { StorageManager } from "./storage/StorageManager";
 import EmailManager from "./email/EmailManager";
 import TwoFactorManager from "./totp/TwoFactorManager";
 import TableManager from "./tables/TableManager";
@@ -32,6 +33,8 @@ export default class Main extends EventEmitter {
     http: NetHTTP;
     server: ServerManager;
     ready_at: Date | null = null;
+    /** Active storage providers (file + database). Initialized first in the constructor. */
+    storage: StorageManager;
     database: Database;
     users: UserManager;
     instances: InstanceManager;
@@ -58,6 +61,8 @@ export default class Main extends EventEmitter {
     constructor() {
         super();
 
+        // StorageManager must be created first — Database reads from it.
+        this.storage = new StorageManager();
         this.database = new Database(this);
         this.http = new NetHTTP(this);
         this.server = new ServerManager(this);
@@ -87,6 +92,9 @@ export default class Main extends EventEmitter {
     async start() {
         this.http.handler();
         await this.http.start();
+
+        // Initialise storage providers (create asset directories / remote buckets).
+        await this.storage.init();
 
         let init = true;
         while (!this.ready_at) {

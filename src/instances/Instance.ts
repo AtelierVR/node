@@ -72,12 +72,12 @@ export default class Instance implements IInstance {
 
     getLocalThumbnailPath(): string | null {
         if (this.isLocalThumbnail())
-            return join(InstanceManager.AssetFolder, this.thumbnail?.replace('file://', '') as string);
+            return join(InstanceManager.AssetFolder, this.app.storage.files.urlToKey(this.thumbnail as string));
         return null;
     }
 
     isLocalThumbnail(): boolean {
-        return this.thumbnail?.startsWith('file://') || false;
+        return this.app.storage.files.isLocalFile(this.thumbnail ?? '');
     }
 
     get ownerIdentifier(): UserIdentifier {

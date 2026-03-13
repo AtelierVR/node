@@ -284,7 +284,6 @@ export class ServerManager {
             let txt = await this.findTXT(`_nox.${uri.hostname}`);
             if (txt.length > 0)
                 for (const t of txt) {
-                    Debug.log(`Found TXT record for ${uri.hostname}:`, t);
                     let mg = t.getMasterGateway();
                     if (mg) return mg;
                 }
@@ -314,7 +313,6 @@ export class ServerManager {
 
     async findTXT(domain: string): Promise<TXTAnswer[]> {
         try {
-            Debug.log(`Fetching TXT record for ${domain}...`);
             const req = await request(`https://dns.google/resolve?name=${domain}&type=TXT`);
             if (req.statusCode === 200) {
                 const srv = await req.body.json() as TXT;

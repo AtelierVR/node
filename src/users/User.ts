@@ -115,21 +115,21 @@ export default class User implements Omit<IUser, 'links'> {
 
     getLocalThumbnailPath(): string | null {
         if (this.isLocalThumbnail())
-            return join(UserManager.AssetFolder, this.thumbnail?.replace('file://', '') as string);
+            return join(UserManager.AssetFolder, this.app.storage.files.urlToKey(this.thumbnail as string));
         return null;
     }
 
     isLocalThumbnail(): boolean {
-        return this.thumbnail?.startsWith('file://') || false;
+        return this.app.storage.files.isLocalFile(this.thumbnail ?? '');
     }
 
     isLocalBanner(): boolean {
-        return this.banner?.startsWith('file://') || false;
+        return this.app.storage.files.isLocalFile(this.banner ?? '');
     }
 
     getLocalBannerPath(): string | null {
         if (this.isLocalBanner())
-            return join(UserManager.AssetFolder, this.banner?.replace('file://', '') as string);
+            return join(UserManager.AssetFolder, this.app.storage.files.urlToKey(this.banner as string));
         return null;
     }
 
@@ -279,7 +279,7 @@ export default class User implements Omit<IUser, 'links'> {
             let p = `${hash}-${type}.${ext}`;
             copyFileSync(file.path, join(UserManager.AssetFolder, p));
             rmSync(file.path);
-            this.thumbnail = `file://${p}`;
+            this.thumbnail = this.app.storage.files.keyToUrl(p);
             return true;
         } catch (e) {
             return false
@@ -304,7 +304,7 @@ export default class User implements Omit<IUser, 'links'> {
             let p = `${hash}-${type}.${ext}`;
             copyFileSync(file.path, join(UserManager.AssetFolder, p));
             rmSync(file.path);
-            this.banner = `file://${p}`;
+            this.banner = this.app.storage.files.keyToUrl(p);
             return true;
         } catch (e) {
             return false
