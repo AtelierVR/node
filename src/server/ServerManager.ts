@@ -157,7 +157,7 @@ export class ServerManager {
     }
 
 
-    async fetch<T>(endpoint: string | URL, schema: Schema | JSONSchemaType<T> | string, server: NetServer | string, options?: RequestOptions): Promise<IApiResponse<T>> {
+    async fetch<T>(endpoint: string | URL, schema: Schema | JSONSchemaType<T> | string, server: NetServer | string, user: User | null = null, options?: RequestOptions): Promise<IApiResponse<T>> {
         try {
             let url: URL;
 
@@ -190,8 +190,13 @@ export class ServerManager {
                 method: options?.method || 'GET',
                 headers: {
                     ...this.defaultHeaders,
-                    ...(server && typeof server !== 'string' ? await server.requestHeaders() : {}),
-                    ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
+                    ...(server && typeof server !== 'string' ? {
+                        ...(server.requestHeaders()),
+                        ...(user ? user.requestHeaders() : {}),
+                    } : {}),
+                    ...(options?.body ? {
+                        'Content-Type': 'application/json'
+                    } : {}),
                     ...options?.headers
                 },
                 body: options?.body

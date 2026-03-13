@@ -73,7 +73,7 @@ export default class AvatarAPIWeb {
             if (typeof value === 'string') url.searchParams.set(key, value);
             else if (Array.isArray(value)) value.forEach(v => url.searchParams.append(key, v.toString()));
         }
-        const res = await ns.fetch<any>(url, 'avatars/assets_response');
+        const res = await ns.fetch<any>(url, 'avatars/assets_response', user);
         if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
         if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
         return response.send(res.data);
@@ -388,7 +388,7 @@ export default class AvatarAPIWeb {
             return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
         }
         const url = new URL(`/api/avatars/${avatarIdentifier.identifier}`, `http://${ns.address}`);
-        const res = await ns.fetch<IRAvatar>(url, 'avatars/info_response');
+        const res = await ns.fetch<IRAvatar>(url, 'avatars/info_response', user);
         if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
         if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Avatar'));
         return response.send<IRAvatar>(res.data);

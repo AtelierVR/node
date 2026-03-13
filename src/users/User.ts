@@ -327,6 +327,12 @@ export default class User implements Omit<IUser, 'links'> {
             return -1;
         return await this.app.relations.getFollowingCount(this);
     }
+
+    requestHeaders()  {
+        return {
+            'X-Nox-As': this.id.toString(),
+        };
+    }
 }
 
 export interface IUserBlacklist {

@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { Security } from "../utils/Security";
 import Debug from "../utils/Debug";
 import { JSONSchemaType, Schema } from "ajv";
+import User from "../users/User";
 
 export default class NetServer implements INetServer {
 
@@ -45,8 +46,8 @@ export default class NetServer implements INetServer {
         return data;
     }
 
-    async fetch<T>(endpoint: string | URL, schema: string | Schema | JSONSchemaType<IServer>, options?: RequestOptions) {
-        return await this.app.server.fetch<T>(endpoint, schema, this, options);
+    async fetch<T>(endpoint: string | URL, schema: string | Schema | JSONSchemaType<IServer>, user: User | null, options?: RequestOptions) {
+        return await this.app.server.fetch<T>(endpoint, schema, this, user, options);
     }
 
     generateChallenge(): string {
@@ -61,7 +62,7 @@ export default class NetServer implements INetServer {
         return [content, contentSign].join('.');
     }
 
-    async requestHeaders(): Promise<{ [key: string]: string }> {
+    requestHeaders() {
         return {
             'Authorization': `Challenge ${this.generateChallenge()}`,
         };

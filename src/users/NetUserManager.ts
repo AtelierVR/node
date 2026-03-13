@@ -9,6 +9,7 @@ import { NetUser as INetUser } from "@prisma/client";
 import { Regex } from "../utils/Constants";
 import { isValidURL } from "../utils/Utils";
 import Debug from "../utils/Debug";
+import User from "./User";
 
 export default class NetUserManager {
     constructor(private readonly app: Main) { }
@@ -54,10 +55,10 @@ export default class NetUserManager {
         return [];
     }
 
-    async fetchNetUserInfos(user_ref: number | string, server: NetServer, fingerprint?: string): Promise<IRUser | Error> {
+    async fetchNetUserInfos(user_ref: number | string, server: NetServer, fingerprint?: string, as?: User): Promise<IRUser | Error> {
         let url = new URL(`/api/users/${user_ref}`, `http://${server.address}`);
         if (fingerprint) url.searchParams.set('fp', fingerprint);
-        const res = await server.fetch<IRUser>(url, 'users/info_response');
+        const res = await server.fetch<IRUser>(url, 'users/info_response', as || null);
         if (res.error) return new Error(res.error.message);
         if (!res.data) return new Error('No data received');
         return res.data;

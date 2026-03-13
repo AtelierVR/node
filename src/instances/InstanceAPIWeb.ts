@@ -116,7 +116,7 @@ export default class InstanceAPIWeb {
             ? `#${instanceIdentifier.identifier}`
             : instanceIdentifier.identifier.toString();
         const url = new URL(`/api/instances/${searchParam}`, `http://${ns.address}`);
-        const res = await ns.fetch<IRInstance>(url, 'instances/info_response');
+        const res = await ns.fetch<IRInstance>(url, 'instances/info_response', user);
         if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Instance'));
         if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'Instance'));
         return response.send<IRInstance>(res.data);

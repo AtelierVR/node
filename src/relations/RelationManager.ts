@@ -195,7 +195,7 @@ export default class RelationManager {
             if (!infos)
                 return new Error("Failed to fetch server infos");
 
-            let response = await server.fetch<IMakeRelationResponse>('/api/relations', 'relations/update_response', {
+            let response = await server.fetch<IMakeRelationResponse>('/api/relations', 'relations/update_response', user, {
                 method: 'POST',
                 body
             });

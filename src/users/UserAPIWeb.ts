@@ -18,6 +18,7 @@ import Debug from "../utils/Debug";
 import AvatarIdentifier from "../avatars/AvatarIdentifier";
 import { IUserLink } from "./User";
 import { presenceToApi, presenceToDb } from "../utils/Presence";
+import { NetServer } from "@prisma/client";
 
 export default class UserAPIWeb {
     constructor(private readonly app: Reileta, private readonly manager: UserManager) {
@@ -266,16 +267,23 @@ export default class UserAPIWeb {
 
         let address = this.app.server.getInfos().address;
         let http = this.app.server.getInfos().gateways.http;
-        let web = this.app.server.getInfos().gateways.web;
 
-        let me = request.data.isBearer() ? (await request.data.getData() as User | null) : null;
+        let me: User | NetUser | null = null;
+        if (request.data.isBearer()) {
+            me = await request.data.getData() as User | null;
+        } else if (request.data.isChallenge()) {
+            let as = parseInt(request.headers['X-Nox.As']?.toString() || UserIdentifier.InvalidId.toString()) || UserIdentifier.InvalidId;
+            let server = await request.data.getData() as NetServer | null;
+            if (as > UserIdentifier.InvalidId && server != null)
+                me = await this.app.netUsers.findNetUserById(as, server.id)
+        }
 
         let us: IRUser[] = [];
         for (var user of results.users) {
             let outRelation: UserRelation | null = null;
             let inRelation: UserRelation | null = null;
 
-            if (request.data.isBearer() && me) {
+            if (me) {
                 outRelation = await this.app.relations.getRelation(me, user);
                 inRelation = await this.app.relations.getRelation(user, me);
             }
@@ -378,7 +386,7 @@ export default class UserAPIWeb {
         let nu = await this.app.netUsers.findOrFetch(userIdentifier.identifier, ns);
         if (!nu) return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
 
-        let infos = await nu.fetchUser();
+        let infos = await nu.fetchUser(undefined, user);
         if (infos instanceof Error) {
             Debug.error(`Failed to fetch user infos for ${userIdentifier.identifier} on server ${userIdentifier.server}: ${infos.message}`);
             return response.send(new ErrorMessage(ErrorCodes.UserNotFound));
@@ -413,7 +421,7 @@ export default class UserAPIWeb {
             thumbnail: infos.thumbnail,
             banner: infos.banner,
             links: infos.links,
-            relations: null,
+            relations: infos.relations,
             rank: infos.rank,
             certificate: infos.certificate,
             followers: infos.followers || 0,

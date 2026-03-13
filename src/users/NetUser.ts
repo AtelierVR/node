@@ -1,5 +1,5 @@
 import { NetUser as INetUser, Prisma } from "@prisma/client";
-import { IUserBlacklist } from "./User";
+import User, { IUserBlacklist } from "./User";
 import Main from "../Main";
 import { IRUser } from "./UserAPIWeb";
 import UserIdentifier from "./UserIdentifier";
@@ -47,10 +47,10 @@ export default class NetUser implements INetUser {
         return await this.app.netServers.findNetServerById(this.server_id) as NetServer;
     }
 
-    async fetchUser(fingerprint?: string): Promise<IRUser | Error> {
+    async fetchUser(fingerprint?: string, as?: User): Promise<IRUser | Error> {
         let server = await this.getNetServer();
         return server
-            ? await this.app.netUsers.fetchNetUserInfos(this.id, server, fingerprint)
+            ? await this.app.netUsers.fetchNetUserInfos(this.id, server, fingerprint, as)
             : new Error('No server found');
     }
 

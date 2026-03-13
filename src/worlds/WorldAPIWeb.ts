@@ -68,7 +68,7 @@ export default class WorldAPIWeb {
             if (typeof value === 'string') url.searchParams.set(key, value);
             else if (Array.isArray(value)) value.forEach(v => url.searchParams.append(key, v.toString()));
         }
-        const res = await ns.fetch<any>(url, 'worlds/assets_response');
+        const res = await ns.fetch<any>(url, 'worlds/assets_response',user);
         if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
         if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
         return response.send(res.data);
@@ -339,7 +339,7 @@ export default class WorldAPIWeb {
             return response.send(new ErrorMessage(ErrorCodes.ServerNotFound));
         }
         const url = new URL(`/api/worlds/${worldIdentifier.identifier}`, `http://${ns.address}`);
-        const res = await ns.fetch<IRWorld>(url, 'worlds/info_response');
+        const res = await ns.fetch<IRWorld>(url, 'worlds/info_response', user);
         if (res.error) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
         if (!res.data) return response.send(new ErrorMessage(ErrorCodes.NotFound, 'World'));
         return response.send<IRWorld>(res.data);

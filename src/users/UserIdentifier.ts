@@ -3,6 +3,8 @@ import Env from "../utils/Environment";
 import { ErrorMessage, isLocalAddress } from "../utils/Utils";
 
 export default class UserIdentifier {
+    public static readonly InvalidId = 0;
+    
     constructor(identifier: string | number, server?: string) {
         this.identifier = identifier;
         this.server = server;
