@@ -8,7 +8,7 @@
     "build-image": "docker build -t hactazia/noxnode -t noxnode .",
     "dev": "npx ts-node src/index.ts",
     "migrate": "npx prisma migrate dev --name \"init\"",
-    "deploy": "npx prisma db push",
+    "deploy": "npx prisma migrate deploy",
     "generate": "npx prisma generate",
     "compose": "docker compose down && npm run build-image && docker compose up",
     "healthcheck": "node ./tools/healthcheck.js",

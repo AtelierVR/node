@@ -66,6 +66,9 @@ export class Database {
         let updated = false;
         while (!updated) {
             try {
+                if (!await provider.runMigrations()) 
+                    throw new Error("Migrations failed");
+
                 let admin_id = Env.sync('ADMIN_ID');
                 if (!admin_id || !UserManager.isValidId(admin_id))
                     admin_id = 1;
@@ -113,16 +116,6 @@ export class Database {
 
                 updated = true;
             } catch (_e) {
-                Debug.error("Invalid database schema.");
-                Debug.debug("Installing database schema…");
-
-                const success = await provider.runMigrations();
-                if (!success) {
-                    return new Error("Failed to install database schema.");
-                }
-
-                Debug.debug("Database schema installed.");
-                // Loop again to re-seed admin
             }
         }
 

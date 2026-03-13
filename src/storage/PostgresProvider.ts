@@ -49,16 +49,36 @@ export class PostgresProvider implements IDatabaseProvider {
     }
 
     /**
-     * Push the current Prisma schema to the database by running `npm run deploy`
-     * (which executes `prisma db push`).
+     * Apply all pending Prisma migrations by running `prisma migrate deploy`.
      */
     async runMigrations(): Promise<boolean> {
-        return new Promise<boolean>((resolve) => {
-            const proc = child_process.spawn("npm", ["run", "deploy"]);
+        return new Promise((resolve) => {
+            const proc = child_process.spawn(
+                "npx", ["prisma", "migrate", "deploy"],
+                { env: process.env },
+            );
 
-            proc.stdout.on("data", (data) => Debug.debug(`[Migrate] ${data}`));
-            proc.stderr.on("data", (data) => Debug.error(`[Migrate] ${data}`));
-            proc.on("close", (code) => resolve(code === 0));
+            const onLine = (line: string, isErr: boolean) => {
+                if (!line.trim()) return;
+                if (isErr) Debug.error(`[Migrate] ${line}`);
+                else Debug.log(`[Migrate] ${line}`);
+            };
+
+            proc.stdout.on("data", (data: Buffer) =>
+                data.toString().split(/\r?\n/).forEach(l => onLine(l, false)));
+            proc.stderr.on("data", (data: Buffer) =>
+                data.toString().split(/\r?\n/).forEach(l => onLine(l, true)));
+
+            proc.on("close", (code) => {
+                if (code !== 0)
+                    Debug.error(`[Migrate] prisma migrate deploy exited with code ${code}`);
+                resolve(code === 0);
+            });
+
+            proc.on("error", (err) => {
+                Debug.error("[Migrate] Failed to spawn migrate process:", err);
+                resolve(false);
+            });
         });
     }
 

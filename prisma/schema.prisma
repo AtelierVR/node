@@ -21,22 +21,22 @@ model NetServer {
   created_at        DateTime                @default(now())
   updated_at        DateTime                @updatedAt
   users             NetUser[]
-  out_integrities   OutIntegrity[]
-  in_integrities    InIntegrity[]
   conversation_refs ConversationReference[]
+
+  @@map("net_servers")
 }
 
 model NetUser {
   id          Int
   server_id   Int
-  rank        Float         @default(0)
+  rank        Float     @default(0)
   blacklisted Json?
   tags        String[]
-  last_seen   DateTime      @default(now())
-  server      NetServer     @relation(fields: [server_id], references: [id])
-  integrities InIntegrity[]
+  last_seen   DateTime  @default(now())
+  server      NetServer @relation(fields: [server_id], references: [id])
 
   @@id([id, server_id])
+  @@map("net_users")
 }
 
 enum PresenceStatus {
@@ -73,7 +73,6 @@ model User {
   created_at           DateTime                @default(now())
   updated_at           DateTime                @updatedAt
   sessions             Session[]
-  integrities          OutIntegrity[]
   notifications        Notification[]
   presences            Presence[]
   email_verifications  EmailVerification[]
@@ -83,6 +82,8 @@ model User {
   cert_blob            Bytes
   key_blob             Bytes
   cert_expires         DateTime
+
+  @@map("users")
 }
 
 model EmailVerification {
@@ -98,6 +99,7 @@ model EmailVerification {
 
   @@index([token])
   @@index([user_id, verified])
+  @@map("email_verifications")
 }
 
 model VerificationFactor {
@@ -111,30 +113,7 @@ model VerificationFactor {
   updated_at DateTime @updatedAt
 
   @@index([code, method])
-}
-
-model OutIntegrity {
-  id         Int       @id @default(autoincrement())
-  user_id    Int
-  user       User      @relation(fields: [user_id], references: [id])
-  server_id  Int
-  server     NetServer @relation(fields: [server_id], references: [id])
-  token      String    @unique
-  created_at DateTime  @default(now())
-  expires_at DateTime
-  updated_at DateTime  @updatedAt
-}
-
-model InIntegrity {
-  id         Int       @id @default(autoincrement())
-  user_id    Int
-  server_id  Int
-  user       NetUser   @relation(fields: [user_id, server_id], references: [id, server_id])
-  server     NetServer @relation(fields: [server_id], references: [id])
-  token      String    @unique
-  created_at DateTime  @default(now())
-  expires_at DateTime
-  updated_at DateTime  @updatedAt
+  @@map("verification_factors")
 }
 
 model UserRelation {
@@ -144,6 +123,8 @@ model UserRelation {
   target_ref    String
   created_at    DateTime         @default(now())
   updated_at    DateTime         @updatedAt
+
+  @@map("user_relations")
 }
 
 enum UserRelationType {
@@ -170,6 +151,8 @@ model Instance {
   cache          Json?
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
+
+  @@map("instances")
 }
 
 enum SessionType {
@@ -188,6 +171,8 @@ model Session {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
   devices     Device[]
+
+  @@map("sessions")
 }
 
 model Device {
@@ -200,6 +185,7 @@ model Device {
   created_at DateTime @default(now())
 
   @@unique([session_id, ip, user_agent], name: "session_id_ip_user_agent")
+  @@map("devices")
 }
 
 model Badger {
@@ -209,6 +195,8 @@ model Badger {
   updated_at DateTime @updatedAt
   relay_id   Int      @unique
   relay      Relay    @relation(fields: [relay_id], references: [id], onDelete: Cascade)
+
+  @@map("badgers")
 }
 
 model Relay {
@@ -216,6 +204,8 @@ model Relay {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
   badger     Badger?
+
+  @@map("relays")
 }
 
 model Avatar {
@@ -228,6 +218,8 @@ model Avatar {
   created_at  DateTime      @default(now())
   updated_at  DateTime      @updatedAt
   assets      AvatarAsset[]
+
+  @@map("avatars")
 }
 
 model AvatarAsset {
@@ -246,6 +238,7 @@ model AvatarAsset {
 
   @@index([version, engine, platform, avatar_id])
   @@index([hash])
+  @@map("avatar_assets")
 }
 
 model World {
@@ -260,6 +253,8 @@ model World {
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt
   assets           WorldAsset[]
+
+  @@map("worlds")
 }
 
 model WorldAsset {
@@ -278,6 +273,7 @@ model WorldAsset {
   updated_at DateTime @updatedAt
 
   @@index([version, engine, platform, world_id])
+  @@map("world_assets")
 }
 
 model Notification {
@@ -293,6 +289,7 @@ model Notification {
 
   @@index([external_id])
   @@index([expires_at])
+  @@map("notifications")
 }
 
 enum NotificationDeletion {
@@ -308,6 +305,8 @@ model Presence {
   type       String
   data       Json
   created_at DateTime @default(now())
+
+  @@map("presences")
 }
 
 model Table {
@@ -322,6 +321,7 @@ model Table {
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([key, user_id])
+  @@map("tables")
 }
 
 // ========== MESSAGING SYSTEM ==========
@@ -335,6 +335,8 @@ model Conversation {
   members      ConversationMember[]
   messages     Message[]
   last_message DateTime? // Timestamp du dernier message pour tri
+
+  @@map("conversations")
 }
 
 model ConversationMember {
@@ -351,6 +353,7 @@ model ConversationMember {
   @@unique([conversation_id, user_ref])
   @@index([user_ref])
   @@index([conversation_id, last_read_at])
+  @@map("conversation_members")
 }
 
 enum MessageStatus {
@@ -375,6 +378,7 @@ model Message {
 
   @@index([conversation_id, created_at])
   @@index([author_ref])
+  @@map("messages")
 }
 
 model ConversationReference {
@@ -389,6 +393,7 @@ model ConversationReference {
   user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([id, server, user_id], name: "id_server_user_id")
+  @@map("conversation_references")
 }
 
 /// Runtime-editable configuration override.
@@ -399,4 +404,6 @@ model Config {
   value      String
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  @@map("configs")
 }
