@@ -259,8 +259,6 @@ export default class NetSocket {
             total: socketSubscriptions.size
         });
 
-        if (addedEvents.length > 0)
-            Debug.debug(`[${Env.sync('HIDE_IP') ? '<hidden>' : socket.data.ip}] Subscribed to events: ${addedEvents.join(', ')}`);
         if (deniedEvents.length > 0)
             Debug.debug(`[${Env.sync('HIDE_IP') ? '<hidden>' : socket.data.ip}] Denied subscription to events: ${deniedEvents.join(', ')}`);
     }
@@ -295,8 +293,6 @@ export default class NetSocket {
             unsubscribed: removedEvents,
             total: socketSubscriptions.size
         });
-
-        Debug.debug(`[${Env.sync('HIDE_IP') ? '<hidden>' : socket.data.ip}] Unsubscribed from events: ${removedEvents.join(', ')}`);
     }
 
     /**

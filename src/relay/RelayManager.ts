@@ -595,7 +595,6 @@ export default class RelayManager {
                 }
             };
         });
-        console.log(o);
 
         message.reply({
             success: true,

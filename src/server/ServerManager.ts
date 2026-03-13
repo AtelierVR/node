@@ -268,7 +268,6 @@ export class ServerManager {
         const uriType = host[0].match(ipv4reg) ? 'IPv4' : host[0].match(ipv6reg) ? 'IPv6' : 'DNS';
 
         if (uriType === 'IPv4' || uriType === 'IPv6') {
-            Debug.log(`Finding master gateway for IP address ${host[0]} (${uriType}) for ${address}...`);
             let uri = new URL(`tcp://${host[0]}:${host[1] || Env.sync('NODE_PORT')}`);
             let fmg = await this.findGM(uri.host, true);
             if (fmg) return fmg;
@@ -276,7 +275,6 @@ export class ServerManager {
         }
 
         if (host[0] === "localhost") {
-            Debug.log(`Finding master gateway for localhost for ${address}...`);
             let uri = new URL(`tcp://${host[0]}:${host[1] || Env.sync('NODE_PORT')}`);
             let fmg = await this.findGM(uri.host, true);
             if (fmg) return fmg;
@@ -284,7 +282,6 @@ export class ServerManager {
         }
 
         if (uriType === 'DNS') {
-            Debug.log(`Finding master gateway for DNS address ${host[0]} for ${address}...`);
             let uri = new URL(`tcp://${host[0]}:${host[1] || Env.sync('NODE_PORT')}`);
             let txt = await this.findTXT(`_nox.${uri.hostname}`);
             if (txt.length > 0)
@@ -304,7 +301,6 @@ export class ServerManager {
         const protos = forceHTTP ? ['http'] : ['https', 'http'];
         for (const protocol of protos) {
             try {
-                Debug.log(`Finding master gateway for ${protocol.toUpperCase()} protocol for ${domain}...`);
                 const uri = new URL(`${protocol}://${domain}/.well-known/nox`);
                 const req = await request(uri);
                 if (req.statusCode === 200)
