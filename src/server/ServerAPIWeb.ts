@@ -51,11 +51,53 @@ export class ServerAPIWeb {
     }
 
     /**
-     * Get the server info
+     * Get the server info with live statistics
      * @param response 
      */
-    getInfo(response: Response) {
+    async getInfo(response: Response) {
         const infos = this.manager.getInfos();
+
+        // Collect DB stats in parallel
+        const [totalUsers, totalWorlds, totalAvatars, totalInstances, activeUsers] = await Promise.all([
+            this.app.database.user.count(),
+            this.app.database.world.count(),
+            this.app.database.avatar.count(),
+            this.app.database.instance.count(),
+            this.app.database.user.count({
+                where: { sessions: { some: { expires: { gt: new Date() } } } }
+            }),
+        ]);
+
+        // Count users connected via WebSocket
+        let connectedUsers = 0;
+        for (const socket of this.app.http.socket.sockets) {
+            if (socket.data.isBearer()) connectedUsers++;
+        }
+
+        // Collect live relay stats
+        let liveInstances = 0;
+        let liveClients = 0;
+        let livePlayerCount = 0;
+        try {
+            const relayRecords = await this.app.database.relay.findMany({});
+            const Relay = (await import('../relay/Relay')).default;
+            await Promise.all(relayRecords.map(async (r) => {
+                const relay = new Relay(r, this.app);
+                const status = await relay.getStatus();
+                if (status instanceof Error) return;
+                liveInstances += status.i ?? 0;
+                liveClients   += status.c ?? 0;
+            }));
+            // Count players from relay instances
+            for (const r of relayRecords) {
+                const relay = new Relay(r, this.app);
+                const inst = await relay.getInstances(1000, 0);
+                if (inst instanceof Error) continue;
+                for (const instance of inst.instances)
+                    livePlayerCount += instance.players.length;
+            }
+        } catch (_) { /* relay not available */ }
+
         response.send<IRServer>({
             id: infos.id,
             title: infos.title,
@@ -71,6 +113,17 @@ export class ServerAPIWeb {
             ready_at: infos.ready_at.getTime(),
             icon: infos.icon.href,
             certificate: infos.certificate,
+            statistics: {
+                users: totalUsers,
+                active_users: activeUsers,
+                connected_users: connectedUsers,
+                worlds: totalWorlds,
+                avatars: totalAvatars,
+                instances: totalInstances,
+                live_instances: liveInstances,
+                live_clients: liveClients,
+                live_players: livePlayerCount,
+            },
         });
     }
 
@@ -222,6 +275,18 @@ export interface IRWellKnown {
     } | null;
 }
 
+export interface IRServerStatistics {
+    users: number;
+    active_users: number;
+    connected_users: number;
+    worlds: number;
+    avatars: number;
+    instances: number;
+    live_instances: number;
+    live_clients: number;
+    live_players: number;
+}
+
 export interface IRServer {
     id: string;
     title: string;
@@ -237,6 +302,7 @@ export interface IRServer {
     ready_at: number;
     icon: string;
     certificate: string;
+    statistics: IRServerStatistics;
 }
 
 export interface IRConfigEntry {
