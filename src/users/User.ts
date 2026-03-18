@@ -264,11 +264,11 @@ export default class User implements Omit<IUser, 'links'> {
     }
 
     useManualFollowValidation() {
-        return hasTag(this.getTags(), 'sys:manual_follow_validation');
+        return hasTag(this.getTags(), 'usr:manual_follow_validation');
     }
 
     useAutoRejectFollow() {
-        return hasTag(this.getTags(), 'sys:auto_reject_follow');
+        return hasTag(this.getTags(), 'usr:auto_reject_follow');
     }
 
     setThumbnailFile(file: Express.Multer.File, hash: string) {
