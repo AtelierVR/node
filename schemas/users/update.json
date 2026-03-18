@@ -19,11 +19,10 @@
             "$ref": "./types.json#/definitions/display"
         },
         "email": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "$ref": "../types.json#/definitions/email"
+            "oneOf": [
+                { "type": "null" },
+                { "$ref": "../types.json#/definitions/email" }
+            ]
         },
         "password": {
             "type": [
@@ -98,18 +97,16 @@
             }
         },
         "home": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "$ref": "../worlds/types.json#/definitions/identifier"
+            "oneOf": [
+                { "type": "null" },
+                { "$ref": "../worlds/types.json#/definitions/identifier" }
+            ]
         },
         "avatar": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "$ref": "../avatars/types.json#/definitions/identifier"
+            "oneOf": [
+                { "type": "null" },
+                { "$ref": "../avatars/types.json#/definitions/identifier" }
+            ]
         },
         "tags": {
             "type": [

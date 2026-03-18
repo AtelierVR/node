@@ -214,7 +214,7 @@ export interface IUpdateUser {
     username?: string;
     display?: string;
     bio?: string | null;
-    email?: string;
+    email?: string | null;
     password?: string;
     current_password?: string;
     factor_code?: string;

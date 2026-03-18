@@ -533,6 +533,9 @@ export default class UserAPIWeb {
             if (existingUser && existingUser.id !== user.id)
                 return response.send(new ErrorMessage(ErrorCodes.AlreadyExists, 'User', 'email'));
             sensitive = true;
+        } else if (input.email === null && user.email !== null) {
+            // Email deletion requested
+            sensitive = true;
         }
 
         if (input.tags) {
@@ -566,6 +569,9 @@ export default class UserAPIWeb {
         const emailChanged = input.email && input.email !== user.email;
         if (emailChanged) {
             user.email = input.email || null;
+            user.email_verified = false;
+        } else if (input.email === null && user.email !== null) {
+            user.email = null;
             user.email_verified = false;
         }
 
