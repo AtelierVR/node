@@ -105,10 +105,9 @@ export class Database {
                             tags: ["sys:admin"],
                         },
                         update: {
-                            username: Env.sync('ADMIN_USERNAME'),
-                            display: Env.sync('ADMIN_DISPLAY'),
-                            password: Env.sync('ADMIN_PASSWORD'),
-                            links: [this.app.server.getInfos().gateways.http.toString()],
+                            // username: Env.sync('ADMIN_USERNAME'),
+                            // display: Env.sync('ADMIN_DISPLAY'),
+                            // password: Env.sync('ADMIN_PASSWORD'),
                             tags: mergedTags,
                         },
                     }),
