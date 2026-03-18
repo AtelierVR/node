@@ -378,9 +378,13 @@ export default class RelationAPIWeb {
         if (target instanceof User && target.id === initiator.id)
             return response.send(new ErrorMessage(ErrorCodes.InvalidRequest));
 
+        let relation = await this.manager.getRelation(initiator, target);
+        if (!relation || (relation.type !== UserRelationType.FOLLOW && relation.type !== UserRelationType.REQUEST))
+            return null;
+
         let unFollowed = target instanceof User
-            ? await this.manager.requestLocalUnfollow(initiator, target) // user unfollow target
-            : await this.manager.requestNetUnfollow(initiator, target); // user unfollow netTarget
+            ? await this.manager.requestLocalUnfollow(relation, initiator, target) // user unfollow target
+            : await this.manager.requestNetUnfollow(relation, initiator, target); // user unfollow netTarget
 
         if (unFollowed === null)
             return response.send(new ErrorMessage(ErrorCodes.NotFound, 'relation'));

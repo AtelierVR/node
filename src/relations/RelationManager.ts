@@ -1,4 +1,4 @@
-import { $Enums, UserRelation as IUserRelation, UserRelationType } from "@prisma/client";
+import { $Enums, Prisma, UserRelation as IUserRelation, UserRelationType } from "@prisma/client";
 import Reileta from "../Main";
 import User from "../users/User";
 import RelationAPIWeb, { IMakeRelationRequest, IMakeRelationResponse } from "./RelationAPIWeb";
@@ -86,8 +86,8 @@ export default class RelationManager {
         try {
             relation = await this.app.database.userRelation.findFirst({
                 where: {
-                    initiator_ref: new UserIdentifier(user.id).toString(),
-                    target_ref: new UserIdentifier(target.id).toString()
+                    initiator_ref: (await user.toIdentifier()).toString(),
+                    target_ref: (await target.toIdentifier()).toString()
                 }
             });
         } catch { }
@@ -267,11 +267,7 @@ export default class RelationManager {
         return false;
     }
 
-    async requestLocalUnfollow(user: User, target: User) {
-        let relation = await this.getRelation(user, target);
-        if (!relation || (relation.type !== UserRelationType.FOLLOW && relation.type !== UserRelationType.REQUEST))
-            return null;
-
+    async requestLocalUnfollow(relation: UserRelation, user: User, target: User) {
         if (relation.type === UserRelationType.REQUEST) {
             for (let s of await user.getSockets())
                 s.emitData('request_following_canceled', { user: target.toIdentifier().toString(), dev: 13 });
@@ -288,7 +284,38 @@ export default class RelationManager {
         return await relation.delete();
     }
 
-    async requestNetUnfollow(user: User, target: User | NetUser) {
-        return null;
+    async requestNetUnfollow(relation: UserRelation, user: User, target: NetUser): Promise<boolean | null> {
+        try {
+            let body: IMakeRelationRequest = {
+                type: 'unfollow',
+                initiator: user.id,
+                target: target.id
+            };
+
+            let server = await target.getNetServer();
+            let response = await server.fetch<IMakeRelationResponse>('/api/relations', 'relations/update_response', user, {
+                method: 'POST',
+                body
+            });
+
+            if (response.error || !response.data)
+                return false;
+
+            if (response.data.type !== 'unfollow_accepted')
+                return false;
+
+            if (relation.type === UserRelationType.REQUEST) {
+                for (let s of await user.getSockets())
+                    s.emitData('request_following_canceled', { user: (await target.toIdentifier()).toString() });
+            } else {
+                for (let s of await user.getSockets())
+                    s.emitData('remove_following', { user: (await target.toIdentifier()).toString() });
+            }
+
+            return await relation.delete();
+        } catch (e) {
+            Debug.error(e);
+            return false;
+        }
     }
 }

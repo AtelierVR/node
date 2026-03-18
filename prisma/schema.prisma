@@ -124,6 +124,7 @@ model UserRelation {
   created_at    DateTime         @default(now())
   updated_at    DateTime         @updatedAt
 
+  @@unique([initiator_ref, target_ref])
   @@map("user_relations")
 }
 
