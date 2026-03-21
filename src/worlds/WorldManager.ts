@@ -64,14 +64,12 @@ export default class WorldManager {
         let worlds: IWorld[] = [];
         let total: number = 0;
         try {
-            var query: any = {
+            const query: any = search ? {
                 OR: [
-                    ...(search ? [
-                        { title: { contains: search, mode: 'insensitive' } },
-                        { description: { contains: search, mode: 'insensitive' } }
-                    ] : []),
+                    { title: { contains: search, mode: 'insensitive' } },
+                    { description: { contains: search, mode: 'insensitive' } }
                 ]
-            }
+            } : {};
             worlds = await this.app.database.world.findMany({
                 where: query,
                 orderBy: search ? {

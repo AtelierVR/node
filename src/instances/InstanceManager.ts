@@ -46,17 +46,16 @@ export default class InstanceManager {
         let instances: IInstance[] = [];
         let total: number = 0;
         try {
-            var query: any = {
-                OR: [
-                    ...(search.query ? [
-                        { name: { contains: search.query, mode: 'insensitive' } },
-                        { title: { contains: search.query, mode: 'insensitive' } },
-                        { description: { contains: search.query, mode: 'insensitive' } }
-                    ] : []),
-                    ...(search.world ? [{ world_ref: search.world.toString() }] : []),
-                    ...(search.owner ? [{ owner_ref: search.owner.toString() }] : [])
-                ]
-            };
+            const conditions: any[] = [
+                ...(search.query ? [
+                    { name: { contains: search.query, mode: 'insensitive' } },
+                    { title: { contains: search.query, mode: 'insensitive' } },
+                    { description: { contains: search.query, mode: 'insensitive' } }
+                ] : []),
+                ...(search.world ? [{ world_ref: search.world.toString() }] : []),
+                ...(search.owner ? [{ owner_ref: search.owner.toString() }] : [])
+            ];
+            const query: any = conditions.length > 0 ? { OR: conditions } : {};
             instances = await this.app.database.instance.findMany({
                 where: query,
                 orderBy: search.query ? {
