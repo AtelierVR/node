@@ -3,6 +3,8 @@ import { ApiException } from './api-exception';
 import { Response, Request } from 'express';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { ApiErrorCode, ERROR_DEFINITIONS } from './api-error.factory';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 
 @Catch()
@@ -23,6 +25,19 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
             this.logger.error(`${status} - ${message}`, exception instanceof Error ? exception.stack : undefined);
             response.status(status).send(`${status} - ${message}`);
             return;
+        }
+
+        // Fallback: serve static files from public/api/ for unmatched routes
+        if (exception instanceof NotFoundException && request.method === 'GET') {
+            const relativePath = request.path.replace(/^\/api\/?/, '');
+            const staticFile = path.join(process.cwd(), 'public', 'api', relativePath);
+            try {
+                const stat = fs.statSync(staticFile);
+                if (stat.isFile()) 
+                    return response.sendFile(staticFile);
+            } catch {
+                // file not found — fall through to standard error response
+            }
         }
 
         const api = this.toApiException(exception, request);

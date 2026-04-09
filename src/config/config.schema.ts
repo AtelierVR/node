@@ -160,8 +160,14 @@ export class InstanceConfig {
   @Description('Public URL to the instance icon/logo.')
   @ConfigVar({ key: 'instance.icon', env: 'INSTANCE_ICON' })
   @IsUrl()
-  @IsOptional()
-  icon?: string;
+  @IsNotEmpty()
+  @Default(r=> {
+    const secure = r.get('http.secure') === 'true';
+    const ssl = r.get('http.ssl') === 'true';
+    const domain = r.get('http.domain') ?? 'localhost:3000';
+    return `http${secure || ssl ? 's' : ''}://${domain}/api/icon.png`;
+  })
+  icon: string;
 
   @Label('Instance Features')
   @Description('List of enabled feature modules on this instance (e.g. user, world, avatar, instance, server).')
