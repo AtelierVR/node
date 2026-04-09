@@ -30,12 +30,11 @@ RUN npm run build
 # Production stage
 FROM base AS runner
 ENV NODE_ENV=production
-RUN addgroup --system --gid 1000 nodejs && adduser --system --uid 1000 nestjs
-COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
+COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY config.yaml ./config.yaml
-COPY --chown=nestjs:nodejs tools/ ./tools/
-USER nestjs
+COPY --chown=node:node tools/ ./tools/
+USER node
 EXPOSE 8080
 CMD ["node", "dist/main"]

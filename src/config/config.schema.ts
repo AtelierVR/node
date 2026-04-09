@@ -131,6 +131,19 @@ export class GatewayConfig {
   @IsString()
   @IsNotEmpty()
   ws: string;
+
+  @Label('Web Base URL')
+  @Description('Public base URL for web access, used in metadata and links. Defaults to http(s)://{domain}/.')
+  @Default((r) => {
+    const secure = r.get('http.secure') === 'true';
+    const ssl = r.get('http.ssl') === 'true';
+    const address = r.get('address') ?? 'localhost:3000';
+    return `http${secure || ssl ? 's' : ''}://${address}/`;
+  })
+  @ConfigVar({ key: 'gateway.web', env: 'GATEWAY_WEB' })
+  @IsString()
+  @IsNotEmpty()
+  web: string
 }
 
 export class InstanceConfig {

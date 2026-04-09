@@ -74,9 +74,9 @@ export class WellKnownService {
         return await this.config.get<string>('gateway.ws');
     }
 
-    /** Instance root URL: strips trailing /api/ → https://example.com */
-    async instanceBaseUrl(): Promise<string> {
-        return (await this.apiBaseUrl()).replace(/\/api\/?$/, '');
+    /** e.g. https://example.com/ */
+    async webBaseUrl(): Promise<string> {
+        return await this.config.get<string>('gateway.web');
     }
 
     async address(): Promise<string> {
@@ -137,18 +137,18 @@ export class WellKnownService {
             software: this.software,
             started: new Date(Date.now() - Math.floor(process.uptime() * 1000)).getTime(),
             gateway: {
-                web: await this.instanceBaseUrl(),
+                web: await this.webBaseUrl(),
                 ws: await this.wsBaseUrl(),
                 api: await this.apiBaseUrl(),
             },
             endpoints: {
-                wellknown: `${await this.instanceBaseUrl()}/.well-known/nox`,
-                webfinger: `${await this.instanceBaseUrl()}/.well-known/webfinger?resource={uri}`,
-                nodeinfo: `${await this.instanceBaseUrl()}/.well-known/nodeinfo`,
-                hostmeta: `${await this.instanceBaseUrl()}/.well-known/host-meta`,
-                terms: `${await this.instanceBaseUrl()}/terms.md`,
-                privacy: `${await this.instanceBaseUrl()}/privacy.md`,
-                rules: `${await this.instanceBaseUrl()}/rules.md`,
+                wellknown: new URL(`.well-known/nox`, await this.webBaseUrl()).toString(),
+                webfinger: new URL(`.well-known/webfinger?resource={uri}`, await this.webBaseUrl()).toString(),
+                nodeinfo: new URL(`.well-known/nodeinfo`, await this.webBaseUrl()).toString(),
+                hostmeta: new URL(`.well-known/host-meta`, await this.webBaseUrl()).toString(),
+                terms: new URL(`terms.md`, await this.webBaseUrl()).toString(),
+                privacy: new URL(`privacy.md`, await this.webBaseUrl()).toString(),
+                rules: new URL(`rules.md`, await this.webBaseUrl()).toString(),
             },
             versions: {
                 node: process.version.replace(/^v/, ''),

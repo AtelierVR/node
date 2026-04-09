@@ -29,11 +29,11 @@ export class FediverseService implements OnModuleInit {
             links: [
                 {
                     rel: 'http://nodeinfo.diaspora.software/ns/schema/2.1',
-                    href: `${await this.wellKnown.instanceBaseUrl()}/nodeinfo/2.1`,
+                    href: `${await this.wellKnown.webBaseUrl()}/nodeinfo/2.1`,
                 },
                 {
                     rel: 'nox/1.0',
-                    href: `${await this.wellKnown.instanceBaseUrl()}/.well-known/nox`,
+                    href: `${await this.wellKnown.webBaseUrl()}/.well-known/nox`,
                 }
             ],
         };
@@ -66,7 +66,7 @@ export class FediverseService implements OnModuleInit {
      * @returns XML string
      */
     async hostMetaXml(): Promise<string> {
-        const template = `${await this.wellKnown.instanceBaseUrl()}/.well-known/webfinger?resource={uri}`;
+        const template = `${await this.wellKnown.webBaseUrl()}/.well-known/webfinger?resource={uri}`;
         return [
             '<?xml version="1.0" encoding="UTF-8"?>',
             '<XRD xmlns="http://docs.oasis-open.org/ns/xri/xrd-1.0">',
