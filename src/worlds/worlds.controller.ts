@@ -142,7 +142,7 @@ export class WorldsController {
 
 
         const world = await this.worlds.createWorld(body, user);
-        return world.sanitize();
+        return await world.sanitize();
     }
 
     // ── Single world ─────────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ export class WorldsController {
             if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `World (${id})`);
             return resp.data;
         }
-        return world!.sanitize();
+        return await world!.sanitize();
     }
 
     /** POST /api/worlds/:id */
@@ -192,7 +192,7 @@ export class WorldsController {
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify world');
 
         const updated = await this.worlds.updateWorld(world.id, body);
-        return updated.sanitize();
+        return await updated.sanitize();
     }
 
     /** DELETE /api/worlds/:id — owner only */
@@ -281,7 +281,7 @@ export class WorldsController {
 
     /**
      * GET /api/worlds/:id/assets
-     * Query: version (repeated), engine (repeated), platform (repeated), show_empty, limit, offset
+     * Query: version (repeated), engine (repeated), platform (repeated), empty, limit, offset
      */
     @ApiOperation({ summary: 'List world assets', description: 'Paginated list of assets for a world, filterable by version/engine/platform.' })
     @ApiWrappedArrayResponse(ApiWorldAssetDto)
@@ -297,7 +297,7 @@ export class WorldsController {
         @Query('version') version?: string | string[],
         @Query('engine') engine?: string | string[],
         @Query('platform') platform?: string | string[],
-        @Query('show_empty') showEmpty?: string,
+        @Query('empty') showEmpty?: string,
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
     ) {
@@ -310,7 +310,7 @@ export class WorldsController {
             if (version) (Array.isArray(version) ? version : [version]).forEach(v => params.append('version', v));
             if (engine) (Array.isArray(engine) ? engine : [engine]).forEach(v => params.append('engine', v));
             if (platform) (Array.isArray(platform) ? platform : [platform]).forEach(v => params.append('platform', v));
-            if (showEmpty !== undefined) params.set('show_empty', showEmpty);
+            if (showEmpty !== undefined) params.set('empty', showEmpty);
             if (rawLimit) params.set('limit', rawLimit);
             if (rawOffset) params.set('offset', rawOffset);
             const qs = params.toString();
@@ -338,7 +338,7 @@ export class WorldsController {
             total: result.total,
             limit,
             offset,
-            items: result.assets.map(a => a.sanitize()),
+            items: await Promise.all(result.assets.map(a => a.sanitize())),
         };
     }
 
@@ -363,7 +363,7 @@ export class WorldsController {
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'create asset');
 
         const asset = await this.worlds.createAsset(world.id, body);
-        return asset.sanitize();
+        return await asset.sanitize();
     }
 
     /** POST /api/worlds/:id/assets/:asset_id/file — enqueue asset file for async processing */

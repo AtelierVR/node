@@ -22,7 +22,7 @@ export class Avatar {
     }
 
     async sanitize(this: AvatarWithMethods): Promise<ApiAvatar> {
-        const domain = await this.manager.domain();
+        const domain = await this.manager.address();
         const makePublic = async (val: string | null) => {
             if (!val) return null;
             try {

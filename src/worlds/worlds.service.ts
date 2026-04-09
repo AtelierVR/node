@@ -90,7 +90,7 @@ export class WorldsService {
     async findAssetById(id: number): Promise<WorldAssetWithMethods | null> {
         const model = await this.worldAssets.findUnique({ where: { id } });
         if (!model) return null;
-        return WorldAsset.attach(model);
+        return WorldAsset.attach(model, this);
     }
 
     async findAssetByIndex(
@@ -103,7 +103,7 @@ export class WorldsService {
             where: { worldId_version_engine_platform: { worldId, version, engine, platform } },
         });
         if (!model) return null;
-        return WorldAsset.attach(model);
+        return WorldAsset.attach(model, this);
     }
 
     async findAssetsByWorldId(worldId: number, filters: {
@@ -128,7 +128,7 @@ export class WorldsService {
             this.worldAssets.count({ where }),
         ]);
 
-        return { assets: models.map(m => WorldAsset.attach(m)), total };
+        return { assets: models.map(m => WorldAsset.attach(m, this)), total };
     }
 
     // ── Search ───────────────────────────────────────────────────────────────────
@@ -309,7 +309,7 @@ export class WorldsService {
                 url: dto.url ?? null,
             },
         });
-        return WorldAsset.attach(model);
+        return WorldAsset.attach(model, this);
     }
 
     /**

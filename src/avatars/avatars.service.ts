@@ -35,7 +35,7 @@ export class AvatarsService {
         this.queue.register(AVATAR_ASSET_PROCESSOR_TYPE, new AvatarAssetProcessor(this));
     }
 
-    async domain(): Promise<string> {
+    async address(): Promise<string> {
         return this.wellKnown.address();
     }
 
@@ -82,7 +82,7 @@ export class AvatarsService {
     async findAssetById(id: number): Promise<AvatarAssetWithMethods | null> {
         const model = await this.prisma.avatarAssets.findUnique({ where: { id } });
         if (!model) return null;
-        return AvatarAsset.attach(model);
+        return AvatarAsset.attach(model, this);
     }
 
     async findAssetByIndex(
@@ -95,7 +95,7 @@ export class AvatarsService {
             where: { avatarId_version_engine_platform: { avatarId, version, engine, platform } },
         });
         if (!model) return null;
-        return AvatarAsset.attach(model);
+        return AvatarAsset.attach(model, this);
     }
 
     async findAssetsByAvatarId(avatarId: number, filters: {
@@ -120,7 +120,7 @@ export class AvatarsService {
             this.prisma.avatarAssets.count({ where }),
         ]);
 
-        return { assets: models.map(m => AvatarAsset.attach(m)), total };
+        return { assets: models.map(m => AvatarAsset.attach(m, this)), total };
     }
 
     // ── Search ───────────────────────────────────────────────────────────────────
@@ -263,7 +263,7 @@ export class AvatarsService {
                 url: dto.url ?? null,
             },
         });
-        return AvatarAsset.attach(model);
+        return AvatarAsset.attach(model, this);
     }
 
     enqueueAssetFile(

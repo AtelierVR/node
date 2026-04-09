@@ -12,7 +12,6 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiWrappedSuccessResponse, ApiErrorResponse, ApiOptionalBearerAuth } from '../api/swagger';
 import { ApiAvatarDto, ApiAvatarAssetDto } from './dto/avatar-response.dto';
 import { ApiAssetJobStatusDto } from '../storage/dto/storage-response.dto';
-import { ApiSuccessDto } from '../api/dto/success.dto';
 import { AvatarsService } from './avatars.service';
 import { NoxIdentifier } from '../common/identifier';
 import { ApiException } from '../api/api-exception';
@@ -50,7 +49,7 @@ export class AvatarsController {
 
     private async resolveLocalAvatar(id: string) {
         const identifier = NoxIdentifier.parse(id);
-        if (!identifier.isLocal(await this.avatars.domain()))
+        if (!identifier.isLocal(await this.avatars.address()))
             throw new ApiException(ApiErrorCode.NOT_IMPLEMENTED, null, `Fetch remote avatar (${identifier.toString()})`);
         const numericId = identifier.numericId;
         if (numericId === null)
@@ -62,7 +61,7 @@ export class AvatarsController {
 
     private async resolveAvatarOrRemote(id: string) {
         const identifier = NoxIdentifier.parse(id);
-        if (identifier.isLocal(await this.avatars.domain())) {
+        if (identifier.isLocal(await this.avatars.address())) {
             const numericId = identifier.numericId;
             if (numericId === null)
                 throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Avatar ID must be numeric');
@@ -97,7 +96,7 @@ export class AvatarsController {
         let ids: number[] | undefined;
         if (id) {
             const idsParam = Array.isArray(id) ? id : [id];
-            const domain = await this.avatars.domain();
+            const domain = await this.avatars.address();
             ids = [];
             for (const raw of idsParam) {
                 try {
@@ -132,7 +131,7 @@ export class AvatarsController {
         if (!this.avatars.canCreateAvatar(req.user))
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'create avatar');
 
-        const domain = await this.avatars.domain();
+        const domain = await this.avatars.address();
         const ownerRef = `${req.user.id}@${domain}`;
         const avatar = await this.avatars.createAvatar(body, ownerRef);
         return avatar.sanitize();
@@ -179,7 +178,7 @@ export class AvatarsController {
         @Body() body: UpdateAvatarDto,
     ) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.domain();
+        const domain = await this.avatars.address();
         const userRef = `${req.user.id}@${domain}`;
         if (!avatar.isOwner(userRef) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify avatar');
@@ -199,7 +198,7 @@ export class AvatarsController {
     @Delete(':id')
     async deleteAvatar(@Param('id') id: string, @Req() req: Request & UserAuthenticatedRequest) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.domain();
+        const domain = await this.avatars.address();
         const userRef = `${req.user.id}@${domain}`;
         if (!avatar.isOwner(userRef) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'delete avatar');
@@ -252,7 +251,7 @@ export class AvatarsController {
         @UploadedFile() file?: Express.Multer.File,
     ) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.domain();
+        const domain = await this.avatars.address();
         const userRef = `${req.user.id}@${domain}`;
         if (!avatar.isOwner(userRef) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify avatar');
@@ -274,7 +273,7 @@ export class AvatarsController {
 
     /**
      * GET /api/avatars/:id/assets
-     * Query: version (repeated), engine (repeated), platform (repeated), show_empty, limit, offset
+     * Query: version (repeated), engine (repeated), platform (repeated), empty, limit, offset
      */
     @ApiOperation({ summary: 'List avatar assets', description: 'Paginated list of assets for an avatar, filterable by version/engine/platform.' })
     @ApiWrappedArrayResponse(ApiAvatarAssetDto)
@@ -290,7 +289,7 @@ export class AvatarsController {
         @Query('version') version?: string | string[],
         @Query('engine') engine?: string | string[],
         @Query('platform') platform?: string | string[],
-        @Query('show_empty') showEmpty?: string,
+        @Query('empty') showEmpty?: string,
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
     ) {
@@ -303,7 +302,7 @@ export class AvatarsController {
             if (version) (Array.isArray(version) ? version : [version]).forEach(v => params.append('version', v));
             if (engine) (Array.isArray(engine) ? engine : [engine]).forEach(v => params.append('engine', v));
             if (platform) (Array.isArray(platform) ? platform : [platform]).forEach(v => params.append('platform', v));
-            if (showEmpty !== undefined) params.set('show_empty', showEmpty);
+            if (showEmpty !== undefined) params.set('empty', showEmpty);
             if (rawLimit) params.set('limit', rawLimit);
             if (rawOffset) params.set('offset', rawOffset);
             const qs = params.toString();
@@ -350,7 +349,7 @@ export class AvatarsController {
         @Body() body: CreateAvatarAssetDto,
     ) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.domain();
+        const domain = await this.avatars.address();
         const userRef = `${req.user.id}@${domain}`;
         if (!avatar.isOwner(userRef) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'create asset');
@@ -378,7 +377,7 @@ export class AvatarsController {
         @UploadedFile() file?: Express.Multer.File,
     ) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.domain();
+        const domain = await this.avatars.address();
         const userRef = `${req.user.id}@${domain}`;
         if (!avatar.isOwner(userRef) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'upload asset');
@@ -516,7 +515,7 @@ export class AvatarsController {
         @Req() req: Request & UserAuthenticatedRequest,
     ) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.domain();
+        const domain = await this.avatars.address();
         const userRef = `${req.user.id}@${domain}`;
         if (!avatar.isOwner(userRef) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'delete asset');
