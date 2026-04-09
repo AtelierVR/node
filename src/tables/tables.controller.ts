@@ -6,7 +6,7 @@ import type { Response, Request } from 'express';
 import { createHash } from 'node:crypto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ApiWrappedResponse, ApiErrorResponse } from '../api/swagger';
-import { TableListDataDto, PublicTableDto, TableDeleteResponseDto } from './dto/table-response.dto';
+import { TableListDataDto, PublicTableDto, PublicTableListDto, TableDeleteResponseDto } from './dto/table-response.dto';
 import { TablesService } from './tables.service';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
@@ -45,8 +45,8 @@ export class TablesController {
         if (limit > 100) limit = 100;
         if (!Number.isFinite(offset) || offset < 0) offset = 0;
 
-        const { tables, total } = await this.tables.getAll(req.user.id, limit, offset);
-        return { tables, limit, offset, total };
+        const { items, total } = await this.tables.getAll(req.user.id, limit, offset);
+        return { items, limit, offset, total };
     }
 
     /**
@@ -88,10 +88,18 @@ export class TablesController {
     @Post('@me/tables/:key')
     async setTable(
         @Param('key') key: string,
-        @Req() req: Request & UserAuthenticatedRequest,
+        @Req() req: Request & UserAuthenticatedRequest & { rawBody?: Buffer },
         @Res() res: Response,
     ) {
-        const body = (req as any).rawBody as Buffer | undefined;
+        let body: Buffer | undefined = req.rawBody;
+        if (!body || body.length === 0) 
+            body = await new Promise<Buffer>((resolve, reject) => {
+                const chunks: Buffer[] = [];
+                req.on('data', (chunk: Buffer) => chunks.push(chunk));
+                req.on('end', () => resolve(Buffer.concat(chunks)));
+                req.on('error', reject);
+            });
+
         if (!body || body.length === 0)
             throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Request body is required');
 
@@ -155,16 +163,15 @@ export class TablesController {
         if (!table) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'public element');
 
         const accept = req.headers['accept'];
-        if (accept && accept !== '*/*' && table.mime && accept !== table.mime)
+        const acceptedTypes = accept ? accept.split(',').map(a => a.trim().split(';')[0].trim()) : [];
+        if (accept && !acceptedTypes.includes('*/*') && table.mime && !acceptedTypes.includes(table.mime))
             throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'MIME type not acceptable');
 
-        return res
-            .setHeader('Content-Type', table.mime || 'application/octet-stream')
-            .json({
-                key: table.key,
-                value: table.value,
-                updated_at: table.updatedAt.getTime(),
-            });
+        res.setHeader('Date', table.createdAt.toUTCString());
+        res.setHeader('Last-Modified', table.updatedAt.toUTCString());
+        res.setHeader('Content-Type', table.mime || 'application/octet-stream');
+        res.setHeader('Content-Length', table.value.length.toString());
+        return res.send(table.value);
     }
 
     /**
@@ -186,16 +193,48 @@ export class TablesController {
         if (!table) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'public element');
 
         const accept = req.headers['accept'];
-        if (accept && accept !== '*/*' && table.mime && accept !== table.mime)
+        const acceptedTypes = accept ? accept.split(',').map(a => a.trim().split(';')[0].trim()) : [];
+        if (accept && !acceptedTypes.includes('*/*') && table.mime && !acceptedTypes.includes(table.mime))
             throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'MIME type not acceptable');
 
-        return res
-            .setHeader('Content-Type', table.mime || 'application/octet-stream')
-            .json({
-                key: table.key,
-                value: table.value,
-                updated_at: table.updatedAt.getTime(),
-            });
+        res.setHeader('Date', table.createdAt.toUTCString());
+        res.setHeader('Last-Modified', table.updatedAt.toUTCString());
+        res.setHeader('Content-Type', table.mime || 'application/octet-stream');
+        res.setHeader('Content-Length', table.value.length.toString());
+        return res.send(table.value);
+    }
+
+    /**
+     * GET /api/users/:id/public
+     * Returns the list of public tables for a user (no auth required).
+     */
+    @ApiOperation({ summary: 'List user public tables', description: "Return the list of public table entries for a given user (no auth required)." })
+    @ApiWrappedResponse(PublicTableListDto)
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiErrorResponse(HttpStatus.NOT_IMPLEMENTED)
+    @Get(':id/public')
+    async listUserPublic(
+        @Param('id') id: string,
+        @Query('limit') rawLimit?: string,
+        @Query('offset') rawOffset?: string,
+    ) {
+        let limit = parseInt(rawLimit ?? '20', 10);
+        let offset = parseInt(rawOffset ?? '0', 10);
+        if (!Number.isFinite(limit) || limit < 1) limit = 20;
+        if (limit > 100) limit = 100;
+        if (!Number.isFinite(offset) || offset < 0) offset = 0;
+
+        const domain = await this.users.domain();
+        const identifier = NoxIdentifier.parse(id);
+        if (!identifier.isLocal(domain))
+            throw new ApiException(ApiErrorCode.NOT_IMPLEMENTED, null, 'List remote user public tables');
+
+        const user = await this.users.findByIdentifier(identifier);
+        if (!user) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');
+
+        const { items, total } = await this.tables.listPublic(user.id, limit, offset);
+        return { items, limit, offset, total };
     }
 
     /**
@@ -219,26 +258,21 @@ export class TablesController {
         if (!identifier.isLocal(domain))
             throw new ApiException(ApiErrorCode.NOT_IMPLEMENTED, null, 'Fetch remote user public element');
 
-        const numericId = identifier.numericId;
-        if (numericId === null)
-            throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'User ID must be numeric or a valid identifier');
-
-        const user = await this.users.findById(numericId);
+        const user = await this.users.findByIdentifier(identifier);
         if (!user) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');
 
         const table = await this.tables.getPublic(type, user.id);
         if (!table) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'public element');
 
         const accept = req.headers['accept'];
-        if (accept && accept !== '*/*' && table.mime && accept !== table.mime)
+        const acceptedTypes = accept ? accept.split(',').map(a => a.trim().split(';')[0].trim()) : [];
+        if (accept && !acceptedTypes.includes('*/*') && table.mime && !acceptedTypes.includes(table.mime))
             throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'MIME type not acceptable');
 
-        return res
-            .setHeader('Content-Type', table.mime || 'application/octet-stream')
-            .json({
-                key: table.key,
-                value: table.value,
-                updated_at: table.updatedAt.getTime(),
-            });
+        res.setHeader('Date', table.createdAt.toUTCString());
+        res.setHeader('Last-Modified', table.updatedAt.toUTCString());
+        res.setHeader('Content-Type', table.mime || 'application/octet-stream');
+        res.setHeader('Content-Length', table.value.length.toString());
+        return res.send(table.value);
     }
 }

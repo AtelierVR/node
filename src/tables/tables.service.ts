@@ -4,6 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 
 export interface TableMeta {
     key: string;
+    mime: string;
     hash: string;
     created_at: number;
     updated_at: number;
@@ -23,7 +24,7 @@ export class TablesService {
 
     constructor(private readonly prisma: PrismaService) { }
 
-    async getAll(userId: number, limit: number, offset: number): Promise<{ tables: Record<string, TableMeta>; total: number }> {
+    async getAll(userId: number, limit: number, offset: number): Promise<{ items: TableMeta[]; total: number }> {
         const [rows, total] = await Promise.all([
             this.prisma.userTables.findMany({
                 where: { userId },
@@ -34,16 +35,15 @@ export class TablesService {
             this.prisma.userTables.count({ where: { userId } }),
         ]);
 
-        const tables: Record<string, TableMeta> = {};
-        for (const row of rows)
-            tables[row.key] = {
-                key: row.key,
-                hash: sha256(row.value),
-                created_at: row.createdAt.getTime(),
-                updated_at: row.updatedAt.getTime(),
-            };
+        const items: TableMeta[] = rows.map(row => ({
+            key: row.key,
+            mime: row.mime,
+            hash: sha256(row.value),
+            created_at: row.createdAt.getTime(),
+            updated_at: row.updatedAt.getTime(),
+        }));
 
-        return { tables, total };
+        return { items, total };
     }
 
     async get(key: string, userId: number): Promise<TableRow | null> {
@@ -54,6 +54,27 @@ export class TablesService {
 
     async getPublic(type: string, userId: number): Promise<TableRow | null> {
         return this.get(`public.${type}`, userId);
+    }
+
+    async listPublic(userId: number, limit: number, offset: number): Promise<{ items: { key: string; mime: string; hash: string; updated_at: number }[]; total: number }> {
+        const where = { userId, key: { startsWith: 'public.' } };
+        const [rows, total] = await Promise.all([
+            this.prisma.userTables.findMany({
+                where,
+                orderBy: { updatedAt: 'desc' },
+                take: limit,
+                skip: offset,
+                select: { key: true, mime: true, value: true, updatedAt: true },
+            }),
+            this.prisma.userTables.count({ where }),
+        ]);
+        const items = rows.map(r => ({
+            key: r.key,
+            mime: r.mime,
+            hash: sha256(r.value),
+            updated_at: r.updatedAt.getTime(),
+        }));
+        return { items, total };
     }
 
     /** Create or update a table entry. Returns the row and whether it already existed. */

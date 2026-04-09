@@ -19,7 +19,7 @@ export class ApiTableEntryDto {
 
 export class TableListDataDto {
     @ApiProperty({ type: () => [ApiTableEntryDto], description: 'Table entries' })
-    tables!: ApiTableEntryDto[];
+    items!: ApiTableEntryDto[];
 
     @ApiProperty({ description: 'Page size', example: 10 })
     limit!: number;
@@ -40,6 +40,34 @@ export class PublicTableDto {
 
     @ApiProperty({ description: 'Unix timestamp (ms) of last update', example: 1680000000000 })
     updated_at!: number;
+}
+
+export class PublicTableMetaDto {
+    @ApiProperty({ description: 'Table key (e.g. public.favorites)', example: 'public.favorites' })
+    key!: string;
+
+    @ApiProperty({ description: 'MIME type', example: 'application/json+favorite' })
+    mime!: string;
+
+    @ApiProperty({ description: 'SHA-256 hash of the stored value (hex)', example: 'a3f1...' })
+    hash!: string;
+
+    @ApiProperty({ description: 'Unix timestamp (ms) of last update', example: 1680000000000 })
+    updated_at!: number;
+}
+
+export class PublicTableListDto {
+    @ApiProperty({ type: () => [PublicTableMetaDto], description: 'List of public table entries' })
+    items!: PublicTableMetaDto[];
+
+    @ApiProperty({ description: 'Page size', example: 20 })
+    limit!: number;
+
+    @ApiProperty({ description: 'Page offset', example: 0 })
+    offset!: number;
+
+    @ApiProperty({ description: 'Total number of public entries', example: 5 })
+    total!: number;
 }
 
 export class TableDeleteResponseDto {
