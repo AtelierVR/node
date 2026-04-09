@@ -1,0 +1,341 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+/// User session for authentication (token-based, can be device-bound)
+model Session {
+  id          String   @id @default(uuid())
+  token       String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int      @map("user_id")
+  publicKey   Bytes?   @map("public_key") // SPKI DER — Ed25519 public key (~44 bytes)
+  fingerprint String?  @map("fingerprint") // Optional device fingerprint for additional security
+  expires     DateTime
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  devices     Device[]
+
+  @@map("sessions")
+}
+
+/// Device associated with a session (browser, app, etc.)
+model Device {
+  id        Int      @id @default(autoincrement())
+  sessionId String   @map("session_id")
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  ip        String
+  userAgent String   @map("user_agent")
+  lastSeen  DateTime @default(now()) @map("last_seen")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([sessionId, ip, userAgent], name: "unique_device")
+  @@map("devices")
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Short presence statuses exposed on user profiles.
+enum PresenceStatus {
+  ONLINE // green  — visible to followers
+  BUSY // orange — no location broadcast
+  DO_NOT_DISTURB // red    — DND
+  STREAM // purple — streaming
+  OFFLINE // grey   — no location, no status
+
+  @@map("presence_status")
+}
+
+/// User account with Ed25519 identity certificate.
+/// cert_pub / cert_priv store SPKI / PKCS#8 DER-encoded Ed25519 keys.
+model User {
+  id             Int            @id @default(autoincrement())
+  username       String         @unique
+  display        String
+  bio            String?
+  pronoun        String?
+  email          String?        @unique
+  emailVerified  Boolean        @default(false) @map("email_verified")
+  password       String?
+  rank           Float          @default(0)
+  tags           String[]
+  thumbnail      String?
+  banner         String?
+  links          Json           @default("[]")
+  blacklisted    Json?
+  homeRef        String?        @map("home_ref")
+  avatarRef      String?        @map("avatar_ref")
+  twofaEnabled   Boolean        @default(false) @map("twofa_enabled")
+  twofaSecret    String?        @map("twofa_secret")
+  presence       PresenceStatus @default(ONLINE)
+  presenceStatus String?        @map("presence_status")
+  /// SPKI DER — Ed25519 public key (~44 bytes)
+  public         Bytes          @map("public")
+  /// PKCS#8 DER — Ed25519 private key (~48 bytes)
+  private        Bytes          @map("private")
+  expiresKey     DateTime       @map("expires_keys")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  sessions      Session[]
+  verifications VerificationFactor[]
+  tables        UserTable[]
+
+  @@map("users")
+}
+
+/// Relation type between two users.
+enum UserRelationType {
+  FOLLOW   // Accepted follow
+  REQUEST  // Pending follow request (requires manual validation)
+
+  @@map("user_relation_type")
+}
+
+/// Unidirectional relation between two users identified by NoxIdentifier strings.
+/// One relation per direction: @@unique([initiatorRef, targetRef]).
+model UserRelation {
+  id           String           @id @default(cuid())
+  type         UserRelationType
+  /// NoxIdentifier of the user who initiated the relation (e.g. "1@::" or "1@example.com")
+  initiatorRef String           @map("initiator_ref")
+  /// NoxIdentifier of the relation target (e.g. "2@::" or "2@other.com")
+  targetRef    String           @map("target_ref")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  @@unique([initiatorRef, targetRef])
+  @@map("user_relations")
+}
+
+/// Key/value store owned by a user. Keys follow dot-notation (e.g. "nox.worlds.favorites").
+/// Public entries use the prefix "public." and are readable by anyone.
+model UserTable {
+  key       String
+  userId    Int      @map("user_id")
+  value     Bytes
+  mime      String   @default("application/octet-stream")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([key, userId])
+  @@map("user_tables")
+}
+
+/// Stores runtime config overrides loaded by AppConfigService.
+/// Keys use dot-notation matching the AppConfig structure (e.g. "http.port").
+/// Priority: Database > Config (YAML) > Env > Default
+model Config {
+  /// Dot-notation key, e.g. "http.port", "http.host"
+  key       String   @id
+  /// Raw string value — coerced to the correct type on read
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("configs")
+}
+
+model VerificationFactor {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  method    String
+  code      String
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("verification_factors")
+}
+
+model ExternalServer {
+  id        Int            @id @default(autoincrement())
+  rank      Float          @default(0)
+  address   String         @unique
+  public    Bytes          @map("public") @unique
+  lastSeen  DateTime       @default(now()) @map("last_seen")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+  users     ExternalUser[]
+
+  @@map("external_servers")
+}
+
+model ExternalUser {
+  id          Int
+  public      Bytes          @map("public")
+  rank        Float          @default(0)
+  tags        String[]
+  blacklisted Json?
+  serverId    Int            @map("server_id")
+  server      ExternalServer @relation(fields: [serverId], references: [id])
+  lastSeen    DateTime       @default(now()) @map("last_seen")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@id([id, serverId])
+  @@map("external_users")
+}
+
+/// An avatar model hosted on the node
+model Avatar {
+  id          Int           @id @default(autoincrement())
+  title       String
+  description String?
+  thumbnail   String?
+  tags        String[]
+  /// NoxIdentifier of the owner user (e.g. "1@::" or "1@example.com")
+  ownerRef    String        @map("owner_ref")
+  /// Recommended version to download. null = auto-detect latest uploaded version.
+  release     Int?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  assets      AvatarAsset[]
+
+  @@map("avatars")
+}
+
+/// A compiled asset bundle variant for an Avatar (engine × platform × version).
+model AvatarAsset {
+  id          Int      @id @default(autoincrement())
+  /// Semantic version number (ushort 0-65535)
+  version     Int
+  /// e.g. "unity"
+  engine      String
+  /// e.g. "windows", "linux", "macos", "android", "ios", "visionos"
+  platform    String
+  /// External URL or local storage key
+  url         String?
+  /// SHA-256 hex digest of the uploaded file
+  hash        String?
+  /// File size in bytes
+  size        Int?
+  features    String[] @default([])
+  avatarId    Int      @map("avatar_id")
+  avatar      Avatar   @relation(fields: [avatarId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([avatarId, version, engine, platform])
+  @@map("avatar_assets")
+}
+
+/// A virtual world hosted on the node
+model World {
+  id              Int          @id @default(autoincrement())
+  title           String
+  description     String?
+  thumbnail       String?
+  tags            String[]
+  capacity        Int
+  /// NoxIdentifier of the owner user (e.g. "1@::" or "1@example.com")
+  ownerRef        String       @map("owner_ref")
+  /// NoxIdentifier list of contributor users (e.g. ["2@::", "3@example.com"])
+  contributorRefs String[]     @default([]) @map("contributor_refs")
+  /// Recommended version to download. null = auto-detect latest uploaded version.
+  release         Int?
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  assets          WorldAsset[]
+
+  @@map("worlds")
+}
+
+/// A compiled asset bundle variant for a World (engine × platform × version).
+model WorldAsset {
+  id          Int      @id @default(autoincrement())
+  /// Semantic version number (ushort 0-65535)
+  version     Int
+  /// e.g. "unity"
+  engine      String
+  /// e.g. "windows", "linux", "macos", "android", "ios", "visionos"
+  platform    String
+  /// External URL or local storage key (file://{hash})
+  url         String?
+  /// SHA-256 hex digest of the uploaded file
+  hash        String?
+  /// File size in bytes
+  size        Int?
+  /// ModIdentifier references (e.g. ["1?v=1@::", "2@example.com"])
+  modRefs     String[] @default([]) @map("mod_refs")
+  features    String[] @default([])
+  /// NoxIdentifier of the user who last uploaded the file
+  uploaderRef String?  @map("uploader_ref")
+  worldId     Int      @map("world_id")
+  world       World    @relation(fields: [worldId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([worldId, version, engine, platform])
+  @@map("world_assets")
+}
+
+/// Server-side activity/audit log.
+/// Stores important events surfaced to admins via GET /api/activity.
+model ActivityEvent {
+  id         Int                @id @default(autoincrement())
+  /// Dot-namespaced event type (e.g. "world.upload", "node.ready", "maintenance.started")
+  type       String
+  message    String
+  details    Json?
+  /// NoxIdentifier string of the author (e.g. "u:1@::", "system")
+  authorRef  String?             @map("author_ref")
+  createdAt  DateTime           @default(now()) @map("created_at")
+
+  @@index([type])
+  @@index([createdAt])
+  @@map("activity_events")
+}
+
+/// A relay server connected to this node to host world instances.
+model Relay {
+  id        Int         @id @default(autoincrement())
+  token     RelayToken?
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@map("relays")
+}
+
+/// Authentication token used by a relay to connect via WebSocket.
+model RelayToken {
+  id      Int    @id @default(autoincrement())
+  token   String @unique
+  relayId Int    @unique @map("relay_id")
+  relay   Relay  @relation(fields: [relayId], references: [id], onDelete: Cascade)
+
+  @@map("relay_tokens")
+}
+
+/// A hosted world instance (running room) managed by a relay.
+model Instance {
+  id            Int      @id @default(autoincrement())
+  name          String   @unique
+  title         String?
+  description   String?
+  capacity      Int      @default(10)
+  /// NoxIdentifier of the world (e.g. "1@::")
+  worldRef      String   @map("world_ref")
+  /// NoxIdentifier of the owner user (e.g. "1@::")
+  ownerRef      String   @map("owner_ref")
+  tags          String[]
+  thumbnail     String?
+  useWhitelist  Boolean  @default(false) @map("use_whitelist")
+  whitelistRefs String[] @default([]) @map("whitelist_refs")
+  usePassword   Boolean  @default(false) @map("use_password")
+  password      String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("instances")
+}

@@ -1,0 +1,24 @@
+# Per-variable DB override (recovery mode):
+# Prefix any value with '!' to force that value and ignore the database for that key.
+# The same works with env vars (e.g. HTTP_PORT=!8080).
+#
+# Examples:
+#   http:
+#     host: '!localhost'   → forces localhost, ignores DB for http.host
+#     port: '!8080'        → forces 8080, ignores DB for http.port
+
+#http:
+#  host: 'localhost'
+#  port: 8080
+  # domain: 'localhost'         # default: localhost:{port}
+#  secure: false                 # true when behind an HTTPS reverse proxy
+#  ssl: false                    # true to enable native HTTPS (requires cert_path + private_path)
+  # cert_path: 'certs/certificate.crt'
+  # private_path: 'certs/private.key'
+
+# gateway:
+#   api: 'https://example.com/api/'  # default: http(s)://{http.domain}/api/
+
+# instance:
+#   name: 'My Nox'               # default: Nox
+#   description: 'A Nox instance'

@@ -1,0 +1,71 @@
+import { Controller, HttpStatus, Post, Body, Req, Res } from '@nestjs/common';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { AuthService } from './auth.service';
+import { RegisterDto, LoginDto } from './dto/auth.dto';
+import type { Request, Response } from 'express';
+import { ApiWrappedResponse, ApiWrappedSuccessResponse, ApiErrorResponse } from '../api/swagger';
+import { ApiSessionDto } from '../users/dto/user-response.dto';
+
+@ApiTags('Auth')
+@Controller('auth')
+export class AuthController {
+    constructor(private readonly auth: AuthService) { }
+
+    @ApiOperation({ summary: 'Register', description: 'Create a new user account and return a session token.' })
+    @ApiWrappedResponse(ApiSessionDto, HttpStatus.CREATED)
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.CONFLICT, 'Username or email already taken.')
+    @ApiErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY)
+    @Post('register')
+    async register(@Body() body: RegisterDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+        const { session, user } = await this.auth.register(body, { ip: req.ip, userAgent: req.get('user-agent') || '' });
+        // set cookie
+        res.cookie('_uid', session.token, {
+            expires: session.expires,
+            httpOnly: true,
+            sameSite: 'strict',
+            secure: false,
+        });
+        return {
+            token: session.token,
+            expires: session.expires.getTime(),
+            created_at: session.createdAt.getTime(),
+            user: await user.sanitizeCurrent()
+        };
+    }
+
+    @ApiOperation({ summary: 'Login', description: 'Authenticate with credentials and return a session token.' })
+    @ApiWrappedResponse(ApiSessionDto, HttpStatus.CREATED)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED, 'Invalid credentials or 2FA required.')
+    @ApiErrorResponse(HttpStatus.NOT_FOUND, 'User not found.')
+    @ApiErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, 'Invalid password or factor code.')
+    @Post('login')
+    async login(@Body() body: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+        const { session, user } = await this.auth.login(body, { ip: req.ip, userAgent: req.get('user-agent') || '' });
+        res.cookie('_uid', session.token, {
+            expires: session.expires,
+            httpOnly: true,
+            sameSite: 'strict',
+            secure: false,
+        });
+        return {
+            token: session.token,
+            expires: session.expires.getTime(),
+            created_at: session.createdAt.getTime(),
+            user: await user.sanitizeCurrent()
+        };
+    }
+
+    @ApiOperation({ summary: 'Logout', description: 'Invalidate the current session cookie and bearer token.' })
+    @ApiWrappedSuccessResponse(HttpStatus.CREATED)
+    @Post('logout')
+    async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+        const token: string | undefined = (req as any).cookies?.['_uid'];
+        if (!token) return { success: false };
+        const ok = await this.auth.logoutByToken(token);
+        res.clearCookie('_uid');
+        return {
+            success: ok
+        };
+    }
+}

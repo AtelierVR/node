@@ -1,0 +1,1 @@
+UnityPy @ git+https://github.com/AtelierVR/UnityPy.git

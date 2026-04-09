@@ -1,0 +1,171 @@
+import { IsArray, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+// ── Normalized outputs (what the node exposes after mapping) ──────────────────
+
+export interface NormalizedLogEntry {
+    timestamp: number;
+    level: string;
+    message: string;
+    tag: string | null;
+}
+
+export interface NormalizedRelayInstance {
+    id: string;
+    internal_id: number;
+    player_count: number;
+    flags: number;
+    world: string;
+    capacity: number;
+}
+
+export interface NormalizedRelayClient {
+    id: string;
+    address: string;
+    platform: string;
+    engine: string;
+    user: string | null;
+}
+
+export interface NormalizedRelayPlayer {
+    id: string;
+    client_id: string;
+    display: string;
+    flags: number;
+    user: string | null;
+}
+
+// ── Raw relay response DTOs (abbreviated or full keys from relay binary) ──────
+
+/** One entry from the relay `logs` response. Relay uses abbreviated keys. */
+export class RelayLogEntryDto {
+    @IsOptional() @IsInt()       a?: number;         // timestamp (abbrev)
+    @IsOptional() @IsInt()       timestamp?: number;
+    @IsOptional() @IsString()    l?: string;         // level (abbrev)
+    @IsOptional() @IsString()    level?: string;
+    @IsOptional() @IsString()    m?: string;         // message (abbrev)
+    @IsOptional() @IsString()    message?: string;
+    @IsOptional() @IsString()    t?: string;         // tag (abbrev)
+    @IsOptional() @IsString()    tag?: string;
+
+    normalize(): NormalizedLogEntry {
+        return {
+            timestamp: this.a ?? this.timestamp ?? 0,
+            level:     this.l ?? this.level   ?? 'info',
+            message:   this.m ?? this.message ?? '',
+            tag:       this.t ?? this.tag     ?? null,
+        };
+    }
+}
+
+/** Response envelope for relay `logs` ack. */
+export class RelayLogsResponseDto {
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => RelayLogEntryDto)
+    logs: RelayLogEntryDto[] = [];
+}
+
+/** One instance entry from relay `get_instances` ack. */
+export class RelayInstanceItemDto {
+    @IsOptional() @IsString()    i?: string;         // id (abbrev)
+    @IsOptional() @IsString()    id?: string;
+    @IsOptional() @IsInt()       n?: number;         // internal_id (abbrev)
+    @IsOptional() @IsInt()       internal_id?: number;
+    @IsOptional() @IsArray()     p?: unknown[];      // players array (abbrev)
+    @IsOptional() @IsArray()     players?: unknown[];
+    @IsOptional() @IsInt()       f?: number;         // flags (abbrev)
+    @IsOptional() @IsInt()       flags?: number;
+    @IsOptional() @IsString()    w?: string;         // world (abbrev)
+    @IsOptional() @IsString()    world?: string;
+    @IsOptional() @IsInt()       c?: number;         // capacity (abbrev)
+    @IsOptional() @IsInt()       capacity?: number;
+
+    normalize(): NormalizedRelayInstance {
+        const players = this.p ?? this.players ?? [];
+        return {
+            id:          this.i ?? this.id ?? '',
+            internal_id: this.n ?? this.internal_id ?? 0,
+            player_count: Array.isArray(players) ? players.length : 0,
+            flags:       this.f ?? this.flags   ?? 0,
+            world:       this.w ?? this.world   ?? '',
+            capacity:    this.c ?? this.capacity ?? 0,
+        };
+    }
+
+    rawPlayers(): unknown[] {
+        return this.p ?? this.players ?? [];
+    }
+}
+
+/** Response envelope for relay `get_instances` ack. */
+export class RelayInstancesResponseDto {
+    @Min(0)
+    @IsInt()
+    total: number = 0;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => RelayInstanceItemDto)
+    instances: RelayInstanceItemDto[] = [];
+}
+
+/** One client entry from relay `get_clients` ack. */
+export class RelayClientItemDto {
+    @IsOptional() @IsString()    i?: string;         // id (abbrev)
+    @IsOptional() @IsString()    id?: string;
+    @IsOptional() @IsString()    a?: string;         // address (abbrev)
+    @IsOptional() @IsString()    address?: string;
+    @IsOptional() @IsString()    p?: string;         // platform (abbrev)
+    @IsOptional() @IsString()    platform?: string;
+    @IsOptional() @IsString()    e?: string;         // engine (abbrev)
+    @IsOptional() @IsString()    engine?: string;
+    @IsOptional() @IsString()    u?: string;         // user (abbrev)
+    @IsOptional() @IsString()    user?: string;
+
+    normalize(): NormalizedRelayClient {
+        return {
+            id:       this.i ?? this.id       ?? '',
+            address:  this.a ?? this.address  ?? '',
+            platform: this.p ?? this.platform ?? '',
+            engine:   this.e ?? this.engine   ?? '',
+            user:     this.u ?? this.user     ?? null,
+        };
+    }
+}
+
+/** Response envelope for relay `get_clients` ack. */
+export class RelayClientsResponseDto {
+    @Min(0)
+    @IsInt()
+    total: number = 0;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => RelayClientItemDto)
+    clients: RelayClientItemDto[] = [];
+}
+
+/** One player entry embedded in an instance's players list. */
+export class RelayPlayerItemDto {
+    @IsOptional() @IsString()    i?: string;         // id (abbrev)
+    @IsOptional() @IsString()    id?: string;
+    @IsOptional() @IsString()    c?: string;         // client_id (abbrev)
+    @IsOptional() @IsString()    client_id?: string;
+    @IsOptional() @IsString()    d?: string;         // display (abbrev)
+    @IsOptional() @IsString()    display?: string;
+    @IsOptional() @IsInt()       f?: number;         // flags (abbrev)
+    @IsOptional() @IsInt()       flags?: number;
+    @IsOptional() @IsString()    u?: string;         // user (abbrev)
+    @IsOptional() @IsString()    user?: string;
+
+    normalize(): NormalizedRelayPlayer {
+        return {
+            id:        this.i ?? this.id        ?? '',
+            client_id: this.c ?? this.client_id ?? '',
+            display:   this.d ?? this.display   ?? '',
+            flags:     this.f ?? this.flags     ?? 0,
+            user:      this.u ?? this.user      ?? null,
+        };
+    }
+}

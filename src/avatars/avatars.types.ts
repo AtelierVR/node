@@ -1,0 +1,33 @@
+import type { ApiAlias } from '../users/users.types';
+
+export const SUPPORTED_ENGINES = ['unity'] as const;
+export type AvatarEngine = typeof SUPPORTED_ENGINES[number];
+
+export const SUPPORTED_PLATFORMS = ['windows', 'linux', 'macos', 'android', 'ios', 'visionos'] as const;
+export type AvatarPlatform = typeof SUPPORTED_PLATFORMS[number];
+
+export interface ApiAvatar {
+    id: number;
+    title: string;
+    description: string | null;
+    thumbnail: string | null;
+    tags: string[];
+    /** Recommended version to download. -1 means no uploaded version found. */
+    release: number;
+    server: string;
+    /** NoxIdentifier string of the owner */
+    owner: string;
+    alias: ApiAlias[];
+}
+
+export interface ApiAvatarAsset {
+    id: number;
+    version: number;
+    engine: string;
+    platform: string;
+    is_empty: boolean;
+    url: string | null;
+    hash: string | null;
+    size: number | null;
+    features: string[];
+}
