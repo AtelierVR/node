@@ -41,6 +41,7 @@ export class World {
         let release = await this.manager.resolveRelease(this.id, this.release);
         return {
             id: this.id,
+            name: this.name ?? null,
             title: this.title,
             description: this.description ?? null,
             thumbnail: await makePublic(this.thumbnail ?? null),
@@ -53,6 +54,7 @@ export class World {
             alias: [
                 { key: 'api', value: `${await this.manager.apiBase()}worlds/${this.id}` },
                 { key: 'iid', value: this.identifier().toString(address) },
+                ...(this.name ? [{ key: 'nid', value: `${this.name}@${address}` }] : []),
             ],
         };
     }

@@ -5,6 +5,9 @@ export class ApiWorldDto {
     @ApiProperty({ description: 'Internal numeric world ID', example: 1 })
     id!: number;
 
+    @ApiPropertyOptional({ type: 'string', description: 'Short unique name [a-z0-9-_.]{3,8}, or null if not set', example: 'myworld', nullable: true })
+    name!: string | null;
+
     @ApiProperty({ description: 'World display name', example: 'My World' })
     title!: string;
 

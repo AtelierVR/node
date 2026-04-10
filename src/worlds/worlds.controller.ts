@@ -54,9 +54,9 @@ export class WorldsController {
         if (!identifier.isLocal(await this.worlds.address()))
             throw new ApiException(ApiErrorCode.NOT_IMPLEMENTED, null, `Fetch remote world (${identifier.toString()})`);
         const numericId = identifier.numericId;
-        if (numericId === null)
-            throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `World ID must be numeric`);
-        const world = await this.worlds.findById(numericId);
+        const world = numericId !== null
+            ? await this.worlds.findById(numericId)
+            : await this.worlds.findByName(identifier.id);
         if (!world) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `World (${id})`);
         return world;
     }
@@ -65,9 +65,9 @@ export class WorldsController {
         const identifier = NoxIdentifier.parse(id);
         if (identifier.isLocal(await this.worlds.address())) {
             const numericId = identifier.numericId;
-            if (numericId === null)
-                throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `World ID must be numeric`);
-            const world = await this.worlds.findById(numericId);
+            const world = numericId !== null
+                ? await this.worlds.findById(numericId)
+                : await this.worlds.findByName(identifier.id);
             if (!world) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `World (${id})`);
             return { world, identifier, remote: false as const };
         }

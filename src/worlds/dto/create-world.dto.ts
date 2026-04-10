@@ -1,8 +1,14 @@
-import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateWorldDto {
+    @ApiPropertyOptional({ description: 'Short unique name [a-z0-9-_.]{3,8}. Left null if omitted.', example: 'myworld' })
+    @IsOptional()
+    @IsString()
+    @Matches(/^[a-z0-9\-_.]{3,8}$/, { message: 'name must be 3-8 characters: lowercase letters, digits, hyphens, underscores, or dots' })
+    name?: string;
+
     @ApiPropertyOptional({ description: 'World display name (defaults to "<display>\'s World" if omitted)', example: 'My World' })
     @IsOptional()
     @IsString()

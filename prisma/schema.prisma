@@ -233,6 +233,8 @@ model AvatarAsset {
 /// A virtual world hosted on the node
 model World {
   id              Int          @id @default(autoincrement())
+  /// Short unique name [a-z0-9-_.]{3,8}, used as human-readable identifier. Nullable.
+  name            String?      @unique
   title           String
   description     String?
   thumbnail       String?

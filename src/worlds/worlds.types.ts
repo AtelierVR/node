@@ -8,6 +8,7 @@ export type WorldPlatform = typeof SUPPORTED_PLATFORMS[number];
 
 export interface ApiWorld {
     id: number;
+    name: string | null;
     title: string;
     description: string | null;
     thumbnail: string | null;

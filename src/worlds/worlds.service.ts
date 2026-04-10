@@ -89,6 +89,26 @@ export class WorldsService {
         return World.attach(model, this);
     }
 
+    async findByName(name: string): Promise<WorldWithMethods | null> {
+        const model = await this.worlds.findUnique({ where: { name } });
+        if (!model) return null;
+        return World.attach(model, this);
+    }
+
+    /**
+     * Resolves a world by NoxIdentifier string.
+     * Supports numeric IDs (e.g. "42@host") and name slugs (e.g. "myworld@host").
+     */
+    async findByIdentifier(id: string): Promise<WorldWithMethods | null> {
+        const identifier = NoxIdentifier.parse(id);
+        const numericId = identifier.numericId;
+        if (numericId !== null) return this.findById(numericId);
+        // Fall back to name lookup
+        const namePart = identifier.id;
+        if (namePart) return this.findByName(namePart);
+        return null;
+    }
+
     async findAssetById(id: number): Promise<WorldAssetWithMethods | null> {
         const model = await this.worldAssets.findUnique({ where: { id } });
         if (!model) return null;
@@ -180,8 +200,18 @@ export class WorldsService {
         const contributorRefs = await this.normalizeContributors(dto.contributors);
         let ownerRef = (await user.identifier());
 
+        // Validate unique name if provided
+        let name: string | null = null;
+        if (dto.name) {
+            const existing = await this.worlds.findUnique({ where: { name: dto.name } });
+            if (existing)
+                throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `name "${dto.name}" is already taken`);
+            name = dto.name;
+        }
+
         const model = await this.worlds.create({
             data: {
+                name,
                 title: dto.title,
                 description: dto.description ?? null,
                 capacity,
@@ -210,6 +240,17 @@ export class WorldsService {
         if (!model) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'World');
 
         const updates: any = {};
+
+        if (dto.name !== undefined) {
+            if (dto.name === null) {
+                updates.name = null;
+            } else {
+                const existing = await this.worlds.findUnique({ where: { name: dto.name } });
+                if (existing && existing.id !== worldId)
+                    throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `name "${dto.name}" is already taken`);
+                updates.name = dto.name;
+            }
+        }
 
         if (dto.title !== undefined) {
             if (!dto.title || dto.title.trim().length === 0 || dto.title.length > 255)
