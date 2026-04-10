@@ -6,7 +6,7 @@ export interface LogEntry {
   timestamp: Date;
   level: LogLevel;
   message: string;
-  tag?: string | null;
+  tag: string | null;
 }
 
 const MAX_LOGS = 5000;
@@ -83,9 +83,17 @@ export function formatConsoleLine(level: LogLevel, tag: string | null, raw: stri
 }
 
 function fmt(msg: any): string {
-  if (msg === undefined) return '';
-  if (typeof msg === 'string') return msg;
-  try { return JSON.stringify(msg); } catch { return String(msg); }
+  if (msg instanceof Error)
+    return msg.stack || msg.message;
+  if (msg === undefined)
+    return '<undefined>';
+  if (msg === null)
+    return '<null>';
+  if (typeof msg === 'object')
+    try {
+      return JSON.stringify(msg);
+    } catch { }
+  return String(msg);
 }
 
 class LoggerStore {
@@ -93,16 +101,28 @@ class LoggerStore {
 
   private static push(level: LogLevel, message: string, tag?: string | null) {
     try {
-      this.logs.push({ timestamp: new Date(), level, message, tag: tag ?? null });
-      if (this.logs.length > MAX_LOGS) this.logs.splice(0, this.logs.length - MAX_LOGS);
+      this.logs.push({
+        timestamp: new Date(),
+        level,
+        message,
+        tag: tag ?? null
+      });
+      if (this.logs.length > MAX_LOGS)
+        this.logs.splice(0, this.logs.length - MAX_LOGS);
     } catch { /* best-effort */ }
   }
 
   private static joinParts(parts: any[]): string {
     return parts.map(p => {
-      if (p instanceof Error) return p.stack || p.message;
-      if (typeof p === 'string') return p;
-      try { return JSON.stringify(p); } catch { return String(p); }
+      if (p instanceof Error)
+        return p.stack || p.message;
+      if (typeof p === 'object')
+        try {
+          return JSON.stringify(p);
+        } catch (e) {
+          return String(p) + ' (circular)';
+        }
+      return String(p);
     }).join(' ');
   }
 

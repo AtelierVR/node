@@ -225,7 +225,7 @@ export class WorldsService {
             type: 'world.create',
             message: `World "${model.title}" created`,
             details: { world_id: model.id },
-            author: ownerRef.toString()
+            author: NoxIdentifier.type('u', ownerRef).toString()
         });
 
         return World.attach(model, this);
@@ -310,6 +310,13 @@ export class WorldsService {
                 await this.storage.delete(oldThumb);
         }
 
+        this.activity.create({
+            type: 'world.update',
+            message: `World "${updated.title}" updated`,
+            details: { world_id: worldId },
+            author: NoxIdentifier.parse(model.ownerRef).toString()
+        }).catch(() => { });
+
         return World.attach(updated, this);
     }
 
@@ -326,7 +333,12 @@ export class WorldsService {
         if (model.thumbnail)
             await this.storage.delete(model.thumbnail);
 
-        this.activity.create({ type: 'world.delete', message: `World "${model.title}" deleted`, details: { world_id: model.id }, author: model.ownerRef }).catch(() => { });
+        this.activity.create({
+            type: 'world.delete',
+            message: `World "${model.title}" deleted`,
+            details: { world_id: model.id },
+            author: NoxIdentifier.parse(model.ownerRef).toString()
+        }).catch(() => { });
         await this.worlds.delete({ where: { id: worldId } });
     }
 

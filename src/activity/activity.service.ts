@@ -44,11 +44,17 @@ export class ActivityService {
     }
 
     async list(opts: {
+        q?: string;
         type?: string;
         limit: number;
         offset: number;
     }): Promise<{ total: number; items: ApiActivityEvent[] }> {
-        const where = opts.type ? { type: opts.type } : {};
+        const where: any = {};
+        if (opts.type) where.type = opts.type;
+        if (opts.q) where.OR = [
+            { type: { contains: opts.q, mode: 'insensitive' } },
+            { message: { contains: opts.q, mode: 'insensitive' } },
+        ];
         const [total, rows] = await Promise.all([
             this.prisma.activityEvents.count({ where }),
             this.prisma.activityEvents.findMany({

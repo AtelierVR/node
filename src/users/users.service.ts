@@ -18,6 +18,7 @@ import { ApiErrorCode } from '../api/api-error.factory';
 import { AppConfigService } from 'src/config/config.service';
 import { StorageService } from '../storage/storage.service';
 import { RelationsService } from '../relations/relations.service';
+import { ActivityService } from '../activity/activity.service';
 
 export interface Ed25519KeyPair {
     public: Buffer;
@@ -40,6 +41,8 @@ export class UsersService implements OnModuleInit {
         public readonly storage: StorageService,
         @Inject(forwardRef(() => RelationsService))
         public readonly relations: RelationsService,
+        @Inject(forwardRef(() => ActivityService))
+        public readonly activity: ActivityService,
     ) { }
 
     async onModuleInit(): Promise<void> {
@@ -130,15 +133,12 @@ export class UsersService implements OnModuleInit {
                     : `Admin user created (id=${id}) — cert fp: ${fp}`,
             );
 
-            this.prisma.activityEvents.create({
-                data: {
-                    type: 'node.ready',
-                    message: existing
-                        ? 'Node started (admin user verified)'
-                        : 'Node started (admin user created)',
-                    details: { admin_id: id },
-                    authorRef: null,
-                },
+            this.activity.create({
+                type: 'node.ready',
+                message: existing
+                    ? 'Node started'
+                    : 'Node started (admin user created)',
+                details: { admin_id: id }
             }).catch(() => { });
         } catch (err) {
             this.logger.warn(`Could not ensure admin user: ${(err as Error).message}`);

@@ -2,6 +2,7 @@ import { unlink } from 'node:fs/promises';
 import type { AssetProcessor, ProcessingJob } from './asset-processing.queue';
 import type { WorldsService } from './worlds.service';
 import { checkValidAssetFile, analyzeWorldAsset } from './world-utils';
+import { NoxIdentifier } from 'src/common/identifier';
 
 export const WORLD_ASSET_PROCESSOR_TYPE = 'world-asset';
 export const WORLD_ASSET_MIMETYPE = 'application/x-nox-world';
@@ -44,8 +45,12 @@ export class WorldAssetProcessor implements AssetProcessor {
         this.service.activity.create({
             type: 'world.asset.upload',
             message: `World asset #${job.context.assetId} uploaded (${job.context.hash.slice(0, 8)})`,
-            details: { asset_id: job.context.assetId, hash: job.context.hash, size: job.context.fileSize },
-            author: job.context.uploaderRef || undefined,
+            details: {
+                asset_id: job.context.assetId,
+                hash: job.context.hash,
+                size: job.context.fileSize
+            },
+            author: NoxIdentifier.parse(job.context.uploaderRef).toString(),
         }).catch(() => { });
 
         updateProgress(95, 'Cleaning up temp file');

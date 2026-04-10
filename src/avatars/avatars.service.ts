@@ -17,6 +17,7 @@ import type { CreateAvatarDto } from './dto/create-avatar.dto';
 import type { UpdateAvatarDto } from './dto/update-avatar.dto';
 import type { CreateAvatarAssetDto } from './dto/create-avatar-asset.dto';
 import type { UserWithMethods } from '../users/user.model';
+import { NoxIdentifier } from 'src/common/identifier';
 
 type DiskMulterFile = Express.Multer.File & { path?: string };
 
@@ -170,7 +171,7 @@ export class AvatarsService {
             type: 'avatar.create', 
             message: `Avatar "${model.title}" created`, 
             details: { avatar_id: model.id }, 
-            author: ownerRef 
+            author: NoxIdentifier.parse(ownerRef).toString() 
         }).catch(() => { });
         return Avatar.attach(model, this);
     }
@@ -220,6 +221,13 @@ export class AvatarsService {
                 await this.storage.delete(oldThumb);
         }
 
+        this.activity.create({ 
+            type: 'avatar.update', 
+            message: `Avatar "${updated.title}" updated`, 
+            details: { avatar_id: avatarId }, 
+            author: NoxIdentifier.parse(model.ownerRef).toString()
+        }).catch(() => { });
+
         return Avatar.attach(updated, this);
     }
 
@@ -236,7 +244,7 @@ export class AvatarsService {
             type: 'avatar.delete', 
             message: `Avatar "${model.title}" deleted`, 
             details: { avatar_id: model.id }, 
-            author: model.ownerRef 
+            author: NoxIdentifier.parse(model.ownerRef).toString()
         }).catch(() => { });
         await this.prisma.avatars.delete({ where: { id: avatarId } });
     }

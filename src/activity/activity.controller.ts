@@ -28,6 +28,7 @@ export class ActivityController {
     @UseGuards(AdminUserGuard)
     @Get()
     async list(
+        @Query('q') q?: string,
         @Query('type') type?: string,
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
@@ -38,7 +39,7 @@ export class ActivityController {
         if (limit > 100) limit = 100;
         if (!Number.isFinite(offset) || offset < 0) offset = 0;
 
-        const result = await this.activity.list({ type, limit, offset });
+        const result = await this.activity.list({ q, type, limit, offset });
         return {
             total: result.total,
             limit,

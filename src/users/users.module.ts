@@ -12,9 +12,10 @@ import { ExternalServersModule } from '../external/external-servers.module';
 import { ExternalUsersModule } from '../external/external-users.module';
 import { OptionalServerGuard, ServerGuard } from '../auth/server.guard';
 import { OptionalServerAsUserGuard, ServerAsUserGuard } from '../auth/server-as-user.guard';
+import { ActivityModule } from '../activity/activity.module';
 
 @Module({
-  imports: [FediverseModule, forwardRef(() => AuthModule), StorageModule, forwardRef(() => RelationsModule), ExternalServersModule, ExternalUsersModule],
+  imports: [FediverseModule, forwardRef(() => AuthModule), StorageModule, forwardRef(() => RelationsModule), ExternalServersModule, ExternalUsersModule, forwardRef(() => ActivityModule)],
   controllers: [UsersController],
   providers: [UsersService, SessionService, AuthUserGuard, OptionalAuthUserGuard, AdminUserGuard, OptionalServerGuard, ServerGuard, OptionalServerAsUserGuard, ServerAsUserGuard],
   exports: [UsersService, SessionService, AuthUserGuard, OptionalAuthUserGuard, AdminUserGuard],

@@ -7,6 +7,7 @@ import { AppConfigService } from '../config/config.service';
 import { EventsService } from '../gateway/events.service';
 import { InstancesService } from '../instances/instances.service';
 import { WellKnownService } from '../fediverse/well-known.service';
+import { ActivityService } from '../activity/activity.service';
 import {
     RequestInstancesMessageDto,
     ResolveUserMessageDto,
@@ -74,6 +75,7 @@ export class RelayService implements OnModuleInit {
         private readonly config: AppConfigService,
         private readonly events: EventsService,
         private readonly wellKnown: WellKnownService,
+        private readonly activity: ActivityService,
         @Inject(forwardRef(() => InstancesService))
         private readonly instances: InstancesService,
     ) { }
@@ -113,15 +115,27 @@ export class RelayService implements OnModuleInit {
 
     async create(): Promise<RelayModel & { token: RelayTokenModel }> {
         const token = randomBytes(64).toString('base64');
-        return this.prisma.relays.create({
+        const relay = await this.prisma.relays.create({
             data: { token: { create: { token } } },
             include: { token: true },
-        }) as Promise<RelayModel & { token: RelayTokenModel }>;
+        }) as RelayModel & { token: RelayTokenModel };
+        this.activity.create({ 
+            type: 'relay.create', 
+            message: `Relay #${relay.id} created`, 
+            details: { relay_id: relay.id } 
+        }).catch(() => { });
+        return relay;
     }
 
     async delete(id: number): Promise<RelayModel | null> {
         try {
-            return await this.prisma.relays.delete({ where: { id } });
+            const relay = await this.prisma.relays.delete({ where: { id } });
+            this.activity.create({ 
+                type: 'relay.delete', 
+                message: `Relay #${relay.id} deleted`, 
+                details: { relay_id: relay.id } 
+            }).catch(() => { });
+            return relay;
         } catch (err: any) {
             if (err?.code === 'P2025') return null;
             throw err;

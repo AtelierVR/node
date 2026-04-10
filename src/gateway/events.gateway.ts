@@ -8,7 +8,7 @@ import {
     OnGatewayConnection,
     OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Logger, Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { SessionService } from '../auth/session.service';
 import { UsersService } from '../users/users.service';
@@ -24,6 +24,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
     constructor(
         private readonly sessions: SessionService,
+        @Inject(forwardRef(() => UsersService))
         private readonly users: UsersService,
     ) {
         // Built-in validators — admin-only events

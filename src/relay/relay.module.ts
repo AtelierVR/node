@@ -7,6 +7,7 @@ import { FediverseModule } from '../fediverse/fediverse.module';
 import { AppConfigModule } from '../config/config.module';
 import { AuthModule } from '../auth/auth.module';
 import { InstancesModule } from '../instances/instances.module';
+import { ActivityModule } from '../activity/activity.module';
 
 @Module({
     imports: [
@@ -14,6 +15,7 @@ import { InstancesModule } from '../instances/instances.module';
         FediverseModule,
         AppConfigModule,
         AuthModule,
+        ActivityModule,
         forwardRef(() => InstancesModule),
     ],
     controllers: [RelayController],

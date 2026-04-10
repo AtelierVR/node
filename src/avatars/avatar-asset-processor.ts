@@ -2,6 +2,7 @@ import { unlink } from 'node:fs/promises';
 import type { AssetProcessor, ProcessingJob } from '../worlds/asset-processing.queue';
 import type { AvatarsService } from './avatars.service';
 import { checkValidAssetFile, analyzeAvatarAsset } from './avatar-utils';
+import { NoxIdentifier } from 'src/common/identifier';
 
 export const AVATAR_ASSET_PROCESSOR_TYPE = 'avatar-asset';
 export const AVATAR_ASSET_MIMETYPE = 'application/x-nox-avatar';
@@ -42,7 +43,12 @@ export class AvatarAssetProcessor implements AssetProcessor {
         this.service.activity.create({
             type: 'avatar.asset.upload',
             message: `Avatar asset #${job.context.assetId} uploaded (${job.context.hash.slice(0, 8)})`,
-            details: { asset_id: job.context.assetId, hash: job.context.hash, size: job.context.fileSize },
+            details: {
+                asset_id: job.context.assetId,
+                hash: job.context.hash,
+                size: job.context.fileSize
+            },
+            author: NoxIdentifier.parse(job.context.uploaderRef).toString(),
         }).catch(() => { });
 
         updateProgress(95, 'Cleaning up temp file');

@@ -23,6 +23,10 @@ export class NoxIdentifier {
   readonly server: string | undefined;
   readonly query: NoxQuery;
 
+  static type(type: NoxIdentifierType, identifier: NoxIdentifier) {
+    return new NoxIdentifier(type, identifier.id, identifier.server, identifier.query);
+  }
+
   constructor(
     type: NoxIdentifierType | null,
     id: string,

@@ -10,6 +10,7 @@ import { ApiErrorCode } from '../api/api-error.factory';
 import { User } from 'src/users/user.model';
 import { AppConfigService } from 'src/config/config.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
+import { NoxIdentifier } from '../common/identifier';
 export { RegisterDto, LoginDto } from './dto/auth.dto';
 
 @Injectable()
@@ -65,14 +66,11 @@ export class AuthService {
         if (meta?.ip && meta?.userAgent)
             await this.devices.upsertDevice(session.id, meta.ip, meta.userAgent);
 
-        const domain = await this.users.domain();
-        this.prisma.activityEvents.create({
-            data: {
-                type: 'user.register',
-                message: `User "${user.username}" registered`,
-                details: { user_id: user.id },
-                authorRef: `u:${user.id}@${domain}`,
-            },
+        this.users.activity.create({
+            type: 'user.register',
+            message: `User "${user.username}" registered`,
+            details: { user_id: user.id },
+            author: NoxIdentifier.type('u', user.identifier()).toString(),
         }).catch(() => { });
 
         return { session, user };
@@ -113,12 +111,28 @@ export class AuthService {
         if (meta?.ip && meta?.userAgent)
             await this.devices.upsertDevice(session.id, meta.ip, meta.userAgent);
 
+        this.users.activity.create({
+            type: 'auth.login',
+            message: `User "${user.username}" logged in`,
+            details: { user_id: user.id, session_id: session.id },
+            author: NoxIdentifier.type('u', user.identifier()).toString(),
+        }).catch(() => { });
+
         return { session, user };
     }
 
     async logoutByToken(token: string) {
         const s = await this.sessions.findSessionByToken(token);
         if (!s) return false;
+        this.users.findById(s.userId).then(user => {
+            if (!user) return;
+            this.users.activity.create({
+                type: 'auth.logout',
+                message: `User "${user.username}" logged out`,
+                details: { user_id: s.userId, session_id: s.id },
+                author: NoxIdentifier.type('u', user.identifier()).toString(),
+            }).catch(() => { });
+        }).catch(() => { });
         return this.sessions.deleteSessionById(s.id);
     }
 }

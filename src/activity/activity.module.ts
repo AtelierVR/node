@@ -1,11 +1,14 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ActivityService } from './activity.service';
 import { ActivityController } from './activity.controller';
-import { AuthModule } from '../auth/auth.module';
+import { UsersModule } from '../users/users.module';
 import { GatewayModule } from '../gateway/gateway.module';
 
 @Module({
-    imports: [AuthModule, GatewayModule],
+    imports: [
+        forwardRef(() => UsersModule),
+        forwardRef(() => GatewayModule)
+    ],
     controllers: [ActivityController],
     providers: [ActivityService],
     exports: [ActivityService],
