@@ -69,6 +69,14 @@ export class HttpConfig {
   @IsString()
   @IsNotEmpty()
   private_path?: string;
+
+  @Label('HTTP Global Prefix')
+  @Description('Global route prefix for all API endpoints (e.g. "api", "v1", or "" for none). Note: well-known and nodeinfo routes are always served at the root regardless of this setting. Requires restart to take effect.')
+  @Default('api')
+  @ConfigVar({ key: 'http.prefix', env: 'HTTP_PREFIX' })
+  @IsString()
+  @IsOptional()
+  prefix?: string;
 }
 
 export class CorsConfig {
@@ -112,7 +120,7 @@ export class GatewayConfig {
     const secure = r.get('http.secure') === 'true';
     const ssl = r.get('http.ssl') === 'true';
     const domain = r.get('http.domain') ?? 'localhost:3000';
-    return `http${secure || ssl ? 's' : ''}://${domain}/api/`;
+    return new URL(`http${secure || ssl ? 's' : ''}://${domain}/api/`).toString();
   })
   @ConfigVar({ key: 'gateway.api', env: 'GATEWAY_API' })
   @IsString()
@@ -125,7 +133,7 @@ export class GatewayConfig {
     const secure = r.get('http.secure') === 'true';
     const ssl = r.get('http.ssl') === 'true';
     const domain = r.get('http.domain') ?? 'localhost:3000';
-    return `ws${secure || ssl ? 's' : ''}://${domain}/api/ws`;
+    return new URL(`ws${secure || ssl ? 's' : ''}://${domain}/api/ws`).toString();
   })
   @ConfigVar({ key: 'gateway.ws', env: 'GATEWAY_WS' })
   @IsString()
@@ -174,7 +182,7 @@ export class InstanceConfig {
   @ConfigVar({ key: 'instance.icon', env: 'INSTANCE_ICON' })
   @IsUrl()
   @IsNotEmpty()
-  @Default(r=> {
+  @Default(r => {
     const secure = r.get('http.secure') === 'true';
     const ssl = r.get('http.ssl') === 'true';
     const domain = r.get('http.domain') ?? 'localhost:3000';

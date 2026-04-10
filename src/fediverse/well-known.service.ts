@@ -146,9 +146,9 @@ export class WellKnownService {
                 webfinger: new URL(`.well-known/webfinger?resource={uri}`, await this.webBaseUrl()).toString(),
                 nodeinfo: new URL(`.well-known/nodeinfo`, await this.webBaseUrl()).toString(),
                 hostmeta: new URL(`.well-known/host-meta`, await this.webBaseUrl()).toString(),
-                terms: new URL(`terms.md`, await this.webBaseUrl()).toString(),
-                privacy: new URL(`privacy.md`, await this.webBaseUrl()).toString(),
-                rules: new URL(`rules.md`, await this.webBaseUrl()).toString(),
+                terms: new URL(`terms.md`, await this.apiBaseUrl()).toString(),
+                privacy: new URL(`privacy.md`, await this.apiBaseUrl()).toString(),
+                rules: new URL(`rules.md`, await this.apiBaseUrl()).toString(),
             },
             versions: {
                 node: process.version.replace(/^v/, ''),

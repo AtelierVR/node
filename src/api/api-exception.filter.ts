@@ -3,6 +3,7 @@ import { ApiException } from './api-exception';
 import { Response, Request } from 'express';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { ApiErrorCode, ERROR_DEFINITIONS } from './api-error.factory';
+import { ROOT_ONLY_PATHS } from './api.constants';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -10,14 +11,30 @@ import * as path from 'node:path';
 @Catch()
 export class ApiExceptionFilter extends BaseExceptionFilter {
     private readonly logger = new Logger(ApiExceptionFilter.name);
-    
+    private readonly globalPrefix: string;
+    private readonly excludedPaths: string[];
+
+    constructor(globalPrefix: string = 'api', excludedPaths: string[] = ROOT_ONLY_PATHS) {
+        super();
+        this.globalPrefix = globalPrefix;
+        this.excludedPaths = excludedPaths;
+    }
+
+    private isApiRoute(requestPath: string): boolean {
+        // Root-only paths (well-known, nodeinfo) are never API routes
+        if (this.excludedPaths.some(p => requestPath === `/${p}` || requestPath.startsWith(`/${p}/`))) return false;
+        // No prefix → every other route is an API route
+        if (!this.globalPrefix) return true;
+        return requestPath.startsWith(`/${this.globalPrefix}`);
+    }
+
     catch(exception: HttpException, host: ArgumentsHost) {
         const ctx = host.switchToHttp();
 
         const request = ctx.getRequest();
         const response: Response = ctx.getResponse();
 
-        if (!request.path.startsWith('/api')) {
+        if (!this.isApiRoute(request.path)) {
             const status = exception instanceof HttpException
                 ? exception.getStatus()
                 : HttpStatus.INTERNAL_SERVER_ERROR;
@@ -27,10 +44,11 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
             return;
         }
 
-        // Fallback: serve static files from public/api/ for unmatched routes
+        // Fallback: serve static files from public/ for unmatched GET routes
         if (exception instanceof NotFoundException && request.method === 'GET') {
-            const relativePath = request.path.replace(/^\/api\/?/, '');
-            const staticFile = path.join(process.cwd(), 'public', 'api', relativePath);
+            const prefixStrip = this.globalPrefix ? new RegExp(`^\\/${this.globalPrefix}\\/?`) : /^\//;
+            const relativePath = request.path.replace(prefixStrip, '');
+            const staticFile = path.join(process.cwd(), 'public', relativePath);
             try {
                 const stat = fs.statSync(staticFile);
                 if (stat.isFile()) 

@@ -34,10 +34,14 @@ export class PrismaService implements OnModuleInit {
 
     async onModuleInit(): Promise<void> {
         try {
+            this.logger.log("Connecting to database...");
             await this._client.$connect();
+            this.logger.log("Connected to database, applying migrations if needed...");
             await this.deploy();
+            this.logger.log("Database is ready");
             this._readyResolve();
         } catch (err) {
+            this.logger.error("Database connection failed:", err);
             this._readyReject(err);
         }
     }
@@ -48,8 +52,8 @@ export class PrismaService implements OnModuleInit {
     private async deploy(): Promise<boolean> {
         return new Promise((resolve) => {
             const proc = spawn(
-                "npx", ["npm", "run", "prisma:deploy"],
-                { env: process.env },
+                "npm", ["run", "prisma:deploy"],
+                { env: process.env, cwd: '/app' },
             );
 
             const onLine = (line: string, isErr: boolean) => {

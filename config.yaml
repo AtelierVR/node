@@ -15,6 +15,7 @@
 #  ssl: false                    # true to enable native HTTPS (requires cert_path + private_path)
   # cert_path: 'certs/certificate.crt'
   # private_path: 'certs/private.key'
+  # prefix: 'api'               # global route prefix (e.g. 'v1', '' for none) — requires restart
 
 # gateway:
 #   api: 'https://example.com/api/'  # default: http(s)://{http.domain}/api/

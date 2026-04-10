@@ -55,6 +55,7 @@ export class AppConfigService implements OnModuleInit {
         if (overriddenKeys.includes(key))
             return value;
 
+        await this.prisma.ready;
         const db = await this.configs.findFirst({ where: { key: String(key) } });
         if (!db)
             return value;
@@ -80,6 +81,7 @@ export class AppConfigService implements OnModuleInit {
         if (overriddenKeys.includes(key))
             return value;
 
+        await this.prisma.ready;
         const db = await this.configs.findFirst({ where: { key: String(key) } });
         if (!db) return value;
 

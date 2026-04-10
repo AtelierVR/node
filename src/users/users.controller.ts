@@ -514,8 +514,11 @@ export class UsersController {
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
-            const resp = await server.fetch<ApiUser>(`/api/users/${identifier.toString()}`);
-            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${id})`);
+            const resp = await server.fetch<ApiUser>(`/users/${identifier.toString()}`);
+            if (resp.error || !resp.data) {
+                this.users.logger.error(`Failed to fetch user ${identifier.toString()} from server ${identifier.server}:`, resp.error?.code, resp.error?.message);
+                throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${id})`);
+            }
             return resp.data;
         }
 

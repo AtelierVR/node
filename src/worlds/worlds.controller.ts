@@ -71,6 +71,7 @@ export class WorldsController {
             if (!world) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `World (${id})`);
             return { world, identifier, remote: false as const };
         }
+
         return { world: null, identifier, remote: true as const };
     }
 
@@ -163,8 +164,11 @@ export class WorldsController {
             this.requireExternalFetch(req);
             const server = await this.worlds.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
-            const resp = await server.fetch<any>(`/api/worlds/${identifier.toString()}`);
-            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `World (${id})`);
+            const resp = await server.fetch<any>(`/worlds/${identifier.toString()}`);
+            if (resp.error || !resp.data) {
+                this.worlds.logger.error(`Failed to fetch world ${identifier.toString()} from server ${identifier.server}:`, resp.error?.code, resp.error?.message);
+                throw new ApiException(ApiErrorCode.NOT_FOUND, null, `World (${id})`);
+            }
             return resp.data;
         }
         return await world!.sanitize();
@@ -314,7 +318,7 @@ export class WorldsController {
             if (rawLimit) params.set('limit', rawLimit);
             if (rawOffset) params.set('offset', rawOffset);
             const qs = params.toString();
-            const resp = await server.fetch<any>(`/api/worlds/${identifier.toString()}/assets${qs ? '?' + qs : ''}`);
+            const resp = await server.fetch<any>(`/worlds/${identifier.toString()}/assets${qs ? '?' + qs : ''}`);
             if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `World (${id})`);
             return resp.data;
         }
@@ -431,7 +435,7 @@ export class WorldsController {
             this.requireExternalFetch(req);
             const server = await this.worlds.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
-            const resp = await server.fetch<any>(`/api/worlds/${identifier.toString()}/assets/${assetId}/status`);
+            const resp = await server.fetch<any>(`/worlds/${identifier.toString()}/assets/${assetId}/status`);
             if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Asset (${assetId})`);
             return resp.data;
         }

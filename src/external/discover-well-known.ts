@@ -44,13 +44,16 @@ function parseTtlMs(headers: Headers): number {
 async function tryFetchWellKnown(url: string): Promise<DiscoveredWellKnown | null> {
     try {
         const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-        if (!res.ok) return null;
+        if (!res.ok) 
+            throw new Error(`HTTP ${res.status} ${res.statusText}`);
         const raw = await res.json();
         const data = plainToInstance(NoxWellKnownDto, raw);
         const errors = validateSync(data, { whitelist: true });
-        if (errors.length > 0) return null;
+        if (errors.length > 0) 
+            throw new Error(`Validation failed for well-known data from ${url}: ${errors}`);
         return { url, data: data as NoxWellKnown, ttlMs: parseTtlMs(res.headers) };
-    } catch {
+    } catch(e) {
+        console.error(`Failed to fetch or parse well-known config from ${url}:`, e);
         return null;
     }
 }
@@ -64,7 +67,8 @@ async function discoverViaSrv(address: string): Promise<DiscoveredWellKnown | nu
     let records: SrvRecord[];
     try {
         records = await dns.resolveSrv(`_nox._tcp.${address}`);
-    } catch {
+    } catch (e) {
+        console.error(`Failed to resolve SRV record for _nox._tcp.${address}:`, e);
         return null; // NXDOMAIN or resolver error
     }
 
@@ -77,6 +81,8 @@ async function discoverViaSrv(address: string): Promise<DiscoveredWellKnown | nu
             const result = await tryFetchWellKnown(url);
             if (result) return result;
         }
+
+    console.error(`No valid SRV records found for _nox._tcp.${address}`);
     return null;
 }
 
@@ -88,17 +94,21 @@ async function discoverViaTxt(address: string): Promise<DiscoveredWellKnown | nu
     let records: string[][];
     try {
         records = await dns.resolveTxt(`_nox.${address}`);
-    } catch {
+    } catch (e) {
+        console.error(`Failed to resolve TXT record for _nox.${address}:`, e);
         return null; // NXDOMAIN or resolver error
     }
 
     for (const parts of records) {
         const line = parts.join('');
         const match = line.match(/(?:^|[;\s])ng=([^\s;]+)/);
+        console.debug(`TXT record for _nox.${address}:`, line, 'ng match:', match);
         if (!match?.[1]) continue;
         const result = await tryFetchWellKnown(match[1]);
         if (result) return result;
     }
+
+    console.error(`No valid ng= URL found in TXT records for _nox.${address}`);
     return null;
 }
 
@@ -108,10 +118,10 @@ async function discoverViaTxt(address: string): Promise<DiscoveredWellKnown | nu
  * Tries https then http.
  */
 async function discoverViaNodeInfo(address: string): Promise<DiscoveredWellKnown | null> {
-    for (const scheme of ['https', 'http'] as const) 
+    for (const scheme of ['https', 'http'] as const)
         try {
             const res = await fetch(`${scheme}://${address}${NODEINFO_PATH}`, {
-                signal: AbortSignal.timeout(5000),
+                signal: AbortSignal.timeout(5000)
             });
             if (!res.ok) continue;
             const doc: NodeInfoLinks = await res.json();
@@ -119,9 +129,12 @@ async function discoverViaNodeInfo(address: string): Promise<DiscoveredWellKnown
             if (!link?.href) continue;
             const result = await tryFetchWellKnown(link.href);
             if (result) return result;
-        } catch {
+        } catch (e) {
+            console.error(`Failed to fetch NodeInfo from ${scheme}://${address}${NODEINFO_PATH}:`, e);
             // network error — try next scheme
         }
+
+    console.error(`No valid NodeInfo link found for ${address}`);
     return null;
 }
 
@@ -135,6 +148,8 @@ async function discoverManual(address: string): Promise<DiscoveredWellKnown | nu
         const result = await tryFetchWellKnown(url);
         if (result) return result;
     }
+
+    console.error(`Failed to discover ${WELL_KNOWN_PATH} for ${address} via manual fallback`);
     return null;
 }
 

@@ -6,6 +6,7 @@ import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 import { AppConfigService } from './config/config.service';
 import { ApiExceptionFilter } from './api/api-exception.filter';
+import { ROOT_ONLY_PATHS } from './api/api.constants';
 import { ExternalServersService } from './external/external-servers.service';
 
 async function bootstrap() {
@@ -15,46 +16,55 @@ async function bootstrap() {
   // Parse cookies for authentication middleware and controllers
   app.use(cookieParser());
 
-  // All routes live under /api — except ActivityPub well-known and nodeinfo endpoints
-  // which must be served at the root level per the protocols' specs.
-  app.setGlobalPrefix('api', {
-    exclude: [
-      { path: '.well-known/webfinger', method: RequestMethod.GET },
-      { path: '.well-known/nodeinfo', method: RequestMethod.GET },
-      { path: '.well-known/host-meta', method: RequestMethod.GET },
-      { path: '.well-known/nox', method: RequestMethod.GET },
-      { path: 'nodeinfo/2.1', method: RequestMethod.GET },
-    ],
-  });
-
-  app.useGlobalFilters(new ApiExceptionFilter());
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-
-  const config = app.get(AppConfigService);
-
-  const port = await config.get<number>('http.port');
-  const host = await config.get<string>('http.host');
-
-  let corsEnabled = await config.get<boolean>('cors.enabled');
-  let corsOrigins = (await config.get<string>('cors.origins'))
-    ?.split(',')
+  // CORS must be enabled before app.init() so its middleware is registered
+  // ahead of all route handlers in the Express stack.
+  const corsEnabled = process.env.CORS_ENABLED !== 'false';
+  const corsOrigins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
     .map((o) => o.trim())
-    .filter(Boolean) ?? '';
-  let corsCredentials = await config.get<boolean>('cors.credentials');
+    .filter(Boolean);
+  const corsCredentials = process.env.CORS_CREDENTIALS !== 'false';
 
   if (corsEnabled)
     app.enableCors({
-      origin: corsOrigins
-        ? corsOrigins
-        : true,
-      credentials: corsCredentials
+      origin: corsOrigins.length ? corsOrigins : true,
+      credentials: corsCredentials,
     });
+
+  // All routes live under /api by default — except ActivityPub well-known and nodeinfo endpoints
+  // which must be served at the root level per the protocols' specs.
+  // Customize the prefix via HTTP_PREFIX env var or http.prefix in config.yaml (requires restart).
+  // Set HTTP_PREFIX to an empty string to serve all routes at the root.
+  const prefix = process.env.HTTP_PREFIX ?? 'api';
+
+  if (prefix)
+    app.setGlobalPrefix(prefix, {
+      exclude: ROOT_ONLY_PATHS.map(path => ({
+        path: path,
+        method: RequestMethod.GET
+      })),
+    });
+
+  app.useGlobalFilters(new ApiExceptionFilter(prefix, ROOT_ONLY_PATHS));
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // onModuleInit hooks (including PrismaService DB connect + migrate) are triggered
+  // by init(), not by NestFactory.create(). Call it explicitly so the database is
+  // ready before we read any config values from it.
+  logger.log("Initializing application modules...");
+  await app.init();
+
+  const config = app.get(AppConfigService);
+
+  logger.log("Starting server...", 'Bootstrap');
+
+  const port = await config.get<number>('http.port');
+  const host = await config.get<string>('http.host');
 
   await app.listen(port, host, () => {
     logger.log(`Server is running on http://${host}:${port}`, 'Bootstrap');
     if (corsEnabled)
       logger.log(`CORS enabled for origins: ${corsOrigins} — credentials: ${corsCredentials}`, 'Bootstrap');
-
   });
 
 

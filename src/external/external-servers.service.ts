@@ -61,6 +61,14 @@ export class ExternalServersService implements OnModuleInit {
 
         const publicBytes = Buffer.from(publicKey, 'utf8');
 
+        // Use the canonical address from the well-known document, not the queried address.
+        // The queried address may be a gateway-alias domain (e.g. _nox TXT redirect) that
+        // resolves to a server whose canonical address differs, causing a unique-key collision
+        // on `public` if that server is already registered under its canonical address.
+        const canonicalAddress = discovered.data.address;
+        if (!canonicalAddress || address !== canonicalAddress) 
+            throw new Error(`Well-known document for "${address}" has an invalid canonical address`);
+        
         const model = await this.externalServers.upsert({
             where: { address },
             create: {
@@ -89,7 +97,8 @@ export class ExternalServersService implements OnModuleInit {
         if (!server)
             try {
                 server = await this.discover(address);
-            } catch {
+            } catch (e) {
+                this.logger.warn(`Discovery failed for "${address}": ${(e as Error).message}`);
                 return null;
             }
         return server;

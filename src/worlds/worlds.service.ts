@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { WellKnownService } from '../fediverse/well-known.service';
 import { StorageService } from '../storage/storage.service';
@@ -26,6 +26,8 @@ type DiskMulterFile = Express.Multer.File & { path?: string };
 
 @Injectable()
 export class WorldsService {
+
+    public readonly logger = new Logger(WorldsService.name);
 
     readonly queue = new AssetProcessingQueue();
 

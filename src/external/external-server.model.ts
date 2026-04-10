@@ -69,6 +69,7 @@ export class ExternalServer {
         try {
             apiUrl = (await this.wellKnown()).data.gateway.api;
         } catch (e) {
+            console.error(`Failed to get API gateway URL for server ${this.address}:`, e);
             return {
                 data: null,
                 error: ApiErrorFactory.buildError(
@@ -79,7 +80,11 @@ export class ExternalServer {
                 request: path,
             };
         }
-        const url = new URL(path, apiUrl).toString();
+        
+        const url = new URL(
+            path.startsWith('/') ? path.slice(1) : path, 
+            apiUrl.endsWith('/') ? apiUrl : apiUrl + '/'
+        ).toString();
 
         let response: Response;
         try {
@@ -96,6 +101,7 @@ export class ExternalServer {
 
             await this.touchLastSeen();
         } catch (e) {
+            console.error(`Failed to fetch ${url}:`, e);
             return {
                 data: null,
                 error: ApiErrorFactory.buildError(
@@ -114,6 +120,7 @@ export class ExternalServer {
             const envelope = plainToInstance(ApiResponseEnvelopeDto, raw);
             const errors = validateSync(envelope);
             if (errors.length > 0) {
+                console.error(`Invalid API response envelope from ${url}:`, errors);
                 return {
                     data: null,
                     error: ApiErrorFactory.buildError(
@@ -126,6 +133,7 @@ export class ExternalServer {
             }
             json = raw as ApiResponse<T>;
         } catch (e) {
+            console.error(`Failed to parse JSON response from ${url}:`, e);
             return {
                 data: null,
                 error: ApiErrorFactory.buildError(

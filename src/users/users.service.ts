@@ -30,7 +30,7 @@ type DiskMulterFile = Express.Multer.File & { path?: string };
 @Injectable()
 export class UsersService implements OnModuleInit {
 
-    private readonly logger = new Logger(UsersService.name);
+    public readonly logger = new Logger(UsersService.name);
 
     constructor(
         private readonly prisma: PrismaService,

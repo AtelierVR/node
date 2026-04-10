@@ -33,8 +33,12 @@ ENV NODE_ENV=production
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY config.yaml ./config.yaml
 COPY --chown=node:node tools/ ./tools/
+COPY --chown=node:node public/ ./public/
+RUN mkdir -p /app/configs /app/assets && chown -R node:node /app/configs /app/assets
 USER node
 EXPOSE 8080
 CMD ["node", "dist/main"]
