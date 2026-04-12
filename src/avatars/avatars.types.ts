@@ -8,6 +8,8 @@ export type AvatarPlatform = typeof SUPPORTED_PLATFORMS[number];
 
 export interface ApiAvatar {
     id: number;
+    /** Short unique name [a-z0-9-_.]{3,8} or null */
+    name: string | null;
     title: string;
     description: string | null;
     thumbnail: string | null;

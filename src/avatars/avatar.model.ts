@@ -37,6 +37,7 @@ export class Avatar {
         };
         return {
             id: this.id,
+            name: this.name ?? null,
             title: this.title,
             description: this.description ?? null,
             thumbnail: await makePublic(this.thumbnail ?? null),

@@ -214,6 +214,17 @@ export class AvatarsService {
 
         const updates: any = {};
 
+        if (dto.name !== undefined) {
+            if (dto.name === null) {
+                updates.name = null;
+            } else {
+                const existing = await this.prisma.avatars.findUnique({ where: { name: dto.name } });
+                if (existing && existing.id !== avatarId)
+                    throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `name "${dto.name}" is already taken`);
+                updates.name = dto.name;
+            }
+        }
+
         if (dto.title !== undefined) {
             if (!dto.title || dto.title.trim().length === 0 || dto.title.length > 255)
                 throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'title must be 1-255 characters');

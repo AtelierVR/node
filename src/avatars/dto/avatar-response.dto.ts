@@ -5,6 +5,9 @@ export class ApiAvatarDto {
     @ApiProperty({ description: 'Internal numeric avatar ID', example: 1 })
     id!: number;
 
+    @ApiPropertyOptional({ type: 'string', description: 'Short unique name [a-z0-9-_.]{3,8}, or null', example: 'my-avatar', nullable: true })
+    name!: string | null;
+
     @ApiProperty({ description: 'Avatar display name', example: 'My Cool Avatar' })
     title!: string;
 
