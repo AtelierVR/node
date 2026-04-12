@@ -26,6 +26,9 @@ export class ApiAvatarDto {
     @ApiProperty({ description: 'Owner NoxIdentifier', example: '1@my-server.com' })
     owner!: string;
 
+    @ApiProperty({ description: 'Contributor NoxIdentifiers', type: [String], example: [] })
+    contributors!: string[];
+
     @ApiProperty({ description: 'Aliases (NoxIdentifier extras)', type: () => [ApiAliasDto] })
     alias!: ApiAliasDto[];
 }

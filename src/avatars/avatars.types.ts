@@ -17,6 +17,8 @@ export interface ApiAvatar {
     server: string;
     /** NoxIdentifier string of the owner */
     owner: string;
+    /** NoxIdentifier strings of contributors */
+    contributors: string[];
     alias: ApiAlias[];
 }
 

@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -25,5 +25,11 @@ export class UpdateAvatarDto {
     @Min(0)
     @Type(() => Number)
     release?: number | null;
+
+    @ApiPropertyOptional({ type: [String], description: 'NoxIdentifier list of contributors', example: [] })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    contributors?: string[];
 }
 

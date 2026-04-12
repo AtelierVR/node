@@ -161,7 +161,7 @@ export class AvatarsController {
     }
 
     /** POST /api/avatars/:id */
-    @ApiOperation({ summary: 'Update avatar', description: 'Update avatar metadata (owner or admin only).' })
+    @ApiOperation({ summary: 'Update avatar', description: 'Update avatar metadata (owner, contributor, or admin). Only the owner can change contributors.' })
     @ApiWrappedResponse(ApiAvatarDto)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
@@ -176,9 +176,12 @@ export class AvatarsController {
         @Body() body: UpdateAvatarDto,
     ) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.address();
-        if (!avatar.isOwner(await req.user.identifier()) && !req.user.isAdmin())
+        const userIdentifier = await req.user.identifier();
+        if (!avatar.canModify(userIdentifier) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify avatar');
+        // Only the owner can change contributors
+        if (body.contributors !== undefined && !avatar.isOwner(userIdentifier) && !req.user.isAdmin())
+            throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'change contributors');
 
         const updated = await this.avatars.updateAvatar(avatar.id, body);
         return updated.sanitize();
@@ -247,7 +250,7 @@ export class AvatarsController {
     ) {
         const avatar = await this.resolveLocalAvatar(id);
 
-        if (!avatar.isOwner(await req.user.identifier()) && !req.user.isAdmin())
+        if (!avatar.canModify(await req.user.identifier()) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify avatar');
         if (!this.avatars.canUploadFile(req.user))
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'upload file');

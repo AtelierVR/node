@@ -7,6 +7,8 @@ export type AvatarWithMethods = AvatarModel & {
     manager: AvatarsService;
     sanitize(): Promise<ApiAvatar>;
     isOwner(userRef: NoxIdentifier): boolean;
+    isContributor(userRef: NoxIdentifier): boolean;
+    canModify(userRef: NoxIdentifier): boolean;
 };
 
 export class Avatar {
@@ -41,7 +43,8 @@ export class Avatar {
             tags: this.tags ?? [],
             release: await this.manager.resolveRelease(this.id, this.release),
             server: domain,
-            owner: this.ownerRef,
+            owner: NoxIdentifier.parse(this.ownerRef).toString(domain),
+            contributors: this.contributorRefs.map(ref => NoxIdentifier.parse(ref).toString(domain)),
             alias: [
                 { key: 'api', value: `${await this.manager.apiBase()}avatars/${this.id}` },
                 { key: 'iid', value: `a:${this.id}@${domain}` },
@@ -51,5 +54,13 @@ export class Avatar {
 
     isOwner(this: AvatarWithMethods, user: NoxIdentifier): boolean {
         return this.ownerRef === user.toString();
+    }
+
+    isContributor(this: AvatarWithMethods, user: NoxIdentifier): boolean {
+        return this.contributorRefs.includes(user.toString());
+    }
+
+    canModify(this: AvatarWithMethods, user: NoxIdentifier): boolean {
+        return this.isOwner(user) || this.isContributor(user);
     }
 }

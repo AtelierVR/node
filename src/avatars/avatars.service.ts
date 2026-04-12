@@ -241,6 +241,9 @@ export class AvatarsService {
             updates.release = dto.release ?? null;
         }
 
+        if (dto.contributors !== undefined)
+            updates.contributorRefs = await this.normalizeContributors(dto.contributors);
+
         const updated = await this.prisma.avatars.update({ where: { id: avatarId }, data: updates });
 
         if (Object.prototype.hasOwnProperty.call(updates, 'thumbnail')) {
