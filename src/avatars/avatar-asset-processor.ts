@@ -38,6 +38,7 @@ export class AvatarAssetProcessor implements AssetProcessor {
             url: stored.key,
             hash: job.context.hash,
             size: job.context.fileSize,
+            uploaderRef: job.context.uploaderRef,
         });
 
         this.service.activity.create({

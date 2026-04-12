@@ -1,11 +1,12 @@
 import { AvatarModel } from 'src/generated/prisma/models/Avatar';
 import type { ApiAvatar } from './avatars.types';
 import type { AvatarsService } from './avatars.service';
+import { NoxIdentifier } from 'src/common/identifier';
 
 export type AvatarWithMethods = AvatarModel & {
     manager: AvatarsService;
     sanitize(): Promise<ApiAvatar>;
-    isOwner(userRef: string): boolean;
+    isOwner(userRef: NoxIdentifier): boolean;
 };
 
 export class Avatar {
@@ -48,7 +49,7 @@ export class Avatar {
         };
     }
 
-    isOwner(this: AvatarWithMethods, userRef: string): boolean {
-        return this.ownerRef === userRef;
+    isOwner(this: AvatarWithMethods, user: NoxIdentifier): boolean {
+        return this.ownerRef === user.toString();
     }
 }

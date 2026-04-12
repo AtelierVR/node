@@ -1,6 +1,7 @@
 import { AvatarAssetModel } from 'src/generated/prisma/models/AvatarAsset';
 import type { ApiAvatarAsset } from './avatars.types';
 import { AvatarsService } from './avatars.service';
+import { NoxIdentifier } from 'src/common/identifier';
 
 export type AvatarAssetWithMethods = AvatarAssetModel & {
     manager: AvatarsService;
@@ -21,6 +22,7 @@ export class AvatarAsset {
     }
 
     async sanitize(this: AvatarAssetWithMethods): Promise<ApiAvatarAsset> {
+        const address = await this.manager.address();
         const makePublic = async (val: string | null) => {
             if (!val) return null;
             try {
@@ -40,7 +42,9 @@ export class AvatarAsset {
             url: await makePublic(this.url),
             hash: this.hash ?? null,
             size: this.size ?? null,
-            features: this.features ?? [],
+            uploader: this.uploaderRef ? NoxIdentifier.parse(this.uploaderRef).toString(address) : null,
+            mods: [], //this.modRefs.map(ref => NoxIdentifier.parse(ref).toString(address)),
+            features: this.features
         };
     }
 }

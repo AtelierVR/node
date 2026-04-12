@@ -18,6 +18,7 @@ import type { UpdateAvatarDto } from './dto/update-avatar.dto';
 import type { CreateAvatarAssetDto } from './dto/create-avatar-asset.dto';
 import type { UserWithMethods } from '../users/user.model';
 import { NoxIdentifier } from 'src/common/identifier';
+import { ExternalUserWithMethods } from 'src/external/external-user.model';
 
 type DiskMulterFile = Express.Multer.File & { path?: string };
 
@@ -152,26 +153,53 @@ export class AvatarsService {
 
     // ── CRUD ─────────────────────────────────────────────────────────────────────
 
-    async createAvatar(dto: CreateAvatarDto, ownerRef: string): Promise<AvatarWithMethods> {
-        if (!dto.title || dto.title.trim().length === 0 || dto.title.length > 255)
+    async createAvatar(dto: CreateAvatarDto, user: UserWithMethods | ExternalUserWithMethods): Promise<AvatarWithMethods> {
+        let display = !user.isLocal()
+            ? (await user.fetch()).display
+            : user.display;
+
+        dto.title = (dto.title?.trim() || `${display ?? 'Unknown'}'s Avatar`);
+        if (dto.title.length === 0 || dto.title.length > 255)
             throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'title must be 1-255 characters');
 
         if (dto.description !== undefined && dto.description !== null && dto.description.length > 4096)
             throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'description must be at most 4096 characters');
 
+        // Validate custom id if provided
+        if (dto.id !== undefined) {
+            const existing = await this.prisma.avatars.findUnique({ where: { id: dto.id } });
+            if (existing)
+                throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `id ${dto.id} is already taken`);
+        }
+
+        // Validate unique name if provided
+        let name: string | null = null;
+        if (dto.name) {
+            const existing = await this.prisma.avatars.findUnique({ where: { name: dto.name } });
+            if (existing)
+                throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `name "${dto.name}" is already taken`);
+            name = dto.name;
+        }
+
+        const contributorRefs = await this.normalizeContributors(dto.contributors);
+        const ownerRef = NoxIdentifier.type(null, await user.identifier()).toString();
+
         const model = await this.prisma.avatars.create({
             data: {
-                title: dto.title.trim(),
+                ...(dto.id !== undefined ? { id: dto.id } : {}),
+                name,
+                title: dto.title,
                 description: dto.description ?? null,
                 ownerRef,
+                contributorRefs,
                 tags: [],
             },
         });
-        this.activity.create({ 
-            type: 'avatar.create', 
-            message: `Avatar "${model.title}" created`, 
-            details: { avatar_id: model.id }, 
-            author: NoxIdentifier.parse(ownerRef).toString() 
+        this.activity.create({
+            type: 'avatar.create',
+            message: `Avatar "${model.title}" created`,
+            details: { avatar_id: model.id },
+            author: (await user.identifier()).toString()
         }).catch(() => { });
         return Avatar.attach(model, this);
     }
@@ -221,10 +249,10 @@ export class AvatarsService {
                 await this.storage.delete(oldThumb);
         }
 
-        this.activity.create({ 
-            type: 'avatar.update', 
-            message: `Avatar "${updated.title}" updated`, 
-            details: { avatar_id: avatarId }, 
+        this.activity.create({
+            type: 'avatar.update',
+            message: `Avatar "${updated.title}" updated`,
+            details: { avatar_id: avatarId },
             author: NoxIdentifier.parse(model.ownerRef).toString()
         }).catch(() => { });
 
@@ -240,10 +268,10 @@ export class AvatarsService {
         }
         if (model.thumbnail) await this.storage.delete(model.thumbnail);
 
-        this.activity.create({ 
-            type: 'avatar.delete', 
-            message: `Avatar "${model.title}" deleted`, 
-            details: { avatar_id: model.id }, 
+        this.activity.create({
+            type: 'avatar.delete',
+            message: `Avatar "${model.title}" deleted`,
+            details: { avatar_id: model.id },
             author: NoxIdentifier.parse(model.ownerRef).toString()
         }).catch(() => { });
         await this.prisma.avatars.delete({ where: { id: avatarId } });
@@ -274,11 +302,12 @@ export class AvatarsService {
         return AvatarAsset.attach(model, this);
     }
 
-    enqueueAssetFile(
+    async enqueueAssetFile(
         assetId: number,
         file: Express.Multer.File,
+        user: UserWithMethods | ExternalUserWithMethods,
         expectedHash?: string,
-    ): ProcessingJob {
+    ): Promise<ProcessingJob> {
         const f = file as DiskMulterFile;
         if (!f.path) throw new ApiException(ApiErrorCode.INTERNAL_SERVER_ERROR, null, 'Asset file path unavailable');
 
@@ -292,7 +321,7 @@ export class AvatarsService {
             filePath: f.path,
             hash,
             fileSize: f.size,
-            uploaderRef: '',
+            uploaderRef: NoxIdentifier.type(null, await user.identifier()).toString(),
         });
     }
 
@@ -302,11 +331,11 @@ export class AvatarsService {
 
     async updateAssetRecord(
         assetId: number,
-        data: { url: string; hash: string; size: number },
+        data: { url: string; hash: string; size: number; uploaderRef: string },
     ): Promise<void> {
         await this.prisma.avatarAssets.update({
             where: { id: assetId },
-            data: { url: data.url, hash: data.hash, size: data.size },
+            data: { url: data.url, hash: data.hash, size: data.size, uploaderRef: data.uploaderRef },
         });
     }
 
@@ -315,6 +344,22 @@ export class AvatarsService {
         if (!asset) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Asset');
         if (asset.url) await this.storage.delete(asset.url);
         await this.prisma.avatarAssets.delete({ where: { id: assetId } });
+    }
+
+    private async normalizeContributors(raw?: string[]): Promise<string[]> {
+        if (!raw || raw.length === 0) return [];
+        const domain = await this.address();
+        const seen = new Set<string>();
+        const result: string[] = [];
+        for (const s of raw) {
+            const ni = NoxIdentifier.parse(s);
+            const key = ni.toString(domain);
+            if (!seen.has(key)) {
+                seen.add(key);
+                result.push(key);
+            }
+        }
+        return result;
     }
 
     async resolveRelease(avatarId: number, release: number | null): Promise<number> {

@@ -29,5 +29,7 @@ export interface ApiAvatarAsset {
     url: string | null;
     hash: string | null;
     size: number | null;
+    mods: string[];
+    uploader: string | null;
     features: string[];
 }

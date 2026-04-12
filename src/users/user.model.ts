@@ -85,12 +85,13 @@ export class User {
 
   async sanitizeCurrent(this: UserWithMethods): Promise<ApiCurrentUser> {
     const user = this as UserModel;
+    var base = await this.sanitize();
     return {
-      ...(await this.sanitize()),
+      ...base,
       email: user.email ?? null,
       email_verified: user.emailVerified,
-      home: null,
-      avatar: user.avatarRef ?? null,
+      home: user.homeRef && NoxIdentifier.parse(user.homeRef).toString(base.server),
+      avatar: user.avatarRef && NoxIdentifier.parse(user.avatarRef).toString(base.server),
       relations: null,
       twofa_enabled: user.twofaEnabled,
     };

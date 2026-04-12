@@ -200,6 +200,13 @@ export class WorldsService {
         const contributorRefs = await this.normalizeContributors(dto.contributors);
         let ownerRef = (await user.identifier());
 
+        // Validate custom id if provided
+        if (dto.id !== undefined) {
+            const existing = await this.worlds.findUnique({ where: { id: dto.id } });
+            if (existing)
+                throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `id ${dto.id} is already taken`);
+        }
+
         // Validate unique name if provided
         let name: string | null = null;
         if (dto.name) {
@@ -211,6 +218,7 @@ export class WorldsService {
 
         const model = await this.worlds.create({
             data: {
+                ...(dto.id !== undefined ? { id: dto.id } : {}),
                 name,
                 title: dto.title,
                 description: dto.description ?? null,
@@ -235,6 +243,7 @@ export class WorldsService {
         worldId: number,
         dto: UpdateWorldDto,
         file?: Express.Multer.File,
+        updater?: UserWithMethods | ExternalUserWithMethods,
     ): Promise<WorldWithMethods> {
         const model = await this.worlds.findUnique({ where: { id: worldId } });
         if (!model) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'World');
@@ -314,13 +323,13 @@ export class WorldsService {
             type: 'world.update',
             message: `World "${updated.title}" updated`,
             details: { world_id: worldId },
-            author: NoxIdentifier.parse(model.ownerRef).toString()
+            author: NoxIdentifier.type('u', await updater?.identifier() ?? NoxIdentifier.parse(model.ownerRef)).toString()
         }).catch(() => { });
 
         return World.attach(updated, this);
     }
 
-    async deleteWorld(worldId: number): Promise<void> {
+    async deleteWorld(worldId: number, updater?: UserWithMethods | ExternalUserWithMethods): Promise<void> {
         const model = await this.worlds.findUnique({ where: { id: worldId }, include: { assets: true } });
         if (!model) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'World');
 
@@ -337,7 +346,7 @@ export class WorldsService {
             type: 'world.delete',
             message: `World "${model.title}" deleted`,
             details: { world_id: model.id },
-            author: NoxIdentifier.parse(model.ownerRef).toString()
+            author: NoxIdentifier.type('u', await updater?.identifier() ?? NoxIdentifier.parse(model.ownerRef)).toString()
         }).catch(() => { });
         await this.worlds.delete({ where: { id: worldId } });
     }

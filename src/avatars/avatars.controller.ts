@@ -20,6 +20,7 @@ import { AuthUserGuard, UserAuthenticatedRequest, OptionalAuthUserGuard, Optiona
 import { CreateAvatarDto } from './dto/create-avatar.dto';
 import { UpdateAvatarDto } from './dto/update-avatar.dto';
 import { CreateAvatarAssetDto } from './dto/create-avatar-asset.dto';
+import { userInfo } from 'node:os';
 
 const multerTempOpts = {
     storage: diskStorage({
@@ -130,10 +131,7 @@ export class AvatarsController {
     async create(@Req() req: Request & UserAuthenticatedRequest, @Body() body: CreateAvatarDto) {
         if (!this.avatars.canCreateAvatar(req.user))
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'create avatar');
-
-        const domain = await this.avatars.address();
-        const ownerRef = `${req.user.id}@${domain}`;
-        const avatar = await this.avatars.createAvatar(body, ownerRef);
+        const avatar = await this.avatars.createAvatar(body, req.user);
         return avatar.sanitize();
     }
 
@@ -179,8 +177,7 @@ export class AvatarsController {
     ) {
         const avatar = await this.resolveLocalAvatar(id);
         const domain = await this.avatars.address();
-        const userRef = `${req.user.id}@${domain}`;
-        if (!avatar.isOwner(userRef) && !req.user.isAdmin())
+        if (!avatar.isOwner(await req.user.identifier()) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify avatar');
 
         const updated = await this.avatars.updateAvatar(avatar.id, body);
@@ -198,9 +195,7 @@ export class AvatarsController {
     @Delete(':id')
     async deleteAvatar(@Param('id') id: string, @Req() req: Request & UserAuthenticatedRequest) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.address();
-        const userRef = `${req.user.id}@${domain}`;
-        if (!avatar.isOwner(userRef) && !req.user.isAdmin())
+        if (!avatar.isOwner(await req.user.identifier()) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'delete avatar');
 
         await this.avatars.deleteAvatar(avatar.id);
@@ -251,9 +246,8 @@ export class AvatarsController {
         @UploadedFile() file?: Express.Multer.File,
     ) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.address();
-        const userRef = `${req.user.id}@${domain}`;
-        if (!avatar.isOwner(userRef) && !req.user.isAdmin())
+
+        if (!avatar.isOwner(await req.user.identifier()) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify avatar');
         if (!this.avatars.canUploadFile(req.user))
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'upload file');
@@ -321,7 +315,7 @@ export class AvatarsController {
             versions: parseInts(version),
             engines: parseStrings(engine),
             platforms: parseStrings(platform),
-            showEmpty: showEmpty === undefined ? undefined : showEmpty !== 'false',
+            showEmpty: showEmpty !== undefined && showEmpty !== 'false',
             limit,
             offset,
         });
@@ -330,7 +324,7 @@ export class AvatarsController {
             total: result.total,
             limit,
             offset,
-            items: result.assets.map(a => a.sanitize()),
+            items: await Promise.all(result.assets.map(a => a.sanitize())),
         };
     }
 
@@ -349,9 +343,8 @@ export class AvatarsController {
         @Body() body: CreateAvatarAssetDto,
     ) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.address();
-        const userRef = `${req.user.id}@${domain}`;
-        if (!avatar.isOwner(userRef) && !req.user.isAdmin())
+
+        if (!avatar.isOwner(await req.user.identifier()) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'create asset');
 
         const asset = await this.avatars.createAsset(avatar.id, body);
@@ -378,8 +371,7 @@ export class AvatarsController {
     ) {
         const avatar = await this.resolveLocalAvatar(id);
         const domain = await this.avatars.address();
-        const userRef = `${req.user.id}@${domain}`;
-        if (!avatar.isOwner(userRef) && !req.user.isAdmin())
+        if (!avatar.isOwner(await req.user.identifier()) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'upload asset');
         if (!this.avatars.canUploadFile(req.user))
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'upload file');
@@ -395,7 +387,7 @@ export class AvatarsController {
             throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Asset (${assetId})`);
 
         const expectedHash = (req as any).headers?.['x-file-hash'] as string | undefined;
-        const job = this.avatars.enqueueAssetFile(aid, file, expectedHash);
+        const job = await this.avatars.enqueueAssetFile(aid, file, req.user, expectedHash);
 
         return {
             status: job.status,
@@ -515,9 +507,8 @@ export class AvatarsController {
         @Req() req: Request & UserAuthenticatedRequest,
     ) {
         const avatar = await this.resolveLocalAvatar(id);
-        const domain = await this.avatars.address();
-        const userRef = `${req.user.id}@${domain}`;
-        if (!avatar.isOwner(userRef) && !req.user.isAdmin())
+
+        if (!avatar.isOwner(await req.user.identifier()) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'delete asset');
 
         const aid = parseInt(assetId, 10);

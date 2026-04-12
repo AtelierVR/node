@@ -315,10 +315,11 @@ export class UsersService implements OnModuleInit {
             if (input.home === null) updates.homeRef = null;
             else if (typeof input.home === 'string' && input.home.length > 0) {
                 const ni = NoxIdentifier.parse(input.home);
-                if (ni.type && ni.type !== 'w') throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'home');
+                if (ni.type && ni.type !== 'w') 
+                    throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'home');
                 let homeStr: string;
-                if (ni.server && (ni.server === await this.wellKnown.address() || ni.server === NoxIdentifier.LOCALSERVER)) {
-                    const clean = new NoxIdentifier(ni.type, ni.id, undefined, ni.query);
+                if (ni.isLocal(await this.wellKnown.address())) {
+                    const clean = new NoxIdentifier(null, ni.id, undefined, ni.query);
                     homeStr = clean.toString();
                 } else {
                     homeStr = ni.toString();
@@ -332,8 +333,8 @@ export class UsersService implements OnModuleInit {
             else if (typeof input.avatar === 'string' && input.avatar.length > 0) {
                 const ni = NoxIdentifier.parse(input.avatar);
                 let avatarStr: string;
-                if (ni.server && (ni.server === await this.wellKnown.address() || ni.server === NoxIdentifier.LOCALSERVER)) {
-                    const clean = new NoxIdentifier(ni.type, ni.id, undefined, ni.query);
+                if (ni.isLocal(await this.wellKnown.address())) {
+                    const clean = new NoxIdentifier(null, ni.id, undefined, ni.query);
                     avatarStr = clean.toString();
                 } else avatarStr = ni.toString();
                 updates.avatarRef = avatarStr;

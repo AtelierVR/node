@@ -333,7 +333,7 @@ export class WorldsController {
             versions: parseInts(version),
             engines: parseStrings(engine),
             platforms: parseStrings(platform),
-            showEmpty: showEmpty === undefined ? undefined : showEmpty !== 'false',
+            showEmpty: showEmpty !== undefined && showEmpty !== 'false',
             limit,
             offset,
         });

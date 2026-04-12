@@ -189,18 +189,22 @@ model ExternalUser {
 
 /// An avatar model hosted on the node
 model Avatar {
-  id          Int           @id @default(autoincrement())
-  title       String
-  description String?
-  thumbnail   String?
-  tags        String[]
+  id              Int           @id @default(autoincrement())
+  /// Short unique name [a-z0-9-_.]{3,8}, used as human-readable identifier. Nullable.
+  name            String?       @unique
+  title           String
+  description     String?
+  thumbnail       String?
+  tags            String[]
   /// NoxIdentifier of the owner user (e.g. "1@::" or "1@example.com")
-  ownerRef    String        @map("owner_ref")
+  ownerRef        String        @map("owner_ref")
+  /// NoxIdentifier list of contributor users (e.g. ["2@::", "3@example.com"])
+  contributorRefs String[]      @default([]) @map("contributor_refs")
   /// Recommended version to download. null = auto-detect latest uploaded version.
-  release     Int?
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-  assets      AvatarAsset[]
+  release         Int?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  assets          AvatarAsset[]
 
   @@map("avatars")
 }
@@ -221,6 +225,8 @@ model AvatarAsset {
   /// File size in bytes
   size        Int?
   features    String[] @default([])
+  /// NoxIdentifier of the user who last uploaded the file
+  uploaderRef String?  @map("uploader_ref")
   avatarId    Int      @map("avatar_id")
   avatar      Avatar   @relation(fields: [avatarId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now()) @map("created_at")

@@ -3,6 +3,13 @@ import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateWorldDto {
+    @ApiPropertyOptional({ description: 'Custom numeric world ID. If omitted, one is auto-assigned.', example: 42 })
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    @Type(() => Number)
+    id?: number;
+
     @ApiPropertyOptional({ description: 'Short unique name [a-z0-9-_.]{3,8}. Left null if omitted.', example: 'myworld' })
     @IsOptional()
     @IsString()
