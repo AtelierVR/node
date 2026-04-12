@@ -26,7 +26,7 @@ export class Avatar {
     }
 
     async sanitize(this: AvatarWithMethods): Promise<ApiAvatar> {
-        const domain = await this.manager.address();
+        const address = await this.manager.address();
         const makePublic = async (val: string | null) => {
             if (!val) return null;
             try {
@@ -44,12 +44,13 @@ export class Avatar {
             thumbnail: await makePublic(this.thumbnail ?? null),
             tags: this.tags ?? [],
             release: await this.manager.resolveRelease(this.id, this.release),
-            server: domain,
-            owner: NoxIdentifier.parse(this.ownerRef).toString(domain),
-            contributors: this.contributorRefs.map(ref => NoxIdentifier.parse(ref).toString(domain)),
+            server: address,
+            owner: NoxIdentifier.parse(this.ownerRef).toString(address),
+            contributors: this.contributorRefs.map(ref => NoxIdentifier.parse(ref).toString(address)),
             alias: [
                 { key: 'api', value: `${await this.manager.apiBase()}avatars/${this.id}` },
-                { key: 'iid', value: this.identifier().toString(domain) },
+                { key: 'iid', value: this.identifier().toString(address) },
+                ...(this.name ? [{ key: 'nid', value: `${this.name}@${address}` }] : []),
             ],
         };
     }
