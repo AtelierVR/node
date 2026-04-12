@@ -180,7 +180,7 @@ export class InstanceConfig {
   @Label('Instance Icon')
   @Description('Public URL to the instance icon/logo.')
   @ConfigVar({ key: 'instance.icon', env: 'INSTANCE_ICON' })
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   @IsNotEmpty()
   @Default(r => {
     const secure = r.get('http.secure') === 'true';
