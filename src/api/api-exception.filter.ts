@@ -1,4 +1,4 @@
-import { Catch, ArgumentsHost, NotFoundException, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Catch, ArgumentsHost, NotFoundException, BadRequestException, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ApiException } from './api-exception';
 import { Response, Request } from 'express';
 import { BaseExceptionFilter } from '@nestjs/core';
@@ -80,6 +80,13 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
             return exception;
         else if (exception instanceof NotFoundException)
             return new ApiException(ApiErrorCode.NOT_IMPLEMENTED, null, `${request.method} ${request.path}`);
+        else if (exception instanceof BadRequestException) {
+            const res = exception.getResponse();
+            const message = typeof res === 'object' && res !== null && 'message' in res
+                ? (Array.isArray((res as any).message) ? (res as any).message.join(', ') : String((res as any).message))
+                : exception.message;
+            return new ApiException(ApiErrorCode.BAD_REQUEST, null, message);
+        }
 
         return new ApiException(
             ApiErrorCode.INTERNAL_SERVER_ERROR,

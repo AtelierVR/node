@@ -231,7 +231,7 @@ export class AvatarsService {
             updates.title = dto.title.trim();
         }
 
-        if (Object.prototype.hasOwnProperty.call(dto, 'description'))
+        if (dto.description !== undefined)
             if (dto.description !== null && dto.description !== undefined && dto.description.length > 4096)
                 throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'description must be at most 4096 characters');
             else updates.description = dto.description ?? null;
@@ -244,7 +244,7 @@ export class AvatarsService {
             updates.thumbnail = dto.thumbnail ?? null;
         }
 
-        if (Object.prototype.hasOwnProperty.call(dto, 'release')) {
+        if (dto.release !== undefined) {
             if (dto.release !== null && dto.release !== undefined) {
                 if (!Number.isInteger(dto.release) || dto.release < 0)
                     throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'release must be a non-negative integer');
@@ -257,7 +257,7 @@ export class AvatarsService {
 
         const updated = await this.prisma.avatars.update({ where: { id: avatarId }, data: updates });
 
-        if (Object.prototype.hasOwnProperty.call(updates, 'thumbnail')) {
+        if (updates.thumbnail !== undefined) {
             const oldThumb = model.thumbnail;
             if (oldThumb && oldThumb !== updates.thumbnail)
                 await this.storage.delete(oldThumb);
