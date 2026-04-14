@@ -149,6 +149,7 @@ export class WellKnownService {
                 terms: new URL(`terms.md`, await this.apiBaseUrl()).toString(),
                 privacy: new URL(`privacy.md`, await this.apiBaseUrl()).toString(),
                 rules: new URL(`rules.md`, await this.apiBaseUrl()).toString(),
+                configs: new URL(`configs`, await this.apiBaseUrl()).toString(),
             },
             versions: {
                 node: process.version.replace(/^v/, ''),
@@ -161,6 +162,7 @@ export class WellKnownService {
                 description: await this.config.getOptional<string>('instance.description') ?? null,
                 icon: await this.config.getOptional<string>('instance.icon') ?? null,
                 contact: await this.config.getOptional<string>('instance.contact') ?? null,
+                socials: (await this.config.getOptional<Record<string, string | string[]>>('instance.socials')) ?? {},
             },
             features: await this.instanceFeatures(),
             capabilities: [
@@ -168,6 +170,7 @@ export class WellKnownService {
                 'webfinger',
                 'nodeinfo',
                 'hostmeta',
+                ...await this.instanceCapabilities(),
             ],
             maintenance: null
         };
@@ -179,5 +182,18 @@ export class WellKnownService {
     private async instanceFeatures(): Promise<string[]> {
         const raw = await this.config.get<string>('instance.features');
         return raw.split(',').map((f) => f.trim()).filter(Boolean);
+    }
+
+    /** Builds capability flags from instance permission config. */
+    private async instanceCapabilities(): Promise<string[]> {
+        const caps: string[] = [];
+        if (await this.config.get<boolean>('instance.registration')) caps.push('allow_user_registration');
+        if (await this.config.get<boolean>('instance.instanceCreation')) caps.push('allow_instance_creation');
+        if (await this.config.get<boolean>('instance.instanceCreationByExternal')) caps.push('allow_instance_creation_by_external');
+        if (await this.config.get<boolean>('instance.worldCreation')) caps.push('allow_world_creation');
+        if (await this.config.get<boolean>('instance.worldCreationByExternal')) caps.push('allow_world_creation_by_external');
+        if (await this.config.get<boolean>('instance.avatarCreation')) caps.push('allow_avatar_creation');
+        if (await this.config.get<boolean>('instance.avatarCreationByExternal')) caps.push('allow_avatar_creation_by_external');
+        return caps;
     }
 }

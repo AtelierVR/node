@@ -10,9 +10,38 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { join } from 'path';
 import { Label, Description, ConfigVar, Default, IsRisky } from './config.decorators';
+
+/**
+ * Parses the `key=url,key=url` socials config format into a Record.
+ * Duplicate keys are merged into an array; single values remain a string.
+ * Handles leading/trailing whitespace around keys and values.
+ * If the input is already an object it is returned as-is.
+ *
+ * @example
+ * parseSocialsString('github=https://github.com/org,github=https://github.com/repo,mastodon=https://mastodon.social/@me')
+ * // → { github: ['https://github.com/org', 'https://github.com/repo'], mastodon: 'https://mastodon.social/@me' }
+ */
+export function parseSocialsString(value: unknown): Record<string, string | string[]> {
+  if (value === null || value === undefined) return {};
+  if (typeof value === 'object') return value as Record<string, string | string[]>;
+  if (typeof value !== 'string' || !value.trim()) return {};
+
+  const acc: Record<string, string[]> = {};
+  for (const entry of value.split(',')) {
+    const idx = entry.indexOf('=');
+    if (idx < 1) continue;
+    const key = entry.slice(0, idx).trim();
+    const url = entry.slice(idx + 1).trim();
+    if (!key || !url) continue;
+    (acc[key] ??= []).push(url);
+  }
+  return Object.fromEntries(
+    Object.entries(acc).map(([k, v]) => [k, v.length === 1 ? v[0] : v]),
+  );
+}
 
 export class HttpConfig {
   @Label('HTTP Host')
@@ -190,6 +219,13 @@ export class InstanceConfig {
   })
   icon: string;
 
+  @Label('Instance Socials')
+  @Description('Comma-separated list of "platform=url" pairs. The same platform key can appear multiple times and will be merged into an array. Known keys: mastodon, discord, twitter, youtube, github. Example: github=https://github.com/org,mastodon=https://mastodon.social/@me,github=https://github.com/repo')
+  @ConfigVar({ key: 'instance.socials', env: 'INSTANCE_SOCIALS' })
+  @Transform(({ value }) => parseSocialsString(value))
+  @IsOptional()
+  socials?: Record<string, string | string[]>;
+
   @Label('Instance Features')
   @Description('List of enabled feature modules on this instance (e.g. user, world, avatar, instance, server).')
   @Default('user,world,avatar,instance,server')
@@ -198,6 +234,55 @@ export class InstanceConfig {
   @IsNotEmpty()
   /** Comma-separated list — split at runtime via instanceFeatures getter in WellKnownService. */
   features: string;
+
+  @Label('Registration Enabled')
+  @Description('Whether new account registration is open on this instance.')
+  @Default(true)
+  @ConfigVar({ key: 'instance.registration', env: 'INSTANCE_REGISTRATION' })
+  @IsBoolean()
+  registration: boolean;
+
+  @Label('Instance Creation Enabled')
+  @Description('Whether local users can create world instances on this node.')
+  @Default(true)
+  @ConfigVar({ key: 'instance.instanceCreation', env: 'INSTANCE_CREATION' })
+  @IsBoolean()
+  instanceCreation: boolean;
+
+  @Label('Instance Creation by External Users')
+  @Description('Whether external (federated) users can create world instances on this node.')
+  @Default(false)
+  @ConfigVar({ key: 'instance.instanceCreationByExternal', env: 'INSTANCE_CREATION_BY_EXTERNAL' })
+  @IsBoolean()
+  instanceCreationByExternal: boolean;
+
+  @Label('World Creation Enabled')
+  @Description('Whether local users can create worlds on this node.')
+  @Default(true)
+  @ConfigVar({ key: 'instance.worldCreation', env: 'WORLD_CREATION' })
+  @IsBoolean()
+  worldCreation: boolean;
+
+  @Label('World Creation by External Users')
+  @Description('Whether external (federated) users can create worlds on this node.')
+  @Default(false)
+  @ConfigVar({ key: 'instance.worldCreationByExternal', env: 'WORLD_CREATION_BY_EXTERNAL' })
+  @IsBoolean()
+  worldCreationByExternal: boolean;
+
+  @Label('Avatar Creation Enabled')
+  @Description('Whether local users can create avatars on this node.')
+  @Default(true)
+  @ConfigVar({ key: 'instance.avatarCreation', env: 'AVATAR_CREATION' })
+  @IsBoolean()
+  avatarCreation: boolean;
+
+  @Label('Avatar Creation by External Users')
+  @Description('Whether external (federated) users can create avatars on this node.')
+  @Default(false)
+  @ConfigVar({ key: 'instance.avatarCreationByExternal', env: 'AVATAR_CREATION_BY_EXTERNAL' })
+  @IsBoolean()
+  avatarCreationByExternal: boolean;
 }
 
 export class AdminConfig {

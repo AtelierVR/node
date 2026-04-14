@@ -63,3 +63,26 @@ export class ConfigPatchResponseDto {
     @ApiProperty({ type: () => [ConfigPatchResultItemDto], description: 'Per-key patch results' })
     results!: ConfigPatchResultItemDto[];
 }
+
+export class InstanceConfigDto {
+    @ApiProperty({ description: 'Allow new account registration', example: true })
+    allowUserRegistration!: boolean;
+
+    @ApiProperty({ description: 'Allow local users to create world instances', example: true })
+    allowInstanceCreation!: boolean;
+
+    @ApiProperty({ description: 'Allow external (federated) users to create world instances', example: false })
+    allowInstanceCreationByExternal!: boolean;
+
+    @ApiProperty({ description: 'Allow local users to create worlds', example: true })
+    allowWorldCreation!: boolean;
+
+    @ApiProperty({ description: 'Allow external users to create worlds', example: false })
+    allowWorldCreationByExternal!: boolean;
+
+    @ApiProperty({ description: 'Allow local users to create avatars', example: true })
+    allowAvatarCreation!: boolean;
+
+    @ApiProperty({ description: 'Allow external users to create avatars', example: false })
+    allowAvatarCreationByExternal!: boolean;
+}

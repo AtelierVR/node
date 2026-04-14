@@ -31,6 +31,11 @@ export class ExternalServersService implements OnModuleInit {
 
     // ── Lookup ───────────────────────────────────────────────────────────────────
 
+    async findAll(): Promise<ExternalServerWithMethods[]> {
+        const models = await this.externalServers.findMany({ orderBy: { rank: 'desc' } });
+        return models.map((m) => ExternalServer.attach(m, this));
+    }
+
     async findByAddress(address: string): Promise<ExternalServerWithMethods | null> {
         const model = await this.externalServers.findFirst({ where: { address } });
         if (!model) return null;

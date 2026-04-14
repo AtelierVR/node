@@ -1,5 +1,6 @@
 import {
     IsArray,
+    IsBoolean,
     IsIn,
     IsInt,
     IsNotEmpty,
@@ -58,6 +59,11 @@ export class NoxEndpointsDto {
     @IsNotEmpty()
     nodeinfo!: string;
 
+    @ApiProperty({ description: 'URL of the server\'s Configuration', example: 'https://example.com/api/configs' })
+    @IsString()
+    @IsNotEmpty()
+    configs!: string;
+
     [key: string]: string;
 }
 
@@ -103,6 +109,15 @@ export class NoxMetadataDto {
     @IsOptional()
     @IsString()
     contact!: string | null;
+
+    @ApiPropertyOptional({
+        type: 'object',
+        additionalProperties: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+        description: 'Social links map. Keys are platform names (e.g. github, mastodon, discord, twitter, youtube); values are URL or array of URLs.',
+        example: { github: 'https://github.com/org', mastodon: ['https://mastodon.social/@me'] },
+    })
+    @IsOptional()
+    socials!: Record<string, string | string[]>;
 }
 
 /** Class-validator DTO for the /.well-known/nox response from external servers. */

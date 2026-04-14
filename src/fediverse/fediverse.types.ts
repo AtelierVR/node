@@ -70,6 +70,8 @@ export interface NoxEndpoints {
     webfinger: string;
     /** NodeInfo links document URL */
     nodeinfo: string;
+    /** URL of the server's Configuration */
+    configs: string;
     /* Additional endpoints can be added here in the future */
     [key: string]: string;
 }
@@ -90,11 +92,14 @@ export interface NoxSoftware {
     version: string;
 }
 
+export type NoxSocials = Record<string, string | string[]>;
+
 export interface NoxMetadata {
     title: string;
     description: string | null;
     icon: string | null;
     contact: string | null;
+    socials: NoxSocials;
 }
 
 export interface NoxWellKnown {

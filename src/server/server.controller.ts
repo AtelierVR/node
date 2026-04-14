@@ -2,7 +2,7 @@ import { Controller, Get, Post, Req, UseGuards, Query, Body, ParseArrayPipe, Htt
 import type { Request } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiErrorResponse } from '../api/swagger';
-import { ServerLogsResponseDto, ServerConfigEntryDto, ConfigPatchResponseDto } from './dto/server-api-response.dto';
+import { ServerLogsResponseDto, ServerConfigEntryDto, ConfigPatchResponseDto, InstanceConfigDto } from './dto/server-api-response.dto';
 import { UserAuthenticatedRequest } from '../auth/auth.guard';
 import { AdminUserGuard } from '../auth/admin-user.guard';
 import { AppConfigService } from '../config/config.service';
@@ -45,13 +45,28 @@ export class ServerController {
     return { items: logs, total: logs.length };
   }
 
-  @ApiOperation({ summary: 'List configs', description: 'Return all registered config keys with their current values, environment overrides and metadata. Admin only.' })
+  @ApiOperation({ summary: 'Instance config', description: 'Return public instance configuration (e.g. registration status).' })
+  @ApiWrappedResponse(InstanceConfigDto)
+  @Get('configs')
+  async getInstanceConfig() {
+    return {
+      allowUserRegistration: await this.appConfig.get<boolean>('instance.registration'),
+      allowInstanceCreation: await this.appConfig.get<boolean>('instance.instanceCreation'),
+      allowInstanceCreationByExternal: await this.appConfig.get<boolean>('instance.instanceCreationByExternal'),
+      allowWorldCreation: await this.appConfig.get<boolean>('instance.worldCreation'),
+      allowWorldCreationByExternal: await this.appConfig.get<boolean>('instance.worldCreationByExternal'),
+      allowAvatarCreation: await this.appConfig.get<boolean>('instance.avatarCreation'),
+      allowAvatarCreationByExternal: await this.appConfig.get<boolean>('instance.avatarCreationByExternal'),
+    };
+  }
+
+  @ApiOperation({ summary: 'List environment', description: 'Return all registered config keys with their current values, environment overrides and metadata. Admin only.' })
   @ApiWrappedArrayResponse(ServerConfigEntryDto)
   @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
   @ApiErrorResponse(HttpStatus.FORBIDDEN)
   @ApiBearerAuth()
   @UseGuards(AdminUserGuard)
-  @Get('configs')
+  @Get('environment')
   async getConfigs(@Req() req: Request & UserAuthenticatedRequest) {
     const rows = await this.appConfig.configs.findMany();
     const overrideMap = new Map(rows.map((r) => [r.key, r.value]));
@@ -82,13 +97,13 @@ export class ServerController {
     return { total: configs.length, items: configs };
   }
 
-  @ApiOperation({ summary: 'Patch configs', description: 'Upsert or delete config overrides. Send an array of { key, value } patches; null value removes the override. Admin only.' })
+  @ApiOperation({ summary: 'Patch environment', description: 'Upsert or delete config overrides. Send an array of { key, value } patches; null value removes the override. Admin only.' })
   @ApiWrappedResponse(ConfigPatchResponseDto, HttpStatus.CREATED)
   @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
   @ApiErrorResponse(HttpStatus.FORBIDDEN)
   @ApiBearerAuth()
   @UseGuards(AdminUserGuard)
-  @Post('configs')
+  @Post('environment')
   async patchConfigs(
     @Req() req: Request & UserAuthenticatedRequest,
     @Body(new ParseArrayPipe({ items: ConfigPatchItemDto })) items: ConfigPatchItemDto[],
