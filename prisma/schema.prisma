@@ -307,10 +307,18 @@ model ActivityEvent {
 
 /// A relay server connected to this node to host world instances.
 model Relay {
-  id        Int         @id @default(autoincrement())
-  token     RelayToken?
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
+  id         Int         @id @default(autoincrement())
+  /// Human-readable label for this relay (e.g. "EU-West #1")
+  label      String?
+  /// Runner provider type: "docker" | "external" | "kubernetes" | "proxmox"
+  provider   String      @default("docker")
+  /// Provider-specific resource identifier (e.g. Docker container ID)
+  providerId String?     @map("provider_id")
+  token      RelayToken?
+  tags       String[]    @default([])
+  instances  Instance[]
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
 
   @@map("relays")
 }
@@ -342,6 +350,9 @@ model Instance {
   whitelistRefs String[] @default([]) @map("whitelist_refs")
   usePassword   Boolean  @default(false) @map("use_password")
   password      String?
+  /// Relay assigned to host this instance (optional)
+  relayId       Int?     @map("relay_id")
+  relay         Relay?   @relation(fields: [relayId], references: [id], onDelete: SetNull)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
