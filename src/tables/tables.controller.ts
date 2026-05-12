@@ -38,6 +38,7 @@ export class TablesController {
         @Req() req: Request & UserAuthenticatedRequest,
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
+        @Query('filter') filter?: string,
     ) {
         let limit = parseInt(rawLimit ?? '10', 10);
         let offset = parseInt(rawOffset ?? '0', 10);
@@ -45,7 +46,7 @@ export class TablesController {
         if (limit > 100) limit = 100;
         if (!Number.isFinite(offset) || offset < 0) offset = 0;
 
-        const { items, total } = await this.tables.getAll(req.user.id, limit, offset);
+        const { items, total } = await this.tables.getAll(req.user.id, limit, offset, filter);
         return { items, limit, offset, total };
     }
 
@@ -218,6 +219,7 @@ export class TablesController {
         @Param('id') id: string,
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
+        @Query('filter') filter?: string,
     ) {
         let limit = parseInt(rawLimit ?? '20', 10);
         let offset = parseInt(rawOffset ?? '0', 10);
@@ -233,7 +235,7 @@ export class TablesController {
         const user = await this.users.findByIdentifier(identifier);
         if (!user) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');
 
-        const { items, total } = await this.tables.listPublic(user.id, limit, offset);
+        const { items, total } = await this.tables.listPublic(user.id, limit, offset, filter);
         return { items, limit, offset, total };
     }
 

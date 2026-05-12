@@ -24,15 +24,17 @@ export class TablesService {
 
     constructor(private readonly prisma: PrismaService) { }
 
-    async getAll(userId: number, limit: number, offset: number): Promise<{ items: TableMeta[]; total: number }> {
+    async getAll(userId: number, limit: number, offset: number, filter?: string): Promise<{ items: TableMeta[]; total: number }> {
+        const keyFilter = buildKeyFilter(filter);
+        const where = { userId, ...(keyFilter ? { key: keyFilter } : {}) };
         const [rows, total] = await Promise.all([
             this.prisma.userTables.findMany({
-                where: { userId },
+                where,
                 orderBy: { updatedAt: 'desc' },
                 take: limit,
                 skip: offset,
             }),
-            this.prisma.userTables.count({ where: { userId } }),
+            this.prisma.userTables.count({ where }),
         ]);
 
         const items: TableMeta[] = rows.map(row => ({
@@ -56,8 +58,15 @@ export class TablesService {
         return this.get(`public.${type}`, userId);
     }
 
-    async listPublic(userId: number, limit: number, offset: number): Promise<{ items: { key: string; mime: string; hash: string; updated_at: number }[]; total: number }> {
-        const where = { userId, key: { startsWith: 'public.' } };
+    async listPublic(userId: number, limit: number, offset: number, filter?: string): Promise<{ items: { key: string; mime: string; hash: string; updated_at: number }[]; total: number }> {
+        const keyFilter = buildKeyFilter(filter);
+        const where = {
+            userId,
+            AND: [
+                { key: { startsWith: 'public.' } },
+                ...(keyFilter ? [{ key: keyFilter }] : []),
+            ],
+        };
         const [rows, total] = await Promise.all([
             this.prisma.userTables.findMany({
                 where,
@@ -111,4 +120,31 @@ export class TablesService {
 
 function sha256(data: Buffer | Uint8Array): string {
     return createHash('sha256').update(data).digest('hex');
+}
+
+/**
+ * Converts a glob-style pattern (using `*` as wildcard) into a safe Prisma
+ * string filter. No raw SQL is ever emitted — Prisma parameterizes all values.
+ *
+ * Examples:
+ *   "public.*"  → { startsWith: 'public.' }
+ *   "*avatar"   → { endsWith: 'avatar' }
+ *   "*meta*"    → { contains: 'meta' }
+ *   "profile"   → { equals: 'profile' }
+ */
+function buildKeyFilter(pattern: string | undefined):
+    | { startsWith: string } | { endsWith: string } | { contains: string } | { equals: string }
+    | undefined {
+    if (!pattern || pattern.trim() === '' || pattern === '*') return undefined;
+    // Limit length to prevent abuse
+    const p = pattern.trim().slice(0, 200);
+    const startsWithWild = p.startsWith('*');
+    const endsWithWild = p.endsWith('*');
+    if (startsWithWild && endsWithWild) {
+        const inner = p.slice(1, -1);
+        return inner ? { contains: inner } : undefined;
+    }
+    if (startsWithWild) return { endsWith: p.slice(1) };
+    if (endsWithWild)   return { startsWith: p.slice(0, -1) };
+    return { equals: p };
 }

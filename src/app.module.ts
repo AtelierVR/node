@@ -18,6 +18,7 @@ import { ActivityModule } from './activity/activity.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { InstancesModule } from './instances/instances.module';
 import { RelayModule } from './relay/relay.module';
+import { WsModule } from './ws/ws.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { RelayModule } from './relay/relay.module';
     GatewayModule,
     InstancesModule,
     RelayModule,
+    WsModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ApiInterceptor },
