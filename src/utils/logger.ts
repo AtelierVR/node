@@ -98,17 +98,31 @@ function fmt(msg: any): string {
 
 class LoggerStore {
   private static logs: LogEntry[] = [];
+  private static logCallback: ((entry: LogEntry) => void) | null = null;
+
+  /** Register a callback to be called when a new log is added */
+  static onLogPush(callback: (entry: LogEntry) => void) {
+    this.logCallback = callback;
+  }
 
   private static push(level: LogLevel, message: string, tag?: string | null) {
     try {
-      this.logs.push({
+      const entry: LogEntry = {
         timestamp: new Date(),
         level,
         message,
         tag: tag ?? null
-      });
+      };
+      this.logs.push(entry);
       if (this.logs.length > MAX_LOGS)
         this.logs.splice(0, this.logs.length - MAX_LOGS);
+      
+      // Notify callback if registered
+      if (this.logCallback) {
+        try {
+          this.logCallback(entry);
+        } catch { /* ignore callback errors */ }
+      }
     } catch { /* best-effort */ }
   }
 
