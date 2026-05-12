@@ -52,13 +52,16 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
         socket.data.user = user;
         socket.data.session = session;
 
+        // Join the user's personal room for targeted events
+        void socket.join(`user:${user.id}`);
+
         socket.emit('user_connected', {
             id: user.id,
             username: user.username,
             display: user.display,
         });
 
-        this.logger.debug(`User "${user.username}" connected (${socket.id})`);
+        this.logger.debug(`User "${user.username}" connected (${socket.id})`);;
     }
 
     handleDisconnect(socket: Socket) {
@@ -123,6 +126,12 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     emit<T = unknown>(name: string, data: T) {
         if (!this.server) return;
         this.server.to(name).emit(`event:${name}`, data);
+    }
+
+    /** Emit an event to a specific user's sockets via their personal room. */
+    emitToUser<T = unknown>(userId: number, name: string, data: T) {
+        if (!this.server) return;
+        this.server.to(`user:${userId}`).emit(`event:${name}`, data);
     }
 
     private extractToken(socket: Socket): string | null {
