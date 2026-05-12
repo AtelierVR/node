@@ -390,7 +390,7 @@ export class WorldsController {
     ) {
         const world = await this.resolveLocalWorld(id);
         const domain = await this.worlds.address();
-        const userRef = `${req.user.id}@${domain}`;
+        const userRef = req.user.identifier().toString();
         if (!world.canModify(userRef) && !req.user.isAdmin())
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'upload asset');
         if (!this.worlds.canUploadFile(req.user))

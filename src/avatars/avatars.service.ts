@@ -81,6 +81,21 @@ export class AvatarsService {
         return Avatar.attach(model, this);
     }
 
+    async findByName(name: string): Promise<AvatarWithMethods | null> {
+        const model = await this.prisma.avatars.findUnique({ where: { name } });
+        if (!model) return null;
+        return Avatar.attach(model, this);
+    }
+
+    async findByIdentifier(id: string): Promise<AvatarWithMethods | null> {
+        const identifier = NoxIdentifier.parse(id);
+        const numericId = identifier.numericId;
+        if (numericId !== null) return this.findById(numericId);
+        const namePart = identifier.id;
+        if (namePart) return this.findByName(namePart);
+        return null;
+    }
+
     async findAssetById(id: number): Promise<AvatarAssetWithMethods | null> {
         const model = await this.prisma.avatarAssets.findUnique({ where: { id } });
         if (!model) return null;
@@ -366,7 +381,7 @@ export class AvatarsService {
         const seen = new Set<string>();
         const result: string[] = [];
         for (const s of raw) {
-            const ni = NoxIdentifier.parse(s);
+            const ni = NoxIdentifier.type(null, NoxIdentifier.parse(s));
             const key = ni.toString(domain);
             if (!seen.has(key)) {
                 seen.add(key);

@@ -37,7 +37,7 @@ export class ExternalUser {
   }
 
   async identifier(this: ExternalUserWithMethods): Promise<NoxIdentifier> {
-    return new NoxIdentifier(null, (await this.server()).address, this.id.toString());
+    return new NoxIdentifier(null, this.id.toString(), (await this.server()).address);
   }
 
   async fetch(this: ExternalUserWithMethods): Promise<ApiUser> {

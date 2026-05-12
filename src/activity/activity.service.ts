@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import type { CreateActivityEventDto, ApiActivityEvent } from './activity.types';
 import { EventsService } from '../gateway/events.service';
+import { NoxIdentifier } from '../common/identifier';
 
 @Injectable()
 export class ActivityService {
@@ -30,12 +31,19 @@ export class ActivityService {
     }
 
     async create(dto: CreateActivityEventDto): Promise<ApiActivityEvent> {
+        // Normalize author identifier to remove type prefix if present
+        let authorRef: string | null = null;
+        if (dto.author && typeof dto.author === 'string') {
+            const ni = NoxIdentifier.type(null, NoxIdentifier.parse(dto.author));
+            authorRef = ni.toString();
+        }
+        
         const row = await this.prisma.activityEvents.create({
             data: {
                 type: dto.type,
                 message: dto.message,
                 details: dto.details !== undefined ? (dto.details as any) : undefined,
-                authorRef: dto.author ?? null,
+                authorRef,
             },
         });
         const event = this.sanitize(row);

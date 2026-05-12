@@ -49,7 +49,8 @@ export class ServersController {
 
         let icon: string | null = null;
         try {
-            icon = (await server.wellKnown()).data.metadata.icon;
+            const rawIcon = (await server.wellKnown()).data.metadata.icon;
+            icon = Array.isArray(rawIcon) ? (rawIcon[0]?.src ?? null) : rawIcon;
         } catch { /* unreachable */ }
 
         if (!icon) throw new NotFoundException(`Server "${address}" has no icon.`);

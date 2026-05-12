@@ -439,7 +439,7 @@ export class WorldsService {
         const seen = new Set<string>();
         const result: string[] = [];
         for (const s of raw) {
-            const ni = NoxIdentifier.parse(s);
+            const ni = NoxIdentifier.type(null, NoxIdentifier.parse(s));
             const key = ni.toString(domain);
             if (!seen.has(key)) {
                 seen.add(key);

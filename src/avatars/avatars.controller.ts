@@ -52,10 +52,7 @@ export class AvatarsController {
         const identifier = NoxIdentifier.parse(id);
         if (!identifier.isLocal(await this.avatars.address()))
             throw new ApiException(ApiErrorCode.NOT_IMPLEMENTED, null, `Fetch remote avatar (${identifier.toString()})`);
-        const numericId = identifier.numericId;
-        if (numericId === null)
-            throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Avatar ID must be numeric');
-        const avatar = await this.avatars.findById(numericId);
+        const avatar = await this.avatars.findByIdentifier(id);
         if (!avatar) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Avatar (${id})`);
         return avatar;
     }
@@ -63,10 +60,7 @@ export class AvatarsController {
     private async resolveAvatarOrRemote(id: string) {
         const identifier = NoxIdentifier.parse(id);
         if (identifier.isLocal(await this.avatars.address())) {
-            const numericId = identifier.numericId;
-            if (numericId === null)
-                throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Avatar ID must be numeric');
-            const avatar = await this.avatars.findById(numericId);
+            const avatar = await this.avatars.findByIdentifier(id);
             if (!avatar) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Avatar (${id})`);
             return { avatar, identifier, remote: false as const };
         }
