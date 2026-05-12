@@ -66,7 +66,12 @@ export default (): AppConfig => {
 
   for (const [key, entry] of CONFIG_REGISTRY) {
     const yamlVal = getNestedValue(yamlCfg, entry.yaml ?? key);
-    if (yamlVal !== undefined) applyRaw(slots.get(key)!, String(yamlVal));
+    if (yamlVal !== undefined) {
+      const raw = typeof yamlVal === 'object' && yamlVal !== null
+        ? JSON.stringify(yamlVal)
+        : String(yamlVal);
+      applyRaw(slots.get(key)!, raw);
+    }
   }
 
   // ── Deferred function defaults ───────────────────────────────────────────────

@@ -43,6 +43,55 @@ export function parseSocialsString(value: unknown): Record<string, string | stri
   );
 }
 
+/**
+ * Parses the icons config string into a theme-keyed Record.
+ * Format: comma-separated `key=url` pairs. Known keys: default, dark.
+ *
+ * @example
+ * parseIconsRecord('default=https://example.com/icon.png,dark=https://example.com/icon.dark.png')
+ * // → { default: 'https://example.com/icon.png', dark: 'https://example.com/icon.dark.png' }
+ */
+export function parseIconsRecord(value: unknown): Record<string, string> {
+  if (value === null || value === undefined) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, string>;
+  if (typeof value !== 'string' || !value.trim()) return {};
+
+  const result: Record<string, string> = {};
+  for (const entry of value.split(',')) {
+    const idx = entry.indexOf('=');
+    if (idx < 1) continue;
+    const key = entry.slice(0, idx).trim();
+    const url = entry.slice(idx + 1).trim();
+    if (key && url) result[key] = url;
+  }
+  return result;
+}
+
+/**
+ * Parses a value that may be a plain string, a JSON-encoded locale map, or already an object.
+ * Returns the string as-is if it is not a JSON object literal.
+ *
+ * @example
+ * parseLocalizedString('{"en":"My Server","fr":"Mon Serveur"}')
+ * // → { en: 'My Server', fr: 'Mon Serveur' }
+ * parseLocalizedString('My Server')
+ * // → 'My Server'
+ */
+export function parseLocalizedString(value: unknown): string | Record<string, string> {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return value as Record<string, string>;
+  if (typeof value !== 'string') return String(value);
+  const trimmed = value.trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed))
+        return parsed as Record<string, string>;
+    } catch { /* fall through */ }
+  }
+  return value;
+}
+
 export class HttpConfig {
   @Label('HTTP Host')
   @Description('Hostname or IP address the HTTP server binds to.')
@@ -174,8 +223,8 @@ export class GatewayConfig {
   @Default((r) => {
     const secure = r.get('http.secure') === 'true';
     const ssl = r.get('http.ssl') === 'true';
-    const address = r.get('address') ?? 'localhost:3000';
-    return `http${secure || ssl ? 's' : ''}://${address}/`;
+    const domain = r.get('http.domain') ?? 'localhost:3000';
+    return `http${secure || ssl ? 's' : ''}://${domain}/`;
   })
   @ConfigVar({ key: 'gateway.web', env: 'GATEWAY_WEB' })
   @IsString()
@@ -185,19 +234,19 @@ export class GatewayConfig {
 
 export class InstanceConfig {
   @Label('Instance Name')
-  @Description('Display name of this Nox instance.')
+  @Description('Display name of this Nox instance. Can be a plain string or a JSON locale map, e.g. {"en":"My Server","fr":"Mon Serveur"}. When the YAML value is a nested object (name: { en: ... }) it is automatically converted.')
   @Default('Nox')
   @ConfigVar({ key: 'instance.name', env: 'INSTANCE_NAME' })
-  @IsString()
-  @IsNotEmpty()
-  name: string;
+  @Transform(({ value }) => parseLocalizedString(value))
+  @IsOptional()
+  name: string | Record<string, string>;
 
   @Label('Instance Description')
-  @Description('Short description of this Nox instance.')
+  @Description('Short description of this Nox instance. Can be a plain string or a JSON locale map, e.g. {"en":"A VR platform","fr":"Une plateforme VR"}. When the YAML value is a nested object it is automatically converted.')
   @ConfigVar({ key: 'instance.description', env: 'INSTANCE_DESCRIPTION' })
-  @IsString()
+  @Transform(({ value }) => parseLocalizedString(value))
   @IsOptional()
-  description?: string;
+  description?: string | Record<string, string>;
 
   @Label('Instance Contact')
   @Description('Contact email address for the instance administrator.')
@@ -218,6 +267,19 @@ export class InstanceConfig {
     return `http${secure || ssl ? 's' : ''}://${domain}/api/icon.png`;
   })
   icon: string;
+
+  @Label('Instance Icons')
+  @Description('Comma-separated list of "key=url" pairs for theme-specific icons. Known keys: default, light. Example: default=https://example.com/icon.png,light=https://example.com/icon.light.png')
+  @ConfigVar({ key: 'instance.icons', env: 'INSTANCE_ICONS' })
+  @Transform(({ value }) => parseIconsRecord(value))
+  @Default(r => {
+    const secure = r.get('http.secure') === 'true';
+    const ssl = r.get('http.ssl') === 'true';
+    const domain = r.get('http.domain') ?? 'localhost:3000';
+    const base = `http${secure || ssl ? 's' : ''}://${domain}/api`;
+    return `default=${base}/icon.png,light=${base}/icon.light.png`;
+  })
+  icons: Record<string, string>;
 
   @Label('Instance Socials')
   @Description('Comma-separated list of "platform=url" pairs. The same platform key can appear multiple times and will be merged into an array. Known keys: mastodon, discord, twitter, youtube, github. Example: github=https://github.com/org,mastodon=https://mastodon.social/@me,github=https://github.com/repo')
