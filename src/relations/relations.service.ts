@@ -12,6 +12,7 @@ import { ApiUserRelations } from '../users/users.types';
 import { NoxIdentifier } from '../common/identifier';
 import { Relation, RELATION_TYPES, RelationWithMethods } from './relation.model';
 import { ExternalUsersService } from 'src/external/external-users.service';
+import { EventsService } from '../gateway/events.service';
 
 @Injectable()
 export class RelationsService {
@@ -22,6 +23,7 @@ export class RelationsService {
         private readonly users: UsersService,
         private readonly externalServers: ExternalServersService,
         private readonly externalUsers: ExternalUsersService,
+        private readonly events: EventsService,
     ) { }
 
     // ── Queries ──────────────────────────────────────────────────────────────────
@@ -51,13 +53,13 @@ export class RelationsService {
     }
 
     async getRelationBetween(user: UserWithMethods, viewer: NoxIdentifier): Promise<ApiUserRelations> {
-        const [out, inn] = await Promise.all([
-            this.findRelation(user.identifier(), viewer),
+        const [viewerToUser, userToViewer] = await Promise.all([
             this.findRelation(viewer, user.identifier()),
+            this.findRelation(user.identifier(), viewer),
         ]);
         return {
-            out: out ? RELATION_TYPES[out.type] : null,
-            in: inn ? RELATION_TYPES[inn.type] : null
+            out: viewerToUser ? RELATION_TYPES[viewerToUser.type] : null,
+            in: userToViewer ? RELATION_TYPES[userToViewer.type] : null
         };
     }
 
@@ -95,9 +97,17 @@ export class RelationsService {
                 requiresRequest = (targetUser.tags ?? []).includes('manual_follow');
 
             const type = requiresRequest ? UserRelationType.REQUEST : UserRelationType.FOLLOW;
-            return Relation.attach(await this.prisma.userRelations.create({
+            const rel = Relation.attach(await this.prisma.userRelations.create({
                 data: { initiatorRef: initiator.identifier().toString(), targetRef: targetUser.identifier().toString(), type },
             }), this);
+
+            const relType = RELATION_TYPES[type];
+            const reverseRel = await this.findRelation(targetUser.identifier(), initiator.identifier());
+            const reverseType = reverseRel ? RELATION_TYPES[reverseRel.type] : null;
+            this.events.emitToUser(initiator.id, 'user:relation', { user: targetUser.identifier().toString(domain), out: relType, in: reverseType });
+            this.events.emitToUser(targetUser.id, 'user:relation', { user: initiator.identifier().toString(domain), out: reverseType, in: relType });
+
+            return rel;
         }
 
         // Remote target — create local REQUEST first, then sync via S2S
@@ -116,10 +126,12 @@ export class RelationsService {
 
     async unfollow(initiator: UserWithMethods, target: NoxIdentifier): Promise<void> {
         let userTarget: NoxIdentifier;
+        let localTargetUser: UserWithMethods | null = null;
 
         if (target.isLocal(await this.wellKnown.address())) {
             const targetUser = await this.users.findByIdentifier(target);
             if (!targetUser) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Target user');
+            localTargetUser = targetUser;
             userTarget = targetUser.identifier();
         } else {
             let externalTarget = await this.externalUsers.findOrDiscover(target);
@@ -140,6 +152,14 @@ export class RelationsService {
             },
         });
 
+        if (localTargetUser) {
+            const unfollowDomain = await this.wellKnown.address();
+            const reverseRel = await this.findRelation(localTargetUser.identifier(), initiator.identifier());
+            const reverseType = reverseRel ? RELATION_TYPES[reverseRel.type] : null;
+            this.events.emitToUser(initiator.id, 'user:relation', { user: localTargetUser.identifier().toString(unfollowDomain), out: null, in: reverseType });
+            this.events.emitToUser(localTargetUser.id, 'user:relation', { user: initiator.identifier().toString(unfollowDomain), out: reverseType, in: null });
+        }
+
         // Sync unfollow to remote server if target is remote
         const domain = await this.wellKnown.address();
         if (!userTarget.isLocal(domain) && userTarget.numericId !== null)
@@ -155,6 +175,9 @@ export class RelationsService {
         initiator: NoxIdentifier,
         accept: boolean,
     ): Promise<RelationWithMethods> {
+        // Strip type prefix to ensure correct database format
+        initiator = NoxIdentifier.type(null, initiator);
+        
         const request = await this.findRelation(initiator, responder.identifier());
         if (!request || request.type !== UserRelationType.REQUEST)
             throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Follow request');
@@ -168,14 +191,31 @@ export class RelationsService {
             },
         });
 
+        const respondDomain = await this.wellKnown.address();
+
         if (!accept) {
-            await this._notifyS2SResponse(initiator, responder.id, false)
+            const initiatorUser = await this.users.findByIdentifier(initiator);
+            if (initiatorUser) {
+                const reverseRel = await this.findRelation(responder.identifier(), initiatorUser.identifier());
+                const reverseType = reverseRel ? RELATION_TYPES[reverseRel.type] : null;
+                this.events.emitToUser(initiatorUser.id, 'user:relation', { user: responder.identifier().toString(respondDomain), out: null, in: reverseType });
+                this.events.emitToUser(responder.id, 'user:relation', { user: initiatorUser.identifier().toString(respondDomain), out: reverseType, in: null });
+            }
+            await this._notifyS2SResponse(initiator, responder.id, false);
             return Relation.attach(request, this);
         }
 
         const follow = await this.prisma.userRelations.create({
             data: { initiatorRef: initiator.toString(), targetRef: responder.identifier().toString(), type: UserRelationType.FOLLOW },
         });
+
+        const initiatorUser = await this.users.findByIdentifier(initiator);
+        if (initiatorUser) {
+            const reverseRel = await this.findRelation(responder.identifier(), initiatorUser.identifier());
+            const reverseType = reverseRel ? RELATION_TYPES[reverseRel.type] : null;
+            this.events.emitToUser(initiatorUser.id, 'user:relation', { user: responder.identifier().toString(respondDomain), out: 'follow', in: reverseType });
+            this.events.emitToUser(responder.id, 'user:relation', { user: initiatorUser.identifier().toString(respondDomain), out: reverseType, in: 'follow' });
+        }
 
         await this._notifyS2SResponse(initiator, responder.id, true);
         return Relation.attach(follow, this);
@@ -289,5 +329,57 @@ export class RelationsService {
             take: limit,
             skip: offset,
         })).map(rel => Relation.attach(rel, this));
+    }
+
+    async getFriendsCount(user: UserWithMethods): Promise<number> {
+        const meRef = user.identifier().toString();
+        const following = await this.prisma.userRelations.findMany({
+            where: { initiatorRef: meRef, type: UserRelationType.FOLLOW },
+            select: { targetRef: true },
+        });
+        if (following.length === 0) return 0;
+        return this.prisma.userRelations.count({
+            where: {
+                initiatorRef: { in: following.map(f => f.targetRef) },
+                targetRef: meRef,
+                type: UserRelationType.FOLLOW,
+            },
+        });
+    }
+
+    async getFriends(
+        user: UserWithMethods,
+        limit: number,
+        offset: number,
+    ): Promise<{ total: number; refs: string[] }> {
+        const meRef = user.identifier().toString();
+        const following = await this.prisma.userRelations.findMany({
+            where: { initiatorRef: meRef, type: UserRelationType.FOLLOW },
+            select: { targetRef: true },
+        });
+        const followingRefs = following.map(f => f.targetRef);
+        if (followingRefs.length === 0) return { total: 0, refs: [] };
+
+        const mutual = await this.prisma.userRelations.findMany({
+            where: {
+                initiatorRef: { in: followingRefs },
+                targetRef: meRef,
+                type: UserRelationType.FOLLOW,
+            },
+            select: { initiatorRef: true },
+            orderBy: { createdAt: 'desc' },
+            skip: offset,
+            take: limit,
+        });
+
+        const total = await this.prisma.userRelations.count({
+            where: {
+                initiatorRef: { in: followingRefs },
+                targetRef: meRef,
+                type: UserRelationType.FOLLOW,
+            },
+        });
+
+        return { total, refs: mutual.map(r => r.initiatorRef) };
     }
 }

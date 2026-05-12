@@ -8,6 +8,7 @@ import { ExternalUsersModule } from '../external/external-users.module';
 import { AuthModule } from '../auth/auth.module';
 import { OptionalServerGuard, ServerGuard } from '../auth/server.guard';
 import { AuthUserGuard, OptionalAuthUserGuard } from '../auth/auth.guard';
+import { GatewayModule } from '../gateway/gateway.module';
 
 @Module({
     imports: [
@@ -16,6 +17,7 @@ import { AuthUserGuard, OptionalAuthUserGuard } from '../auth/auth.guard';
         ExternalServersModule,
         ExternalUsersModule,
         forwardRef(() => AuthModule),
+        GatewayModule,
     ],
     controllers: [RelationsController],
     providers: [RelationsService, OptionalServerGuard, ServerGuard, AuthUserGuard, OptionalAuthUserGuard],

@@ -47,10 +47,12 @@ export class Relation {
     async sanitize(this: RelationWithMethods): Promise<ApiRelation> {
         let type = RELATION_TYPES[this.type] 
         if (!type) throw new ApiException(ApiErrorCode.INTERNAL_SERVER_ERROR, null, 'Unknown relation type');
+        const address = await this.manager.wellKnown.address();
         return {
             id: this.id,
             type: type,
-            target: this.target().toString(await this.manager.wellKnown.address()),
+            initiator: this.initiator().toString(address),
+            target: this.target().toString(address),
             created_at: this.createdAt.getTime()
         }
     }

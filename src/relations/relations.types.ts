@@ -3,6 +3,7 @@ export type ApiRelationType = 'follow' | 'request';
 export interface ApiRelation {
     id: string;
     type: ApiRelationType;
+    initiator: string;
     target: string;
     created_at: number;
 }
