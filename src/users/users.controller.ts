@@ -1,10 +1,11 @@
-import { Controller, Get, HttpStatus, Param, Req, UseGuards, Query, Post, Body, UseInterceptors, UploadedFile, Res } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Param, Req, UseGuards, Query, Post, Delete, Body, UseInterceptors, UploadedFile, Res } from '@nestjs/common';
 import type { Request, Express, Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
 import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiWrappedSuccessResponse, ApiErrorResponse, ApiOptionalBearerAuth, ApiOptionalChallenge } from '../api/swagger';
 import { ApiCurrentUserDto, ApiUserDto, ApiRelationDto } from './dto/user-response.dto';
 import { UserSearchResponseDto } from './dto/user-search-response.dto';
 import { UsersService } from './users.service';
+import { UserWithMethods } from './user.model';
 import { StorageService } from '../storage/storage.service';
 import { RelationsService } from '../relations/relations.service';
 import { ExternalServersService } from '../external/external-servers.service';
@@ -353,6 +354,84 @@ export class UsersController {
         };
     }
 
+    @ApiOperation({ summary: 'Get my friends', description: 'Return a paginated list of mutual follows (friends) for the current user.' })
+    @ApiWrappedResponse(UserSearchResponseDto)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiBearerAuth()
+    @UseGuards(AuthUserGuard)
+    @Get('@me/friends')
+    async getMyFriends(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @Query('limit') rawLimit?: string,
+        @Query('offset') rawOffset?: string,
+    ) {
+        const limit = Math.min(Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1), 100);
+        const offset = Math.max(parseInt(rawOffset ?? '0', 10) || 0, 0);
+
+        const { total, refs } = await this.relations.getFriends(req.user, limit, offset);
+
+        const domain = await this.users.domain();
+        const localRefs: NoxIdentifier[] = [];
+        const externalGroups = new Map<string, NoxIdentifier[]>();
+
+        for (const ref of refs) {
+            const id = NoxIdentifier.parse(ref);
+            if (id.isLocal(domain)) {
+                localRefs.push(id);
+            } else {
+                const server = id.server!;
+                if (!externalGroups.has(server))
+                    externalGroups.set(server, []);
+                externalGroups.get(server)!.push(id);
+            }
+        }
+
+        // Resolve local users
+        const localUsers = (await Promise.allSettled(localRefs.map(id => this.users.findByIdentifier(id))))
+            .filter((r): r is PromiseFulfilledResult<UserWithMethods | null> => r.status === 'fulfilled')
+            .map(r => r.value)
+            .filter((u): u is UserWithMethods => u !== null);
+
+        const localItems = await Promise.all(localUsers.map(u => u.sanitize(req.user.identifier())));
+
+        // Batch-fetch external users grouped by server
+        const externalItems: ApiUser[] = (await Promise.allSettled(
+            Array.from(externalGroups.entries()).map(async ([serverAddr, ids]) => {
+                const server = await this.externalServers.findOrDiscover(serverAddr);
+                if (!server) return [] as ApiUser[];
+                const qs = ids.map(id => `id=${encodeURIComponent(id.id)}`).join('&');
+                const resp = await server.fetch<{ items: ApiUser[] }>(`/users?${qs}`, { user: req.user });
+                if (resp.error || !resp.data) return [] as ApiUser[];
+                // Annotate with known mutual relation
+                return resp.data.items.map((u): ApiUser => ({
+                    ...u,
+                    relations: { out: 'follow', in: 'follow' },
+                }));
+            }),
+        ))
+            .filter((r): r is PromiseFulfilledResult<ApiUser[]> => r.status === 'fulfilled')
+            .flatMap(r => r.value);
+
+        // Build ref → original order map: key is "id@server" (empty server = local)
+        const refOrder = new Map<string, number>();
+        for (let i = 0; i < refs.length; i++) {
+            const parsed = NoxIdentifier.parse(refs[i]);
+            const serverKey = parsed.isLocal(domain) ? '' : (parsed.server ?? '');
+            refOrder.set(`${parsed.id}@${serverKey}`, i);
+        }
+        const itemSortKey = (item: ApiUser) => `${item.id}@${item.server === domain ? '' : item.server}`;
+
+        const combined = [...localItems, ...externalItems]
+            .sort((a, b) => (refOrder.get(itemSortKey(a)) ?? Infinity) - (refOrder.get(itemSortKey(b)) ?? Infinity));
+
+        return {
+            total,
+            limit,
+            offset,
+            items: combined,
+        };
+    }
+
     @ApiOperation({ summary: 'Get user following', description: "Return the list of users that a given user follows (hidden if user set hide_following)." })
     @ApiWrappedArrayResponse(ApiRelationDto)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
@@ -441,6 +520,23 @@ export class UsersController {
     @UseGuards(AuthUserGuard)
     @Post(':id/unfollow')
     async unfollow(
+        @Param('id') id: string,
+        @Req() req: Request & UserAuthenticatedRequest,
+    ) {
+        const target = NoxIdentifier.parse(id);
+        await this.relations.unfollow(req.user, target);
+        return { success: true };
+    }
+
+    @ApiOperation({ summary: 'Unfollow user (DELETE)', description: 'Remove an existing follow or follow request (REST alias for POST :id/unfollow).' })
+    @ApiWrappedSuccessResponse(HttpStatus.OK)
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiBearerAuth()
+    @UseGuards(AuthUserGuard)
+    @Delete(':id/follow')
+    async unfollowDelete(
         @Param('id') id: string,
         @Req() req: Request & UserAuthenticatedRequest,
     ) {

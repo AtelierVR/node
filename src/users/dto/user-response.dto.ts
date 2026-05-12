@@ -15,6 +15,9 @@ export class ApiUserPresenceDto {
 
     @ApiPropertyOptional({ type: 'string', description: 'Custom presence status text, or null', example: null, nullable: true })
     text!: string | null;
+
+    @ApiPropertyOptional({ type: [String], description: 'List of instance iids the user is currently in. null means the viewer has no permission to see this field.', example: [], nullable: true })
+    locations!: string[] | null;
 }
 
 export class ApiUserDto {

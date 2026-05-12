@@ -19,6 +19,7 @@ import { AppConfigService } from 'src/config/config.service';
 import { StorageService } from '../storage/storage.service';
 import { RelationsService } from '../relations/relations.service';
 import { ActivityService } from '../activity/activity.service';
+import type { WsGateway } from '../ws/ws.gateway';
 
 export interface Ed25519KeyPair {
     public: Buffer;
@@ -43,6 +44,8 @@ export class UsersService implements OnModuleInit {
         public readonly relations: RelationsService,
         @Inject(forwardRef(() => ActivityService))
         public readonly activity: ActivityService,
+        @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
+        public readonly wsGateway: WsGateway,
     ) { }
 
     async onModuleInit(): Promise<void> {

@@ -1,7 +1,7 @@
 import { UserModel } from 'src/generated/prisma/models/User';
 import { UsersService } from './users.service';
 import { NoxIdentifier } from '../common/identifier';
-import { ApiUser as ApiUser, ApiCurrentUser, ApiUserRelations, PRESENCE_TO_API } from './users.types';
+import { ApiUser as ApiUser, ApiCurrentUser, ApiUserRelations, PRESENCE_TO_API, PRESENCE_VISIBILITY } from './users.types';
 
 export type UserWithMethods = UserModel & {
   manager: UsersService;
@@ -49,6 +49,37 @@ export class User {
       }
     };
 
+    // Compute viewer relations once — reused for both `relations` field and location visibility
+    const viewerRelations: ApiUserRelations | null = viewer
+      ? await this.relationsWith(viewer)
+      : null;
+
+    // Determine if this viewer can see the location based on the user's current status
+    const status = PRESENCE_TO_API[user.presence] ?? 'online';
+    const visibility = PRESENCE_VISIBILITY[status] ?? PRESENCE_VISIBILITY['online'];
+    const rawLocations = manager.wsGateway?.getLocationsForUser(user.id) ?? [];
+    let visibleLocation: string[] | null = null;
+
+    const isSelf = viewer !== null && viewer !== undefined
+      && viewer.id === String(user.id);
+    const isAuthenticated = viewer !== null && viewer !== undefined;
+    const isFriend = viewerRelations?.out === 'follow' && viewerRelations?.in === 'follow';
+    const isFollower = viewerRelations?.out === 'follow';  // viewer follows the user
+    const isFollowing = viewerRelations?.in === 'follow';  // the user follows the viewer
+
+    const canSeeLocation =
+      isSelf ||
+      visibility.visible_everyone ||
+      (isAuthenticated && visibility.visible_other) ||
+      (isFriend && visibility.visible_friends) ||
+      (isFollower && visibility.visible_followers) ||
+      (isFollowing && visibility.visible_following);
+
+    if (canSeeLocation) {
+      // Return the list (may be empty if user is not in any instance)
+      visibleLocation = rawLocations;
+    }
+
     return {
       id: user.id,
       username: user.username,
@@ -60,9 +91,7 @@ export class User {
       thumbnail: await makePublic(user.thumbnail ?? null),
       banner: await makePublic(user.banner ?? null),
       links: manager.parseLinks(user.links),
-      relations: viewer
-        ? await this.relationsWith(viewer)
-        : null,
+      relations: viewerRelations,
       public: manager.compactPublicKey(Buffer.from(user.public)),
       followers: !this.isHideFollowers()
         ? await this.followers()
@@ -71,8 +100,9 @@ export class User {
         ? await this.following()
         : -1,
       presence: {
-        status: PRESENCE_TO_API[user.presence] ?? 'online',
+        status,
         text: user.presenceStatus ?? null,
+        locations: visibleLocation, // string[] | null
       },
       alias: [
         { key: 'api', value: `${await manager.wellKnown.apiBaseUrl()}users/${user.id}` },
@@ -85,7 +115,7 @@ export class User {
 
   async sanitizeCurrent(this: UserWithMethods): Promise<ApiCurrentUser> {
     const user = this as UserModel;
-    var base = await this.sanitize();
+    var base = await this.sanitize(this.identifier());
     return {
       ...base,
       email: user.email ?? null,
