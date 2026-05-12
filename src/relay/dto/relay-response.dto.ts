@@ -20,19 +20,20 @@ export interface NormalizedRelayInstance {
 }
 
 export interface NormalizedRelayClient {
-    id: string;
+    id: number;
     address: string;
     platform: string;
     engine: string;
     user: string | null;
+    connected_at: number;
 }
 
 export interface NormalizedRelayPlayer {
-    id: string;
-    client_id: string;
+    id: number;
+    client_id: number;
     display: string;
     flags: number;
-    user: string | null;
+    joined_at: number;
 }
 
 // ── Raw relay response DTOs (abbreviated or full keys from relay binary) ──────
@@ -86,7 +87,7 @@ export class RelayInstanceItemDto {
         return {
             id:          this.i ?? this.id ?? '',
             internal_id: this.n ?? this.internal_id ?? 0,
-            player_count: Array.isArray(players) ? players.length : 0,
+            player_count: typeof players === 'number' ? players : Array.isArray(players) ? players.length : 0,
             flags:       this.f ?? this.flags   ?? 0,
             world:       this.w ?? this.world   ?? '',
             capacity:    this.c ?? this.capacity ?? 0,
@@ -112,8 +113,8 @@ export class RelayInstancesResponseDto {
 
 /** One client entry from relay `get_clients` ack. */
 export class RelayClientItemDto {
-    @IsOptional() @IsString()    i?: string;         // id (abbrev)
-    @IsOptional() @IsString()    id?: string;
+    @IsOptional() @IsInt()       i?: number;         // id (abbrev)
+    @IsOptional() @IsInt()       id?: number;
     @IsOptional() @IsString()    a?: string;         // address (abbrev)
     @IsOptional() @IsString()    address?: string;
     @IsOptional() @IsString()    p?: string;         // platform (abbrev)
@@ -122,14 +123,17 @@ export class RelayClientItemDto {
     @IsOptional() @IsString()    engine?: string;
     @IsOptional() @IsString()    u?: string;         // user (abbrev)
     @IsOptional() @IsString()    user?: string;
+    @IsOptional() @IsInt()       t?: number;         // connected_at (abbrev)
+    @IsOptional() @IsInt()       connected_at?: number;
 
     normalize(): NormalizedRelayClient {
         return {
-            id:       this.i ?? this.id       ?? '',
-            address:  this.a ?? this.address  ?? '',
-            platform: this.p ?? this.platform ?? '',
-            engine:   this.e ?? this.engine   ?? '',
-            user:     this.u ?? this.user     ?? null,
+            id:           this.i ?? this.id       ?? 0,
+            address:      this.a ?? this.address  ?? '',
+            platform:     this.p ?? this.platform ?? '',
+            engine:       this.e ?? this.engine   ?? '',
+            user:         this.u ?? this.user     ?? null,
+            connected_at: this.t ?? this.connected_at ?? 0,
         };
     }
 }
@@ -148,24 +152,24 @@ export class RelayClientsResponseDto {
 
 /** One player entry embedded in an instance's players list. */
 export class RelayPlayerItemDto {
-    @IsOptional() @IsString()    i?: string;         // id (abbrev)
-    @IsOptional() @IsString()    id?: string;
-    @IsOptional() @IsString()    c?: string;         // client_id (abbrev)
-    @IsOptional() @IsString()    client_id?: string;
+    @IsOptional() @IsInt()       i?: number;         // id (abbrev)
+    @IsOptional() @IsInt()       id?: number;
+    @IsOptional() @IsInt()       c?: number;         // client_id (abbrev)
+    @IsOptional() @IsInt()       client_id?: number;
     @IsOptional() @IsString()    d?: string;         // display (abbrev)
     @IsOptional() @IsString()    display?: string;
     @IsOptional() @IsInt()       f?: number;         // flags (abbrev)
     @IsOptional() @IsInt()       flags?: number;
-    @IsOptional() @IsString()    u?: string;         // user (abbrev)
-    @IsOptional() @IsString()    user?: string;
+    @IsOptional() @IsInt()       j?: number;         // joined_at (abbrev)
+    @IsOptional() @IsInt()       joined_at?: number;
 
     normalize(): NormalizedRelayPlayer {
         return {
-            id:        this.i ?? this.id        ?? '',
-            client_id: this.c ?? this.client_id ?? '',
+            id:        this.i ?? this.id        ?? 0,
+            client_id: this.c ?? this.client_id ?? 0,
             display:   this.d ?? this.display   ?? '',
             flags:     this.f ?? this.flags     ?? 0,
-            user:      this.u ?? this.user      ?? null,
+            joined_at: this.j ?? this.joined_at ?? 0,
         };
     }
 }

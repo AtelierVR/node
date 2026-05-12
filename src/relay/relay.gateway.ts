@@ -17,7 +17,7 @@ import {
     RelayInstancesResponseDto,
     RelayClientsResponseDto,
 } from './dto/relay-response.dto';
-import type { NormalizedLogEntry, NormalizedRelayInstance, NormalizedRelayClient } from './dto/relay-response.dto';
+import type { NormalizedLogEntry } from './dto/relay-response.dto';
 
 /**
  * Dedicated Socket.io gateway for relay processes.
@@ -50,14 +50,14 @@ export class RelayGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
 
         socket.data.relayId = relay.id;
-        this.relayService.registerSocket(socket.id, relay.id);
+        // this.relayService.registerSocket(socket.id, relay.id);
         this.relayService.handleRelayConnected(relay.id);
     }
 
     handleDisconnect(socket: Socket) {
         const relayId: number | undefined = socket.data?.relayId;
         if (relayId !== undefined) {
-            this.relayService.unregisterSocket(socket.id);
+            // this.relayService.unregisterSocket(socket.id);
             this.relayService.handleRelayDisconnected(relayId);
         }
     }
@@ -109,6 +109,12 @@ export class RelayGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (relayId) this.relayService.handleClientDisconnected(relayId, data ?? {});
     }
 
+    @SubscribeMessage('client_authentified')
+    onClientAuthentified(@ConnectedSocket() socket: Socket, @MessageBody() data: any) {
+        const relayId: number = socket.data?.relayId;
+        if (relayId) this.relayService.handleClientAuthentified(relayId, data ?? {});
+    }
+
     @SubscribeMessage('player_join')
     onPlayerJoin(@ConnectedSocket() socket: Socket, @MessageBody() data: any) {
         const relayId: number = socket.data?.relayId;
@@ -139,7 +145,8 @@ export class RelayGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return new Promise((resolve) => {
             const timer = setTimeout(() => resolve(null), timeoutMs);
             this.server.timeout(timeoutMs).to(sid).emitWithAck('status', {})
-                .then((res: any) => { clearTimeout(timer); resolve(res); })
+                // emitWithAck resolves with an array of ack arguments — unwrap the first element
+                .then((res: any) => { clearTimeout(timer); resolve(Array.isArray(res) ? (res[0] ?? null) : (res ?? null)); })
                 .catch(() => { clearTimeout(timer); resolve(null); });
         });
     }
@@ -151,7 +158,8 @@ export class RelayGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const sid = sockets[0];
         try {
             const res = await this.server.timeout(10000).to(sid).emitWithAck('logs', { since, limit });
-            const dto = plainToInstance(RelayLogsResponseDto, res ?? {});
+            const raw = Array.isArray(res) ? (res[0] ?? {}) : (res ?? {});
+            const dto = plainToInstance(RelayLogsResponseDto, raw);
             const errors = validateSync(dto);
             if (errors.length > 0) {
                 this.logger.warn(`Relay #${relayId} returned invalid logs response`);
@@ -170,7 +178,8 @@ export class RelayGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const sid = sockets[0];
         try {
             const res = await this.server.timeout(10000).to(sid).emitWithAck('get_instances', { limit, offset });
-            const dto = plainToInstance(RelayInstancesResponseDto, res ?? {});
+            const raw = Array.isArray(res) ? (res[0] ?? {}) : (res ?? {});
+            const dto = plainToInstance(RelayInstancesResponseDto, raw);
             const errors = validateSync(dto);
             if (errors.length > 0) {
                 this.logger.warn(`Relay #${relayId} returned invalid instances response`);
@@ -189,7 +198,8 @@ export class RelayGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const sid = sockets[0];
         try {
             const res = await this.server.timeout(10000).to(sid).emitWithAck('get_clients', { limit, offset });
-            const dto = plainToInstance(RelayClientsResponseDto, res ?? {});
+            const raw = Array.isArray(res) ? (res[0] ?? {}) : (res ?? {});
+            const dto = plainToInstance(RelayClientsResponseDto, raw);
             const errors = validateSync(dto);
             if (errors.length > 0) {
                 this.logger.warn(`Relay #${relayId} returned invalid clients response`);

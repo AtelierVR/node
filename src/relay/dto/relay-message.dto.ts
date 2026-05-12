@@ -22,7 +22,39 @@ export class ResolveUserMessageDto {
 export class SyncInstanceItemDto {
     @IsInt()
     @Type(() => Number)
-    node_id!: number;
+    master_id!: number;
+
+    @IsOptional()
+    @IsInt()
+    @Type(() => Number)
+    internal_id?: number;
+
+    @IsOptional()
+    @IsString()
+    password?: string;
+
+    @IsOptional()
+    @IsInt()
+    @Type(() => Number)
+    capacity?: number;
+
+    @IsOptional()
+    @IsInt()
+    @Type(() => Number)
+    player_count?: number;
+
+    @IsOptional()
+    @IsString()
+    world?: string;
+
+    @IsOptional()
+    @IsString()
+    flags?: string;
+
+    // Alias for backward compatibility
+    get node_id(): number {
+        return this.master_id;
+    }
 }
 
 /** relay → node: relay_sync_instances */
@@ -53,10 +85,10 @@ export class RelayLogMessageDto {
     t?: string;
 }
 
-/** relay → node: client_connected / client_disconnected */
+/** relay → node: client_connected */
 export class RelayClientEventDto {
-    @IsString()
-    id!: string;
+    @IsInt()
+    id!: number;
 
     @IsOptional()
     @IsString()
@@ -64,40 +96,74 @@ export class RelayClientEventDto {
 
     @IsOptional()
     @IsString()
+    platform?: string;
+
+    @IsOptional()
+    @IsString()
+    engine?: string;
+
+    @IsOptional()
+    @IsString()
     user?: string;
+
+    @IsOptional()
+    @IsInt()
+    connected_at?: number;
+}
+
+/** relay → node: client_authentified */
+export class RelayClientAuthentifiedDto {
+    @IsInt()
+    id!: number;
+
+    @IsString()
+    user!: string;
+}
+
+/** relay → node: client_disconnected */
+export class RelayClientDisconnectedDto {
+    @IsInt()
+    id!: number;
+
+    @IsString()
+    reason!: string;
+
+    @IsString()
+    type!: string;
 }
 
 /** relay → node: player_join */
 export class RelayPlayerJoinDto {
-    @IsString()
-    client_id!: string;
+    @IsInt()
+    client_id!: number;
 
-    @IsString()
-    player_id!: string;
-
-    @IsString()
-    instance_id!: string;
+    @IsInt()
+    player_id!: number;
 
     @IsString()
     display!: string;
 
-    @IsOptional()
-    @IsString()
-    user?: string;
+    @IsInt()
+    internal_id!: number;
+
+    @IsInt()
+    flags!: number;
+
+    @IsInt()
+    joined_at!: number;
 }
 
 /** relay → node: player_leave */
 export class RelayPlayerLeaveDto {
-    @IsString()
-    client_id!: string;
+    @IsInt()
+    player_id!: number;
+
+    @IsInt()
+    internal_id!: number;
 
     @IsString()
-    player_id!: string;
+    type!: string;
 
     @IsString()
-    instance_id!: string;
-
-    @IsOptional()
-    @IsString()
-    user?: string;
+    reason!: string;
 }

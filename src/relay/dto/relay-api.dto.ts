@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiRelay } from '../relay.types';
 
 export class RelayLogEntryApiDto {
     @ApiProperty({ description: 'Unix timestamp in milliseconds', example: 1680000000000 })
@@ -40,8 +41,8 @@ export class RelayInstanceApiDto {
 }
 
 export class RelayClientApiDto {
-    @ApiProperty({ description: 'Client session identifier', example: 'cli-abc123' })
-    id!: string;
+    @ApiProperty({ description: 'Client session identifier', example: 1 })
+    id!: number;
 
     @ApiProperty({ description: 'Client IP address', example: '192.168.1.1' })
     address!: string;
@@ -54,14 +55,17 @@ export class RelayClientApiDto {
 
     @ApiPropertyOptional({ type: 'string', description: 'NoxIdentifier of the authenticated user, or null if anonymous', example: null, nullable: true })
     user!: string | null;
+
+    @ApiProperty({ description: 'Unix millisecond timestamp when the client connected', example: 1746057600000 })
+    connected_at!: number;
 }
 
 export class RelayPlayerApiDto {
-    @ApiProperty({ description: 'Player session identifier', example: 'ply-abc123' })
-    id!: string;
+    @ApiProperty({ description: 'Player session identifier', example: 1 })
+    id!: number;
 
-    @ApiProperty({ description: 'Client session identifier for this player', example: 'cli-abc123' })
-    client_id!: string;
+    @ApiProperty({ description: 'Client session identifier for this player', example: 1 })
+    client_id!: number;
 
     @ApiProperty({ description: 'Player display name', example: 'John Doe' })
     display!: string;
@@ -69,25 +73,74 @@ export class RelayPlayerApiDto {
     @ApiProperty({ description: 'Bitmask of player flags', example: 0 })
     flags!: number;
 
-    @ApiPropertyOptional({ type: 'string', description: 'NoxIdentifier of the linked user account, or null', example: null, nullable: true })
-    user!: string | null;
+    @ApiProperty({ description: 'Unix millisecond timestamp when the player joined', example: 1746057600000 })
+    joined_at!: number;
+}
+
+// ── Runner info ───────────────────────────────────────────────────────────────
+
+export class ApiRunnerInfoDto {
+    @ApiPropertyOptional({ type: 'string', description: 'Short provider-specific ID (e.g. Docker container short ID), or null', example: 'a1b2c3d4e5f6', nullable: true })
+    provider_id!: string | null;
+
+    @ApiProperty({ description: 'Lifecycle status', example: 'running', enum: ['running', 'stopped', 'dead', 'unknown'] })
+    status!: string;
+
+    @ApiPropertyOptional({ type: 'number', description: 'ISO 8601 start time, or null', example: 1704067200000, nullable: true })
+    started_at!: number | null;
+
+    @ApiProperty({ description: 'Provider-specific metadata (image, name, …)', type: 'object', additionalProperties: { type: 'string' }, example: { image: 'nox-relay:latest', name: 'relay_1_a1b2' } })
+    meta!: Record<string, string>;
 }
 
 // ── Relay HTTP response DTOs ──────────────────────────────────────────────────
 
-export class ApiRelaySpecsDto {
-    @ApiPropertyOptional({ type: 'number', description: 'CPU usage percentage, or null', example: 0.12, nullable: true })
-    cpu!: number | null;
+export class ApiRelaySpecsProcessorDto {
+    @ApiProperty({ description: 'CPU usage as a percentage (0-1)', example: 0.12 })
+    used!: number;
 
-    @ApiPropertyOptional({ type: 'number', description: 'Memory usage in MB, or null', example: 256, nullable: true })
-    mem!: number | null;
-
-    @ApiPropertyOptional({ type: 'number', description: 'System uptime in seconds, or null', example: 3600, nullable: true })
-    uptime!: number | null;
-
-    @ApiPropertyOptional({ type: 'number', description: 'Disk usage in MB, or null', example: 1024, nullable: true })
-    disk!: number | null;
+    @ApiProperty({ description: 'Number of CPU cores', example: 4 })
+    cores!: number;
 }
+
+export class ApiRelaySpecsMemoryDto {
+    @ApiProperty({ description: 'Memory usage in megabytes', example: 256 })
+    used!: number;
+
+    @ApiProperty({ description: 'Total memory in megabytes', example: 4096 })
+    total!: number;
+}
+
+export class ApiRelaySpecsUploadDto {
+    @ApiProperty({ description: 'Upload speed in megabytes per second', example: 10 })
+    used!: number;
+
+    @ApiProperty({ description: 'Total upload bandwidth in megabytes per second', example: 100 })
+    bandwidth!: number;
+}
+
+export class ApiRelaySpecsDownloadDto {
+    @ApiProperty({ description: 'Download speed in megabytes per second', example: 20 })
+    used!: number;
+
+    @ApiProperty({ description: 'Total download bandwidth in megabytes per second', example: 100 })
+    bandwidth!: number;
+}
+
+export class ApiRelaySpecsDto {
+    @ApiPropertyOptional({ type: () => ApiRelaySpecsProcessorDto, description: 'CPU usage percentage, or null', example: 0.12, nullable: true })
+    processor!: ApiRelaySpecsProcessorDto;
+
+    @ApiPropertyOptional({ type: () => ApiRelaySpecsMemoryDto, description: 'Memory usage in MB, or null', example: 256, nullable: true })
+    memory!: ApiRelaySpecsMemoryDto;
+
+    @ApiPropertyOptional({ type: () => ApiRelaySpecsUploadDto, description: 'Upload speed in MB/s, or null', example: 10, nullable: true })
+    upload!: ApiRelaySpecsUploadDto;
+
+    @ApiPropertyOptional({ type: () => ApiRelaySpecsDownloadDto, description: 'Download speed in MB/s, or null', example: 20, nullable: true })
+    download!: ApiRelaySpecsDownloadDto;
+}
+
 
 export class ApiRelayStatusDto {
     @ApiProperty({ description: 'Number of active instances', example: 2 })
@@ -112,18 +165,67 @@ export class ApiRelayStatusDto {
     uptime!: number;
 
     @ApiPropertyOptional({ type: 'number', description: 'Last ping response time in milliseconds, or null', example: 42, nullable: true })
-    response_ms!: number | null;
+    ping!: number | null;
 
     @ApiPropertyOptional({ type: () => ApiRelaySpecsDto, description: 'Host machine specs, or null', nullable: true })
     specs!: ApiRelaySpecsDto | null;
+}
+
+export class RelayAssignedInstanceDto {
+    @ApiProperty({ description: 'Internal numeric instance ID (database)', example: 1 })
+    id!: number;
+
+    @ApiPropertyOptional({ description: 'Relay-internal slot (0–254), null when relay is offline', example: 0, nullable: true })
+    internal_id!: number | null;
+
+    @ApiProperty({ description: 'Slug name of the instance', example: 'my-room' })
+    name!: string;
+
+    @ApiPropertyOptional({ type: 'string', description: 'Display title, or null', example: 'Chill Hangout', nullable: true })
+    title!: string | null;
+
+    @ApiProperty({ description: 'NoxIdentifier of the world', example: '1@my-server.com' })
+    world!: string;
+
+    @ApiProperty({ description: 'NoxIdentifier of the owner', example: '1@my-server.com' })
+    owner!: string;
+
+    @ApiProperty({ description: 'Maximum player count', example: 16 })
+    capacity!: number;
+
+    @ApiProperty({ description: 'Creation timestamp in milliseconds since epoch', example: 1704067200000 })
+    created_at!: number;
+}
+
+export class ApiRelayInstancesSummaryDto {
+    @ApiProperty({ description: 'Number of active instances', example: 2 })
+    count!: number;
+
+    @ApiProperty({ description: 'Maximum number of instances', example: 32 })
+    maximum!: number;
 }
 
 export class ApiRelayDto {
     @ApiProperty({ description: 'Internal numeric relay ID', example: 1 })
     id!: number;
 
+    @ApiPropertyOptional({ type: 'string', description: 'Human-readable label, or null', example: 'EU-West #1', nullable: true })
+    label!: string | null;
+
+    @ApiProperty({ description: 'Runner provider type', example: 'docker', enum: ['docker', 'external', 'kubernetes', 'proxmox'] })
+    provider!: string;
+
+    @ApiPropertyOptional({ type: 'string', description: 'Provider-specific resource ID (e.g. container ID), or null', example: 'a1b2c3d4e5f6', nullable: true })
+    provider_id!: string | null;
+
+    @ApiProperty({ description: 'Relay tags used for instance assignment rules', type: [String], example: ['eu', 'fast'] })
+    tags!: string[];
+
     @ApiProperty({ description: 'Whether the relay process is currently connected', example: true })
     connected!: boolean;
+
+    @ApiPropertyOptional({ type: () => ApiRunnerInfoDto, description: 'Runner-level status (container/VM state), or null', nullable: true })
+    runner!: ApiRunnerInfoDto | null;
 
     @ApiProperty({ description: 'ISO 8601 registration timestamp', example: '2024-01-01T00:00:00.000Z' })
     created_at!: string;

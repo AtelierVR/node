@@ -1,18 +1,21 @@
-import { Controller, Get, Post, Delete, Param, Req, Query, Body, UseGuards, HttpStatus } from '@nestjs/common';
-import type { Request } from 'express';
+import { Controller, Get, Post, Delete, Patch, Param, Query, Body, UseGuards, HttpStatus, Inject, forwardRef } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiWrappedSuccessResponse, ApiErrorResponse } from '../api/swagger';
-import { ApiRelayDto } from './dto/relay-api.dto';
-import { ApiInstanceDto } from '../instances/dto/instance-response.dto';
+import { ApiRelayDto, ApiRunnerInfoDto, RelayAssignedInstanceDto } from './dto/relay-api.dto';
 import { RelayService } from './relay.service';
 import { RelayGateway } from './relay.gateway';
+import { WsGateway } from '../ws/ws.gateway';
 import { SendCommandDto } from './dto/send-command.dto';
-import { RelayPlayerItemDto } from './dto/relay-response.dto';
+import { RelayPlayerItemDto, RelayInstanceItemDto, RelayClientItemDto } from './dto/relay-response.dto';
 import { RelayLogListApiDto, RelayInstanceApiDto, RelayClientApiDto, RelayPlayerApiDto } from './dto/relay-api.dto';
+import { CreateRelayDto, UpdateRelayTagsDto, AssignInstanceDto } from './dto/relay-manage.dto';
 import { AdminUserGuard } from '../auth/admin-user.guard';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
+import type { RelayWithMethods } from './relay.model';
+import { NoxIdentifier } from 'src/common/identifier';
+import { InstancesService } from '../instances/instances.service';
 
 @ApiTags('Relay')
 @Controller('relays')
@@ -20,6 +23,10 @@ export class RelayController {
     constructor(
         private readonly relay: RelayService,
         private readonly gateway: RelayGateway,
+        @Inject(forwardRef(() => WsGateway))
+        private readonly wsGateway: WsGateway,
+        @Inject(forwardRef(() => InstancesService))
+        private readonly instances: InstancesService,
     ) { }
 
     // ── List ──────────────────────────────────────────────────────────────────────
@@ -33,7 +40,26 @@ export class RelayController {
     @Get()
     async list() {
         const relays = await this.relay.findAll();
-        return Promise.all(relays.map(r => this.serializeRelay(r)));
+        return Promise.all(relays.map(r => r.serialize()));
+    }
+
+    // ── Create ────────────────────────────────────────────────────────────────────
+
+    @ApiOperation({ summary: 'Create relay', description: 'Register a new relay with optional label, provider, and tags. Admin only.' })
+    @ApiWrappedResponse(ApiRelayDto, HttpStatus.CREATED)
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
+    @ApiBearerAuth()
+    @UseGuards(AdminUserGuard)
+    @Post()
+    async create(@Body() body: CreateRelayDto) {
+        const r = await this.relay.create({
+            label: body.label,
+            provider: body.provider,
+            tags: body.tags,
+        });
+        return await r.serialize();
     }
 
     // ── Get one ───────────────────────────────────────────────────────────────────
@@ -49,12 +75,41 @@ export class RelayController {
     @Get(':id')
     async getOne(@Param('id') rawId: string) {
         const id = parseInt(rawId, 10);
+        if (!Number.isFinite(id)) 
+            throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
+
+        const r = await this.relay.findById(id);
+        if (!r) 
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+
+        return await r.serialize();
+    }
+
+    // ── Runner info ───────────────────────────────────────────────────────────────
+
+    @ApiOperation({ summary: 'Get runner info', description: 'Return runtime info from the underlying provider (Docker container state, etc.). Admin only.' })
+    @ApiWrappedResponse(ApiRunnerInfoDto)
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiBearerAuth()
+    @UseGuards(AdminUserGuard)
+    @Get(':id/runner')
+    async getRunnerInfo(@Param('id') rawId: string) {
+        const id = parseInt(rawId, 10);
         if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
 
         const r = await this.relay.findById(id);
         if (!r) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
 
-        return this.serializeRelay(r);
+        const info = await this.relay.getRunnerInfo(id);
+        return {
+            provider_id: info.providerId,
+            status: info.status,
+            started_at: info.startedAt?.toISOString() ?? null,
+            meta: info.meta,
+        };
     }
 
     // ── Logs ──────────────────────────────────────────────────────────────────────
@@ -86,15 +141,15 @@ export class RelayController {
         if (!this.relay.isRelayConnected(id))
             throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay is not connected');
 
-        const logs = await this.gateway.requestLogs(id, since, limit);
+        const logs = await this.wsGateway.requestLogs(id, since, limit);
         if (!logs) throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay did not respond');
 
         return logs;
     }
 
-    // ── Instances ──────────────────────────────────────────────────────────────────
+    // ── Live instances (from relay) ────────────────────────────────────────────────
 
-    @ApiOperation({ summary: 'Get relay instances', description: 'List active instances reported by the relay process. Admin only.' })
+    @ApiOperation({ summary: 'Get relay live instances', description: 'List active instances reported by the relay process in real-time. Admin only.' })
     @ApiWrappedArrayResponse(RelayInstanceApiDto)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
@@ -103,7 +158,7 @@ export class RelayController {
     @ApiErrorResponse(HttpStatus.SERVICE_UNAVAILABLE)
     @ApiBearerAuth()
     @UseGuards(AdminUserGuard)
-    @Get(':id/instances')
+    @Get(':id/live')
     async getInstances(
         @Param('id') rawId: string,
         @Query('limit') rawLimit?: string,
@@ -121,15 +176,133 @@ export class RelayController {
         if (!this.relay.isRelayConnected(id))
             throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay is not connected');
 
-        const result = await this.gateway.requestInstances(id, limit, offset);
+        const result = await this.wsGateway.requestInstances(id, limit, offset);
         if (!result) throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay did not respond');
 
+        return { total: result.total, limit, offset, items: result.instances.map(i => plainToInstance(RelayInstanceItemDto, i).normalize()) };
+    }
+
+    // ── Assigned instances (DB) ───────────────────────────────────────────────────
+
+    @ApiOperation({ summary: 'List assigned instances', description: 'Return the DB instances assigned to this relay (not live relay state). Admin only.' })
+    @ApiWrappedArrayResponse(RelayAssignedInstanceDto)
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiBearerAuth()
+    @UseGuards(AdminUserGuard)
+    @Get(':id/instances')
+    async getAssignedInstances(@Param('id') rawId: string) {
+        const id = parseInt(rawId, 10);
+        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
+
+        const r = await this.relay.findById(id);
+        if (!r) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+
+        const items = await this.relay.getAssignedInstances(id);
+        const adress = await this.relay.address();
+
+        // Enrich with relay-internal slot number when relay is online
+        const slotMap = new Map<number, number>(); // dbId → relay slot
+        if (this.relay.isRelayConnected(id)) {
+            try {
+                const liveResult = await this.wsGateway.requestInstances(id, 1000, 0);
+                if (liveResult) {
+                    for (const inst of liveResult.instances) {
+                        const dto = plainToInstance(RelayInstanceItemDto, inst);
+                        const slot = Number(dto.i ?? dto.id ?? -1);
+                        const dbId = Number(dto.n ?? dto.internal_id ?? 0);
+                        if (dbId > 0 && slot >= 0) slotMap.set(dbId, slot);
+                    }
+                }
+            } catch { /* relay unavailable */ }
+        }
+
         return {
-            total: result.total,
-            limit,
-            offset,
-            items: result.instances.map(i => i.normalize()),
+            total: items.length,
+            items: items.map(i => ({
+                id: i.id,
+                internal_id: slotMap.get(i.id) ?? null,
+                name: i.name,
+                title: i.title ?? null,
+                world: NoxIdentifier.type(null, i.worldRef).toString(adress),
+                owner: NoxIdentifier.type(null, i.ownerRef).toString(adress),
+                capacity: i.capacity,
+                created_at: i.createdAt.getTime()
+            })),
         };
+    }
+
+    // ── Assign instance to relay ──────────────────────────────────────────────────
+
+    @ApiOperation({ summary: 'Assign instance', description: 'Assign a node instance to this relay for hosting. Admin only.' })
+    @ApiWrappedSuccessResponse(HttpStatus.CREATED)
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiBearerAuth()
+    @UseGuards(AdminUserGuard)
+    @Post(':id/assign')
+    async assignInstance(@Param('id') rawId: string, @Body() body: AssignInstanceDto) {
+        const id = parseInt(rawId, 10);
+        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
+
+        const r = await this.relay.findById(id);
+        if (!r) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+
+        const ok = await this.relay.assignInstance(id, body.instance_id);
+        if (!ok) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${body.instance_id})`);
+
+        return { success: true };
+    }
+
+    // ── Unassign instance from relay ──────────────────────────────────────────────
+
+    @ApiOperation({ summary: 'Unassign instance', description: 'Remove a relay assignment from an instance. Admin only.' })
+    @ApiWrappedSuccessResponse()
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiBearerAuth()
+    @UseGuards(AdminUserGuard)
+    @Delete(':id/assign/:instanceId')
+    async unassignInstance(@Param('id') rawId: string, @Param('instanceId') rawIid: string) {
+        const id = parseInt(rawId, 10);
+        const instanceId = parseInt(rawIid, 10);
+        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
+        if (!Number.isFinite(instanceId)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
+
+        const r = await this.relay.findById(id);
+        if (!r) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+
+        const ok = await this.relay.unassignInstance(instanceId);
+        if (!ok) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${instanceId})`);
+
+        return { success: true };
+    }
+
+    // ── Update tags ───────────────────────────────────────────────────────────────
+
+    @ApiOperation({ summary: 'Update relay tags', description: 'Replace the tag list on a relay (used for instance-assignment routing). Admin only.' })
+    @ApiWrappedSuccessResponse()
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiBearerAuth()
+    @UseGuards(AdminUserGuard)
+    @Patch(':id/tags')
+    async updateTags(@Param('id') rawId: string, @Body() body: UpdateRelayTagsDto) {
+        const id = parseInt(rawId, 10);
+        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
+
+        const updated = await this.relay.updateTags(id, body.tags);
+        if (!updated) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+
+        return { success: true };
     }
 
     // ── Clients ───────────────────────────────────────────────────────────────────
@@ -161,15 +334,48 @@ export class RelayController {
         if (!this.relay.isRelayConnected(id))
             throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay is not connected');
 
-        const result = await this.gateway.requestClients(id, limit, offset);
+        const result = await this.wsGateway.requestClients(id, limit, offset);
         if (!result) throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay did not respond');
 
-        return {
-            total: result.total,
-            limit,
-            offset,
-            items: result.clients.map(c => c.normalize()),
-        };
+        return { total: result.total, limit, offset, items: result.clients.map(c => plainToInstance(RelayClientItemDto, c).normalize()) };
+    }
+
+    // ── Instance by relay slot ────────────────────────────────────────────────────
+
+    @ApiOperation({ summary: 'Get relay instance', description: 'Get full instance data by relay-internal slot number. Admin only.' })
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiErrorResponse(HttpStatus.SERVICE_UNAVAILABLE)
+    @ApiBearerAuth()
+    @UseGuards(AdminUserGuard)
+    @Get(':id/instances/:iid')
+    async getRelayInstance(@Param('id') rawId: string, @Param('iid') iid: string) {
+        const id = parseInt(rawId, 10);
+        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
+
+        const r = await this.relay.findById(id);
+        if (!r) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+
+        if (!this.relay.isRelayConnected(id))
+            throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay is not connected');
+
+        const liveResult = await this.wsGateway.requestInstances(id, 1000, 0);
+        if (!liveResult) throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay did not respond');
+
+        const liveInst = liveResult.instances
+            .map((i: unknown) => plainToInstance(RelayInstanceItemDto, i))
+            .find((i: RelayInstanceItemDto) => String(i.i ?? i.id) === iid);
+        if (!liveInst) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${iid})`);
+
+        const dbId = Number((liveInst as RelayInstanceItemDto).n ?? (liveInst as RelayInstanceItemDto).internal_id ?? 0);
+        if (!dbId) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${iid}): no DB mapping`);
+
+        const instance = await this.instances.findById(dbId);
+        if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${dbId})`);
+
+        return this.instances.serialize(instance);
     }
 
     // ── Players in instance ───────────────────────────────────────────────────────
@@ -194,13 +400,19 @@ export class RelayController {
         if (!this.relay.isRelayConnected(id))
             throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay is not connected');
 
-        const result = await this.gateway.requestInstances(id, 1000, 0);
+        const result = await this.wsGateway.requestInstances(id, 1000, 0);
         if (!result) throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay did not respond');
 
-        const instance = result.instances.find(i => (i.i ?? i.id) === iid);
+        const instance = result.instances
+            .map(i => plainToInstance(RelayInstanceItemDto, i))
+            .find(i => String(i.i ?? i.id) === iid);
         if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${iid})`);
 
-        const players = instance.rawPlayers().map((p: unknown) =>
+        const slotId = Number(instance.i ?? instance.id ?? 0);
+        const playersResult = await this.wsGateway.requestPlayers(id, slotId, 1000, 0, true);
+        if (!playersResult) throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay did not respond');
+
+        const players = playersResult.i.map((p: unknown) =>
             plainToInstance(RelayPlayerItemDto, p).normalize()
         );
 
@@ -226,21 +438,44 @@ export class RelayController {
         const r = await this.relay.findById(id);
         if (!r) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
 
-        const sent = this.gateway.sendCommand(id, body.content);
+        const sent = this.wsGateway.sendCommand(id, body.content);
         if (!sent) throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay is not connected');
 
         return { success: true };
     }
 
-    // ── Stop / Restart ────────────────────────────────────────────────────────────
+    // ── Lifecycle (via runner) ─────────────────────────────────────────────────────
 
-    @ApiOperation({ summary: 'Stop relay', description: 'Send a stop command to the relay process. Admin only.' })
+    @ApiOperation({ summary: 'Start relay', description: 'Start the relay process via its configured runner (e.g. Docker). Admin only.' })
     @ApiWrappedSuccessResponse(HttpStatus.CREATED)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.FORBIDDEN)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
-    @ApiErrorResponse(HttpStatus.SERVICE_UNAVAILABLE)
+    @ApiBearerAuth()
+    @UseGuards(AdminUserGuard)
+    @Post(':id/start')
+    async start(@Param('id') rawId: string, @Query('max_instances') rawMax?: string) {
+        const id = parseInt(rawId, 10);
+        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
+
+        const maxInstances = rawMax ? parseInt(rawMax, 10) : undefined;
+
+        try {
+            const providerId = await this.relay.startRelay(id, maxInstances);
+            return { success: true, provider_id: providerId };
+        } catch (err: any) {
+            if (err?.message?.includes('not found')) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+            throw new ApiException(ApiErrorCode.INTERNAL_SERVER_ERROR, null, err?.message ?? 'Failed to start relay');
+        }
+    }
+
+    @ApiOperation({ summary: 'Stop relay (runner)', description: 'Gracefully stop the relay process via its runner. Admin only.' })
+    @ApiWrappedSuccessResponse(HttpStatus.CREATED)
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @ApiBearerAuth()
     @UseGuards(AdminUserGuard)
     @Post(':id/stop')
@@ -248,23 +483,21 @@ export class RelayController {
         const id = parseInt(rawId, 10);
         if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
 
-        const r = await this.relay.findById(id);
-        if (!r) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
-
-        if (!this.relay.isRelayConnected(id))
-            throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay is not connected');
-
-        this.gateway.sendCommand(id, 'stop');
-        return { success: true };
+        try {
+            await this.relay.stopRelay(id);
+            return { success: true };
+        } catch (err: any) {
+            if (err?.message?.includes('not found')) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+            throw new ApiException(ApiErrorCode.INTERNAL_SERVER_ERROR, null, err?.message ?? 'Failed to stop relay');
+        }
     }
 
-    @ApiOperation({ summary: 'Restart relay', description: 'Send a restart command to the relay process. Admin only.' })
+    @ApiOperation({ summary: 'Restart relay (runner)', description: 'Restart the relay process via its runner. Admin only.' })
     @ApiWrappedSuccessResponse(HttpStatus.CREATED)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.FORBIDDEN)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
-    @ApiErrorResponse(HttpStatus.SERVICE_UNAVAILABLE)
     @ApiBearerAuth()
     @UseGuards(AdminUserGuard)
     @Post(':id/restart')
@@ -272,19 +505,40 @@ export class RelayController {
         const id = parseInt(rawId, 10);
         if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
 
-        const r = await this.relay.findById(id);
-        if (!r) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+        try {
+            const providerId = await this.relay.restartRelay(id);
+            return { success: true, provider_id: providerId };
+        } catch (err: any) {
+            if (err?.message?.includes('not found')) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+            throw new ApiException(ApiErrorCode.INTERNAL_SERVER_ERROR, null, err?.message ?? 'Failed to restart relay');
+        }
+    }
 
-        if (!this.relay.isRelayConnected(id))
-            throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay is not connected');
+    @ApiOperation({ summary: 'Kill relay (runner)', description: 'Forcefully kill the relay process (SIGKILL). Admin only.' })
+    @ApiWrappedSuccessResponse(HttpStatus.CREATED)
+    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiBearerAuth()
+    @UseGuards(AdminUserGuard)
+    @Post(':id/kill')
+    async kill(@Param('id') rawId: string) {
+        const id = parseInt(rawId, 10);
+        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
 
-        this.gateway.sendCommand(id, 'restart');
-        return { success: true };
+        try {
+            await this.relay.killRelay(id);
+            return { success: true };
+        } catch (err: any) {
+            if (err?.message?.includes('not found')) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
+            throw new ApiException(ApiErrorCode.INTERNAL_SERVER_ERROR, null, err?.message ?? 'Failed to kill relay');
+        }
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────────
 
-    @ApiOperation({ summary: 'Delete relay', description: 'Stop and unregister a relay process. Admin only.' })
+    @ApiOperation({ summary: 'Delete relay', description: 'Stop and unregister a relay. If Docker-managed, also kills the container. Admin only.' })
     @ApiWrappedSuccessResponse()
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
@@ -297,40 +551,14 @@ export class RelayController {
         const id = parseInt(rawId, 10);
         if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
 
-        if (this.relay.isRelayConnected(id)) this.gateway.sendCommand(id, 'stop');
+        // Gracefully stop the runner before deleting the DB row
+        try { await this.relay.stopRelay(id); } catch { /* not critical */ }
+        if (this.relay.isRelayConnected(id)) this.wsGateway.sendCommand(id, 'stop');
 
         const deleted = await this.relay.delete(id);
         if (!deleted) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
 
         return { success: true };
     }
-
-    // ── Serializer ────────────────────────────────────────────────────────────────
-
-    private async serializeRelay(r: { id: number; createdAt: Date }) {
-        const connected = this.relay.isRelayConnected(r.id);
-        const status = connected ? await this.gateway.requestStatus(r.id) : null;
-
-        return {
-            id: r.id,
-            connected,
-            created_at: r.createdAt.toISOString(),
-            status: status ? {
-                instances:    status.i,
-                max_instances: status.m,
-                clients:      status.c,
-                engine:       status.e,
-                version:      status.v,
-                protocol:     status.p,
-                uptime:       status.u,
-                response_ms:  status.t ?? null,
-                specs: status.s ? {
-                    cpu:    status.s.c,
-                    mem:    status.s.m,
-                    uptime: status.s.u,
-                    disk:   status.s.d,
-                } : null,
-            } : null,
-        };
-    }
 }
+
