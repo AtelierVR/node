@@ -94,10 +94,19 @@ export interface NoxSoftware {
 
 export type NoxSocials = Record<string, string | string[]>;
 
+/** A field that is either a plain string or a locale→string map. */
+export type NoxLocalizedString = string | Record<string, string>;
+
 export interface NoxMetadata {
-    title: string;
-    description: string | null;
-    icon: string | null;
+    title: NoxLocalizedString;
+    description: NoxLocalizedString | null;
+    /**
+     * Instance icon. Either:
+     * - `string` — single icon URL
+     * - `Record<string, string>` — theme-keyed map, e.g. `{ default: "url", dark: "url" }`
+     * - `null` — no icon set
+     */
+    icon: string | Record<string, string> | null;
     contact: string | null;
     socials: NoxSocials;
 }

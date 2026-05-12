@@ -6,13 +6,14 @@ import {
     IsNotEmpty,
     IsOptional,
     IsString,
+    IsUrl,
     Max,
     Min,
     ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { NoxWellKnown } from '../fediverse.types';
+import type { NoxLocalizedString, NoxWellKnown } from '../fediverse.types';
 
 export class NoxGatewayDto {
     @ApiProperty({ description: 'HTTP/HTTPS base URL', example: 'https://example.com' })
@@ -89,21 +90,37 @@ export class NoxVersionsDto {
     rules!: string;
 }
 
-export class NoxMetadataDto {
-    @ApiProperty({ description: 'Instance display name', example: 'My Nox Server' })
-    @IsString()
-    @IsNotEmpty()
-    title!: string;
-
-    @ApiPropertyOptional({ type: 'string', description: 'Instance description, or null', example: null, nullable: true })
+export class NoxMetadataDto {    @ApiProperty({
+        description: 'Instance display name. Either a plain string or a locale\u2192string map.',
+        oneOf: [
+            { type: 'string', example: 'My Nox Server' },
+            { type: 'object', additionalProperties: { type: 'string' }, example: { en: 'My Nox Server', fr: 'Mon Serveur Nox' } },
+        ],
+    })
     @IsOptional()
-    @IsString()
-    description!: string | null;
+    title!: NoxLocalizedString;
 
-    @ApiPropertyOptional({ type: 'string', description: 'URL to instance icon, or null', example: null, nullable: true })
+    @ApiPropertyOptional({
+        description: 'Instance description, or null. Either a plain string or a locale\u2192string map.',
+        nullable: true,
+        oneOf: [
+            { type: 'string', example: 'A social VR platform.' },
+            { type: 'object', additionalProperties: { type: 'string' }, example: { en: 'A social VR platform.', fr: 'Une plateforme VR sociale.' } },
+        ],
+    })
     @IsOptional()
-    @IsString()
-    icon!: string | null;
+    description!: NoxLocalizedString | null;
+
+    @ApiPropertyOptional({
+        description: 'Instance icon. Either a single URL string, a theme-keyed map (e.g. { default: "url", dark: "url" }), or null.',
+        nullable: true,
+        oneOf: [
+            { type: 'string', example: 'https://example.com/icon.png' },
+            { type: 'object', additionalProperties: { type: 'string' }, example: { default: 'https://example.com/icon.png', dark: 'https://example.com/icon.dark.png' } },
+        ],
+    })
+    @IsOptional()
+    icon!: string | Record<string, string> | null;
 
     @ApiPropertyOptional({ type: 'string', description: 'Contact info (email or URL), or null', example: null, nullable: true })
     @IsOptional()

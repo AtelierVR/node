@@ -128,6 +128,12 @@ export class WellKnownService {
     // ── Document builders ───────────────────────────────────────────────────────
 
     async noxWellKnown(): Promise<NoxWellKnown> {
+        const rawIcons = await this.config.getOptional<Record<string, string>>('instance.icons');
+        const icon: string | Record<string, string> | null =
+            rawIcons && Object.keys(rawIcons).length === 1 ? Object.values(rawIcons)[0]
+            : rawIcons && Object.keys(rawIcons).length > 1 ? rawIcons
+            : await this.config.getOptional<string>('instance.icon') ?? null;
+
         return {
             id: await this.identifier(),
             status: 'online',
@@ -158,9 +164,9 @@ export class WellKnownService {
                 rules: this.rulesVersion,
             },
             metadata: {
-                title: await this.config.get<string>('instance.name'),
-                description: await this.config.getOptional<string>('instance.description') ?? null,
-                icon: await this.config.getOptional<string>('instance.icon') ?? null,
+                title: await this.config.get<string | Record<string, string>>('instance.name'),
+                description: await this.config.getOptional<string | Record<string, string>>('instance.description') ?? null,
+                icon,
                 contact: await this.config.getOptional<string>('instance.contact') ?? null,
                 socials: (await this.config.getOptional<Record<string, string | string[]>>('instance.socials')) ?? {},
             },
