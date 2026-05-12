@@ -19,6 +19,13 @@ export interface ApiUserRelations {
 export interface IUserPresence {
     status: string;
     text: string | null;
+    /**
+     * List of instance iids the user is currently in (e.g. ["42@example.com"]),
+     * or null when the viewer has no permission to see the user's locations.
+     * An empty array means the viewer can see the field but the user
+     * is not in any instance.
+     */
+    locations: string[] | null;
 }
 
 /**
@@ -62,4 +69,30 @@ export const PRESENCE_TO_API: Record<$Enums.PresenceStatus, string> = {
     [$Enums.PresenceStatus.DO_NOT_DISTURB]: 'do_not_disturb',
     [$Enums.PresenceStatus.STREAM]: 'stream',
     [$Enums.PresenceStatus.OFFLINE]: 'offline',
+};
+
+/**
+ * Visibility rules for the `location` field per presence status.
+ *
+ * - `visible_everyone`  : anyone, including unauthenticated viewers
+ * - `visible_other`     : any authenticated viewer (no relation required)
+ * - `visible_friends`   : mutual follow (viewer follows user AND user follows viewer)
+ * - `visible_followers` : viewers who follow the user
+ * - `visible_following` : viewers the user follows back
+ */
+export interface PresenceStatusVisibility {
+    visible_everyone: boolean;
+    visible_friends: boolean;
+    visible_following: boolean;
+    visible_followers: boolean;
+    visible_other: boolean;
+}
+
+export const PRESENCE_VISIBILITY: Record<string, PresenceStatusVisibility> = {
+    //                         everyone  friends  following  followers  other
+    online: { visible_everyone: false, visible_friends: true, visible_following: true, visible_followers: true, visible_other: false },
+    busy: { visible_everyone: false, visible_friends: true, visible_following: false, visible_followers: false, visible_other: false },
+    do_not_disturb: { visible_everyone: false, visible_friends: false, visible_following: false, visible_followers: false, visible_other: false },
+    stream: { visible_everyone: true, visible_friends: true, visible_following: true, visible_followers: true, visible_other: true },
+    offline: { visible_everyone: false, visible_friends: false, visible_following: false, visible_followers: false, visible_other: false },
 };
