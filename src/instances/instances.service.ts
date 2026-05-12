@@ -1,12 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { WellKnownService } from '../fediverse/well-known.service';
+import { StorageService } from '../storage/storage.service';
 import { NoxIdentifier } from '../common/identifier';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
 import type { UserWithMethods } from '../users/user.model';
 import { Instance } from 'src/generated/prisma/client';
+import type { WsGateway } from '../ws/ws.gateway';
 
 export interface CreateInstanceDto {
     name?: string;
@@ -49,6 +51,9 @@ export class InstancesService {
     constructor(
         private readonly prisma: PrismaService,
         public readonly wellKnown: WellKnownService,
+        public readonly storage: StorageService,
+        @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
+        private readonly wsGateway: WsGateway,
     ) { }
 
     async domain(): Promise<string> {
@@ -75,6 +80,10 @@ export class InstancesService {
 
     canCreate(user: UserWithMethods): boolean {
         return user.isAdmin() || user.tags.includes('sys:can_instance_create');
+    }
+
+    canUploadFile(user: UserWithMethods): boolean {
+        return user.isAdmin() || user.tags.includes('sys:can_file_upload');
     }
 
     canManage(user: UserWithMethods, instance: Instance): boolean {
@@ -110,6 +119,7 @@ export class InstancesService {
                 ],
             });
         }
+
         if (params.world) conditions.push({ worldRef: params.world });
         if (params.owner) conditions.push({ ownerRef: params.owner });
 
@@ -178,12 +188,89 @@ export class InstancesService {
         }
     }
 
+    // ── Connection info ───────────────────────────────────────────────────────────
+
+    async getConnectionInfo(instance: Instance): Promise<{ method: string; data: string } | null> {
+        if (!instance.relayId) {
+            this.logger.debug(`[getConnectionInfo] Instance ${instance.id} has no relayId`);
+            return null;
+        }
+
+        // Request status from relay to get address map
+        const status = await this.wsGateway.requestStatus(instance.relayId);
+        if (!status || !status.a) {
+            this.logger.debug(`[getConnectionInfo] No status/address from relay ${instance.relayId} for instance ${instance.id}`);
+            return null;
+        }
+
+        // Check if instance exists on relay
+        const instancesResult = await this.wsGateway.requestInstances(instance.relayId, 1000, 0);
+        if (!instancesResult || !instancesResult.instances) {
+            this.logger.debug(`[getConnectionInfo] No instances list from relay ${instance.relayId} for instance ${instance.id}`);
+            return null;
+        }
+
+        const hasInstance = instancesResult.instances.some(i => i.n === instance.id);
+        if (!hasInstance) {
+            this.logger.debug(`[getConnectionInfo] Instance ${instance.id} not found in relay ${instance.relayId} instances list`);
+            return null;
+        }
+
+        // Build connection data
+        const addresses = Object.entries(status.a).map(([proto, addr]) => `${proto}://${addr}`);
+        const connectionData = {
+            a: addresses,
+            i: instance.id,
+            p: status.p ?? 0,
+        };
+
+        this.logger.debug(`[getConnectionInfo] Successfully built connection for instance ${instance.id} on relay ${instance.relayId}`);
+
+        return {
+            method: 'relay',
+            data: Buffer.from(JSON.stringify(connectionData)).toString('base64'),
+        };
+    }
+
     // ── Response serializer ───────────────────────────────────────────────────────
 
-    async serialize(instance: Instance, connection: { method: string; data: string } | null = null, playerCount = 0, players: { user: string | null; display: string }[] = []) {
+    async serialize(instance: Instance) {
         const domain = await this.domain();
+        const apiBase = await this.wellKnown.apiBaseUrl();
         const owner = NoxIdentifier.parse(instance.ownerRef);
         const world = NoxIdentifier.parse(instance.worldRef);
+
+        // Get connection info automatically
+        const connection = await this.getConnectionInfo(instance);
+
+        // ── Player list ──────────────────────────────────────────────────────────
+        let count = 0;
+        const players: { user: string | null; display: string }[] = [];
+        if (instance.relayId) {
+            // 1. Fetch instances list to resolve internal_id (i) from node master_id (n)
+            const instancesResp = await this.wsGateway.requestInstances(instance.relayId, 100, 0);
+            const relayInstance = instancesResp?.instances?.find(
+                (ri: { n: number }) => ri.n === instance.id,
+            ) as { i: number; p: number } | undefined;
+
+            if (relayInstance) {
+                count = relayInstance.p;
+                // 2. Fetch the first 20 visible players using the internal_id
+                const result = await this.wsGateway.requestPlayers(
+                    instance.relayId,
+                    relayInstance.i,
+                    20,
+                    0,
+                    false
+                );
+                for (const p of result?.i ?? [])
+                    players.push({
+                        user: p.u ?? null,
+                        display: p.d
+                    });
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────────
 
         const tags = [
             ...instance.tags,
@@ -204,8 +291,13 @@ export class InstancesService {
             world: world.toString(domain),
             tags,
             connection,
-            client_count: playerCount,
+            count,
             players,
+            alias: [
+                { key: 'api', value: `${apiBase}instances/${instance.id}` },
+                { key: 'iid', value: `${instance.id}@${domain}` },
+                { key: 'nid', value: `${instance.name}@${domain}` },
+            ],
         };
     }
 }

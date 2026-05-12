@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiAliasDto } from '../../api/dto/shared.dto';
 
 export class ApiInstancePlayerDto {
     @ApiPropertyOptional({ type: 'string', description: 'NoxIdentifier of the user, or null for anonymous', example: '1@my-server.com', nullable: true })
@@ -51,8 +52,11 @@ export class ApiInstanceDto {
     connection!: ApiInstanceConnectionDto | null;
 
     @ApiProperty({ description: 'Number of currently connected clients', example: 3 })
-    client_count!: number;
+    count!: number;
 
     @ApiProperty({ description: 'List of players currently in the instance', type: () => [ApiInstancePlayerDto] })
     players!: ApiInstancePlayerDto[];
+
+    @ApiProperty({ description: 'Aliases (NoxIdentifier extras)', type: () => [ApiAliasDto] })
+    alias!: ApiAliasDto[];
 }

@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -15,9 +15,10 @@ export class CreateInstanceDto {
     @Type(() => Number)
     capacity!: number;
 
-    @ApiPropertyOptional({ example: 'my-instance', description: 'Internal slug name' })
+    @ApiPropertyOptional({ example: 'my-instance', description: 'Short unique slug name [a-z0-9-_.]{3,8}. Left null if omitted.' })
     @IsOptional()
     @IsString()
+    @Matches(/^[a-z0-9\-_.]{3,8}$/, { message: 'name must be 3-8 characters: lowercase letters, digits, hyphens, underscores, or dots' })
     name?: string;
 
     @ApiPropertyOptional({ description: 'Human-readable instance title', example: 'Chill Hangout' })
