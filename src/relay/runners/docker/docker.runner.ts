@@ -6,6 +6,8 @@ import type { IRelayRunner, RelayRunnerInfo, RelayStartConfig } from '../runner.
 
 /** Label applied to every relay container so we can filter them. */
 const RELAY_LABEL = 'nox.relay.id';
+/** Label used to scope relay containers to a specific Nox instance. */
+const GROUP_LABEL = 'nox.relay.group';
 
 @Injectable()
 export class DockerRunner implements IRelayRunner {
@@ -13,6 +15,10 @@ export class DockerRunner implements IRelayRunner {
 
     private readonly logger = new Logger(DockerRunner.name);
     private docker!: Docker;
+
+    private async group(): Promise<string> {
+        return this.config.get<string>('relay.group');
+    }
 
     constructor(private readonly config: AppConfigService) {
         // Docker options can be overridden via config: relay.docker_options
@@ -33,7 +39,12 @@ export class DockerRunner implements IRelayRunner {
     private async findContainer(relayId: string): Promise<Docker.ContainerInfo | null> {
         const all = await this.docker.listContainers({
             all: true,
-            filters: { label: [`${RELAY_LABEL}=${relayId}`] },
+            filters: {
+                label: [
+                    `${RELAY_LABEL}=${relayId}`,
+                    `${GROUP_LABEL}=${await this.group()}`
+                ]
+            },
         });
         return all[0] ?? null;
     }
@@ -43,16 +54,22 @@ export class DockerRunner implements IRelayRunner {
         const used = new Set<number>();
         const containers = await this.docker.listContainers({
             all: true,
-            filters: { label: [RELAY_LABEL] },
+            filters: {
+                label: [
+                    `${RELAY_LABEL}`,
+                    `${GROUP_LABEL}=${await this.group()}`
+                ]
+            },
         });
-        for (const c of containers) {
-            for (const p of c.Ports ?? []) {
+
+        for (const c of containers)
+            for (const p of c.Ports ?? [])
                 if (p.PublicPort) used.add(p.PublicPort);
-            }
-        }
-        for (let port = min; port <= max; port++) {
-            if (!used.has(port)) return port;
-        }
+
+        for (let port = min; port <= max; port++)
+            if (!used.has(port))
+                return port;
+
         return null;
     }
 
@@ -66,7 +83,8 @@ export class DockerRunner implements IRelayRunner {
         const maxPort = Number(await this.config.getOptional<number>('relay.port_max') ?? 24000);
 
         const port = await this.findFreePort(minPort, maxPort);
-        if (port === null) throw new Error('No free UDP port available in the configured range');
+        if (port === null)
+            throw new Error('No free UDP port available in the configured range');
 
         const suffix = randomBytes(4).toString('hex');
         const containerName = `relay_${cfg.relayId}_${suffix}`;
@@ -89,6 +107,7 @@ export class DockerRunner implements IRelayRunner {
             name: containerName,
             Labels: {
                 [RELAY_LABEL]: String(cfg.relayId),
+                [GROUP_LABEL]: await this.group(),
                 'nox.relay.label': cfg.label ?? '',
                 'com.docker.compose.project': 'nox',
                 'com.docker.compose.service': containerName,
@@ -140,9 +159,14 @@ export class DockerRunner implements IRelayRunner {
     }
 
     async getInfo(providerId: string | null): Promise<RelayRunnerInfo> {
-        if (!providerId) {
-            return { providerId: null, status: 'unknown', startedAt: null, meta: {} };
-        }
+        if (!providerId)
+            return {
+                providerId: null,
+                status: 'unknown',
+                startedAt: null,
+                meta: {}
+            };
+
         try {
             const info = await this.docker.getContainer(providerId).inspect();
             const state = info.State;
@@ -162,9 +186,14 @@ export class DockerRunner implements IRelayRunner {
                 },
             };
         } catch (err: any) {
-            if (err?.statusCode === 404) {
-                return { providerId: providerId.substring(0, 12), status: 'unknown', startedAt: null, meta: {} };
-            }
+            if (err?.statusCode === 404)
+                return {
+                    providerId: providerId.substring(0, 12),
+                    status: 'unknown',
+                    startedAt: null,
+                    meta: {}
+                };
+
             throw err;
         }
     }

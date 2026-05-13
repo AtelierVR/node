@@ -12,6 +12,7 @@ import {
 import { Transform, Type } from 'class-transformer';
 import { join } from 'path';
 import { Label, Description, ConfigVar, Default, IsRisky } from './config.decorators';
+import { randomUUID } from 'crypto';
 
 /**
  * Parses the `key=url,key=url` socials config format into a Record.
@@ -446,6 +447,14 @@ export class RelayConfig {
   @Min(1024)
   @Max(65535)
   max_port: number;
+
+  @Label('Relay Group')
+  @Description('Unique group identifier used to scope relay containers to this Nox instance. Prevents multiple Nox instances sharing the same Docker daemon from interfering with each other. Defaults to a random UUID generated at first start and persisted in the database.')
+  @Default('default')
+  @ConfigVar({ key: 'relay.group', env: 'RELAY_GROUP' })
+  @IsString()
+  @IsNotEmpty()
+  group: string;
 }
 
 export class AppConfig {

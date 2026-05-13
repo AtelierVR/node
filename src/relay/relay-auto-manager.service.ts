@@ -9,6 +9,8 @@ import { WsGateway } from '../ws/ws.gateway';
 
 /** Label used to identify relay containers. */
 const RELAY_LABEL = 'nox.relay.id';
+/** Label used to scope relay containers to a specific Nox instance. */
+const GROUP_LABEL = 'nox.relay.group';
 
 /** How often (ms) to check relay health. */
 const CHECK_INTERVAL_MS = 5_000;
@@ -41,6 +43,11 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(RelayAutoManager.name);
 
     private docker!: Docker;
+    
+    private async group(): Promise<string> {
+        return this.config.get<string>('relay.group');
+    }
+
     private checkTimer: NodeJS.Timeout | null = null;
     private eventStream: any = null;
 
@@ -83,9 +90,17 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
         if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch { opts = {}; } }
         this.docker = new Docker((opts as Docker.DockerOptions) ?? {});
 
+
         // Subscribe to the Docker event stream
         try {
-            this.eventStream = await this.docker.getEvents({ filters: { label: [RELAY_LABEL] } });
+            this.eventStream = await this.docker.getEvents({
+                filters: {
+                    label: [
+                        RELAY_LABEL,
+                        `${GROUP_LABEL}=${await this.group()}`
+                    ]
+                }
+            });
             this.eventStream.on('data', (buf: Buffer) => this.onContainerEvent(buf));
             this.eventStream.on('error', (err: Error) =>
                 this.logger.warn(`Docker event stream error: ${err.message}`));
@@ -111,10 +126,12 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
     }
 
     onModuleDestroy() {
-        if (this.checkTimer) clearInterval(this.checkTimer);
-        if (this.eventStream) {
-            try { this.eventStream.destroy(); } catch { /* ignore */ }
-        }
+        if (this.checkTimer)
+            clearInterval(this.checkTimer);
+        if (this.eventStream)
+            try {
+                this.eventStream.destroy();
+            } catch { /* ignore */ }
     }
 
     // ── Docker event stream ───────────────────────────────────────────────────────
@@ -144,7 +161,12 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
         try {
             const containers = await this.docker.listContainers({
                 all: true,
-                filters: { label: [RELAY_LABEL] },
+                filters: {
+                    label: [
+                        RELAY_LABEL,
+                        `${GROUP_LABEL}=${await this.group()}`
+                    ]
+                },
             });
             for (const c of containers) {
                 const relayId = parseInt(c.Labels[RELAY_LABEL], 10);
@@ -194,7 +216,12 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
 
             const containers = await this.docker.listContainers({
                 all: true,
-                filters: { label: [RELAY_LABEL] },
+                filters: {
+                    label: [
+                        RELAY_LABEL,
+                        `${GROUP_LABEL}=${await this.group()}`
+                    ]
+                },
             });
             const containersByRelayId = new Map<number, Docker.ContainerInfo>();
             for (const c of containers) {
