@@ -26,7 +26,7 @@ interface Slot {
  * The last call wins (YAML > Env > Default).
  */
 function applyRaw(slot: Slot, raw: string | undefined): void {
-  if (raw === undefined || raw === '') return;
+  if (raw === undefined) return;
   slot.locked = raw.startsWith('!');
   slot.value = slot.locked ? raw.slice(1) : raw;
 }
