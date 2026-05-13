@@ -132,7 +132,7 @@ export class WellKnownService {
         const icon: string | Record<string, string> | null =
             rawIcons && Object.keys(rawIcons).length === 1 ? Object.values(rawIcons)[0]
             : rawIcons && Object.keys(rawIcons).length > 1 ? rawIcons
-            : await this.config.getOptional<string>('instance.icon') ?? null;
+            : null;
 
         return {
             id: await this.identifier(),

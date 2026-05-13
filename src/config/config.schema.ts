@@ -5,7 +5,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUrl,
   Max,
   Min,
   ValidateNested,
@@ -255,29 +254,18 @@ export class InstanceConfig {
   @IsOptional()
   contact?: string;
 
-  @Label('Instance Icon')
-  @Description('Public URL to the instance icon/logo.')
-  @ConfigVar({ key: 'instance.icon', env: 'INSTANCE_ICON' })
-  @IsUrl({ require_tld: false })
-  @IsNotEmpty()
-  @Default(r => {
-    const secure = r.get('http.secure') === 'true';
-    const ssl = r.get('http.ssl') === 'true';
-    const domain = r.get('http.domain') ?? 'localhost:3000';
-    return `http${secure || ssl ? 's' : ''}://${domain}/api/icon.png`;
-  })
-  icon: string;
-
   @Label('Instance Icons')
   @Description('Comma-separated list of "key=url" pairs for theme-specific icons. Known keys: default, light. Example: default=https://example.com/icon.png,light=https://example.com/icon.light.png')
   @ConfigVar({ key: 'instance.icons', env: 'INSTANCE_ICONS' })
   @Transform(({ value }) => parseIconsRecord(value))
   @Default(r => {
-    const secure = r.get('http.secure') === 'true';
-    const ssl = r.get('http.ssl') === 'true';
-    const domain = r.get('http.domain') ?? 'localhost:3000';
-    const base = `http${secure || ssl ? 's' : ''}://${domain}/api`;
-    return `default=${base}/icon.png,light=${base}/icon.light.png`;
+    const api = r.get('gateway.api') ?? (() => {
+      const secure = r.get('http.secure') === 'true';
+      const ssl = r.get('http.ssl') === 'true';
+      const domain = r.get('http.domain') ?? 'localhost:3000';
+      return `http${secure || ssl ? 's' : ''}://${domain}/`;
+    })();
+    return `default=${api}icon.png,light=${api}icon.light.png`;
   })
   icons: Record<string, string>;
 
