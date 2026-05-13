@@ -79,8 +79,8 @@ export class DockerRunner implements IRelayRunner {
         const image = await this.config.getOptional<string>('relay.docker_image') ?? 'nox-relay:latest';
         const network = await this.config.getOptional<string>('relay.docker_network') ?? 'bridge';
         const dockerAddress = await this.config.getOptional<string>('relay.docker_address') ?? '127.0.0.1';
-        const minPort = Number(await this.config.getOptional<number>('relay.port_min') ?? 23000);
-        const maxPort = Number(await this.config.getOptional<number>('relay.port_max') ?? 24000);
+        const minPort = Number(await this.config.getOptional<number>('relay.min_port') ?? 23000);
+        const maxPort = Number(await this.config.getOptional<number>('relay.max_port') ?? 24000);
 
         const port = await this.findFreePort(minPort, maxPort);
         if (port === null)
