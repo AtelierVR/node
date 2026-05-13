@@ -73,6 +73,17 @@ export class DockerRunner implements IRelayRunner {
 
         this.logger.log(`Starting relay #${cfg.relayId} on port ${port} (image: ${image})`);
 
+        // Pull the image if it is not already present locally.
+        await new Promise<void>((resolve, reject) => {
+            this.docker.pull(image, (err: Error | null, stream: NodeJS.ReadableStream) => {
+                if (err) return reject(err);
+                this.docker.modem.followProgress(stream, (err: Error | null) => {
+                    if (err) return reject(err);
+                    resolve();
+                });
+            });
+        });
+
         const container = await this.docker.createContainer({
             Image: image,
             name: containerName,
