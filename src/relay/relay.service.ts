@@ -470,8 +470,8 @@ export class RelayService implements OnModuleInit {
         this.events.emit('relay_specs_update', { relay_id: relayId, time: Date.now(), details: {
             processor: { used: raw?.c?.u ?? 0, cores: raw?.c?.c ?? 1 },
             memory:    { used: raw?.m?.u ?? 0, total: raw?.m?.t ?? 1 },
-            upload:    { used: raw?.u?.u ?? 0, bandwidth: raw?.u?.b ?? 0 },
-            download:  { used: raw?.d?.u ?? 0, bandwidth: raw?.d?.b ?? 0 },
+            upload:    { used: raw?.u?.u ?? 0, bandwidth: raw?.u?.b ?? 0, packets: raw?.u?.p ?? 0 },
+            download:  { used: raw?.d?.u ?? 0, bandwidth: raw?.d?.b ?? 0, packets: raw?.d?.p ?? 0 },
         } });
     }
 

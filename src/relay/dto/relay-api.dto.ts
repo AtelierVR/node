@@ -117,6 +117,9 @@ export class ApiRelaySpecsUploadDto {
 
     @ApiProperty({ description: 'Total upload bandwidth in megabytes per second', example: 100 })
     bandwidth!: number;
+
+    @ApiProperty({ description: 'Upload packets per second', example: 1000 })
+    packets!: number;
 }
 
 export class ApiRelaySpecsDownloadDto {
@@ -125,6 +128,9 @@ export class ApiRelaySpecsDownloadDto {
 
     @ApiProperty({ description: 'Total download bandwidth in megabytes per second', example: 100 })
     bandwidth!: number;
+
+    @ApiProperty({ description: 'Download packets per second', example: 1200 })
+    packets!: number;
 }
 
 export class ApiRelaySpecsDto {

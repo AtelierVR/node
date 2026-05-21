@@ -34,6 +34,7 @@ export interface NormalizedRelayPlayer {
     display: string;
     flags: number;
     joined_at: number;
+    user: string | null;
 }
 
 // ── Raw relay response DTOs (abbreviated or full keys from relay binary) ──────
@@ -162,6 +163,8 @@ export class RelayPlayerItemDto {
     @IsOptional() @IsInt()       flags?: number;
     @IsOptional() @IsInt()       j?: number;         // joined_at (abbrev)
     @IsOptional() @IsInt()       joined_at?: number;
+    @IsOptional() @IsString()    u?: string | null;  // user (abbrev)
+    @IsOptional() @IsString()    user?: string | null;
 
     normalize(): NormalizedRelayPlayer {
         return {
@@ -170,6 +173,7 @@ export class RelayPlayerItemDto {
             display:   this.d ?? this.display   ?? '',
             flags:     this.f ?? this.flags     ?? 0,
             joined_at: this.j ?? this.joined_at ?? 0,
+            user:      this.u ?? this.user      ?? null,
         };
     }
 }

@@ -87,11 +87,13 @@ export class Relay {
                     },
                     upload: {
                         used: status.s.u.u,
-                        bandwidth: status.s.u.b
+                        bandwidth: status.s.u.b,
+                        packets: status.s.u.p ?? 0,
                     },
                     download: {
                         used: status.s.d.u,
-                        bandwidth: status.s.d.b
+                        bandwidth: status.s.d.b,
+                        packets: status.s.d.p ?? 0,
                     },
                 } : null,
             } : null,

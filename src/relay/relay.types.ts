@@ -135,11 +135,13 @@ export interface ApiRelaySpecs {
     };
     upload: {
         used: number;
-        bandwidth: number
+        bandwidth: number;
+        packets: number;
     };
     download: {
         used: number;
-        bandwidth: number
+        bandwidth: number;
+        packets: number;
     };
 }
 
@@ -165,8 +167,8 @@ export interface WsRelayStatus {
 export interface WsRelaySpecs {
     c: { u: number; c: number };
     m: { u: number; t: number };
-    u: { u: number; b: number };
-    d: { u: number; b: number };
+    u: { u: number; b: number; p?: number };
+    d: { u: number; b: number; p?: number };
 }
 
 export interface ApiRelayStatus {
