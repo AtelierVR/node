@@ -121,7 +121,7 @@ export class AuthService {
         return { session, user };
     }
 
-    async logoutByToken(token: string) {
+    async logoutByToken(token: string): Promise<boolean> {
         const s = await this.sessions.findSessionByToken(token);
         if (!s) return false;
         this.users.findById(s.userId).then(user => {

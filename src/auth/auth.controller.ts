@@ -1,6 +1,8 @@
-import { Controller, HttpStatus, Post, Body, Req, Res } from '@nestjs/common';
+import { Controller, HttpStatus, Post, Body, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { AuthUserGuard, OptionalAuthUserGuard, UserAuthenticatedRequest } from './auth.guard';
+import type { OptionalUserAuthenticatedRequest } from './auth.guard';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import type { Request, Response } from 'express';
 import { ApiWrappedResponse, ApiWrappedSuccessResponse, ApiErrorResponse } from '../api/swagger';
@@ -58,14 +60,11 @@ export class AuthController {
 
     @ApiOperation({ summary: 'Logout', description: 'Invalidate the current session cookie and bearer token.' })
     @ApiWrappedSuccessResponse(HttpStatus.CREATED)
+    @UseGuards(OptionalAuthUserGuard)
     @Post('logout')
-    async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-        const token: string | undefined = (req as any).cookies?.['_uid'];
-        if (!token) return { success: false };
-        const ok = await this.auth.logoutByToken(token);
+    async logout(@Req() req: OptionalUserAuthenticatedRequest, @Res({ passthrough: true }) res: Response): Promise<{ success: boolean }> {
+        const success = req.session ? await this.auth.logoutByToken(req.session.token) : false;
         res.clearCookie('_uid');
-        return {
-            success: ok
-        };
+        return { success };
     }
 }
