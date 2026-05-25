@@ -90,13 +90,32 @@ export class WorldsController {
      */
     @ApiOperation({ summary: 'Search worlds', description: 'Paginated full-text search for worlds, or fetch by IDs.' })
     @ApiWrappedArrayResponse(ApiWorldDto)
+    @ApiOptionalBearerAuth()
+    @UseGuards(OptionalAuthUserGuard)
     @Get()
     async search(
+        @Req() req: Request & OptionalUserAuthenticatedRequest,
+        @Query('server') s?: string,
         @Query('query') query?: string,
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
         @Query('id') id?: string | string[],
     ) {
+        if (s) {
+            this.requireExternalFetch(req);
+            const server = await this.worlds.externalServers.findOrDiscover(s);
+            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${s})`);
+            const params = new URLSearchParams();
+            if (query) params.set('query', query);
+            if (rawLimit) params.set('limit', rawLimit);
+            if (rawOffset) params.set('offset', rawOffset);
+            if (id) (Array.isArray(id) ? id : [id]).forEach(v => params.append('id', v));
+            const qs = params.toString();
+            const resp = await server.fetch<any>(`/worlds${qs ? '?' + qs : ''}`, { user: req.user! });
+            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.EXTERNAL_SERVER_ERROR, null, `Server (${s})`);
+            return resp.data;
+        }
+
         const { limit, offset } = this.parsePaging(rawLimit, rawOffset);
 
         let ids: number[] | undefined;

@@ -43,6 +43,9 @@ export interface InstanceSearchParams {
     owner?: string;
 }
 
+/** Callbacks fired when an instance is created (receives the new instance id). */
+const instanceCreatedHooks: ((id: number) => void)[] = [];
+
 @Injectable()
 export class InstancesService {
 
@@ -55,6 +58,9 @@ export class InstancesService {
         @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
         private readonly wsGateway: WsGateway,
     ) { }
+
+    /** Register a callback invoked when any instance is created. */
+    onInstanceCreated(hook: (id: number) => void) { instanceCreatedHooks.push(hook); }
 
     async domain(): Promise<string> {
         return this.wellKnown.address();
@@ -159,6 +165,9 @@ export class InstancesService {
                 usePassword: dto.usePassword ?? false,
                 password: dto.password ?? null,
             },
+        }).then(inst => {
+            for (const hook of instanceCreatedHooks) hook(inst.id);
+            return inst;
         });
     }
 
@@ -191,28 +200,30 @@ export class InstancesService {
     // ── Connection info ───────────────────────────────────────────────────────────
 
     async getConnectionInfo(instance: Instance): Promise<{ method: string; data: string } | null> {
-        if (!instance.relayId) {
+        const link = await this.prisma.relayInstance.findUnique({ where: { instanceId: instance.id } });
+        const relayId = link?.relayId;
+        if (!relayId) {
             this.logger.debug(`[getConnectionInfo] Instance ${instance.id} has no relayId`);
             return null;
         }
 
         // Request status from relay to get address map
-        const status = await this.wsGateway.requestStatus(instance.relayId);
+        const status = await this.wsGateway.requestStatus(relayId);
         if (!status || !status.a) {
-            this.logger.debug(`[getConnectionInfo] No status/address from relay ${instance.relayId} for instance ${instance.id}`);
+            this.logger.debug(`[getConnectionInfo] No status/address from relay ${relayId} for instance ${instance.id}`);
             return null;
         }
 
         // Check if instance exists on relay
-        const instancesResult = await this.wsGateway.requestInstances(instance.relayId, 1000, 0);
+        const instancesResult = await this.wsGateway.requestInstances(relayId, 1000, 0);
         if (!instancesResult || !instancesResult.instances) {
-            this.logger.debug(`[getConnectionInfo] No instances list from relay ${instance.relayId} for instance ${instance.id}`);
+            this.logger.debug(`[getConnectionInfo] No instances list from relay ${relayId} for instance ${instance.id}`);
             return null;
         }
 
         const hasInstance = instancesResult.instances.some(i => i.n === instance.id);
         if (!hasInstance) {
-            this.logger.debug(`[getConnectionInfo] Instance ${instance.id} not found in relay ${instance.relayId} instances list`);
+            this.logger.debug(`[getConnectionInfo] Instance ${instance.id} not found in relay ${relayId} instances list`);
             return null;
         }
 
@@ -224,7 +235,7 @@ export class InstancesService {
             p: status.p ?? 0,
         };
 
-        this.logger.debug(`[getConnectionInfo] Successfully built connection for instance ${instance.id} on relay ${instance.relayId}`);
+        this.logger.debug(`[getConnectionInfo] Successfully built connection for instance ${instance.id} on relay ${relayId}`);
 
         return {
             method: 'relay',
@@ -246,9 +257,11 @@ export class InstancesService {
         // ── Player list ──────────────────────────────────────────────────────────
         let count = 0;
         const players: { user: string | null; display: string }[] = [];
-        if (instance.relayId) {
+        const relayLink = await this.prisma.relayInstance.findUnique({ where: { instanceId: instance.id } });
+        const relayId = relayLink?.relayId;
+        if (relayId) {
             // 1. Fetch instances list to resolve internal_id (i) from node master_id (n)
-            const instancesResp = await this.wsGateway.requestInstances(instance.relayId, 100, 0);
+            const instancesResp = await this.wsGateway.requestInstances(relayId, 100, 0);
             const relayInstance = instancesResp?.instances?.find(
                 (ri: { n: number }) => ri.n === instance.id,
             ) as { i: number; p: number } | undefined;
@@ -257,7 +270,7 @@ export class InstancesService {
                 count = relayInstance.p;
                 // 2. Fetch the first 20 visible players using the internal_id
                 const result = await this.wsGateway.requestPlayers(
-                    instance.relayId,
+                    relayId,
                     relayInstance.i,
                     20,
                     0,

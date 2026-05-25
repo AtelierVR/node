@@ -11,8 +11,8 @@ export interface NormalizedLogEntry {
 }
 
 export interface NormalizedRelayInstance {
-    id: string;
-    internal_id: number;
+    id: string;       // relay-local slot (from i)
+    node_id: number;  // DB/federation id (from n)
     player_count: number;
     flags: number;
     world: string;
@@ -70,10 +70,10 @@ export class RelayLogsResponseDto {
 
 /** One instance entry from relay `get_instances` ack. */
 export class RelayInstanceItemDto {
-    @IsOptional() @IsString()    i?: string;         // id (abbrev)
-    @IsOptional() @IsString()    id?: string;
-    @IsOptional() @IsInt()       n?: number;         // internal_id (abbrev)
-    @IsOptional() @IsInt()       internal_id?: number;
+    @IsOptional() @IsInt()       i?: number;         // internal_id (abbrev, relay-local slot)
+    @IsOptional() @IsInt()       internal_id?: number;  // long form of i
+    @IsOptional() @IsInt()       n?: number;         // node_id (abbrev, DB/federation id)
+    @IsOptional() @IsInt()       node_id?: number;   // long form of n
     @IsOptional() @IsArray()     p?: unknown[];      // players array (abbrev)
     @IsOptional() @IsArray()     players?: unknown[];
     @IsOptional() @IsInt()       f?: number;         // flags (abbrev)
@@ -86,12 +86,12 @@ export class RelayInstanceItemDto {
     normalize(): NormalizedRelayInstance {
         const players = this.p ?? this.players ?? [];
         return {
-            id:          this.i ?? this.id ?? '',
-            internal_id: this.n ?? this.internal_id ?? 0,
+            id:           String(this.i ?? this.internal_id ?? ''),
+            node_id:      this.n ?? this.node_id ?? 0,
             player_count: typeof players === 'number' ? players : Array.isArray(players) ? players.length : 0,
-            flags:       this.f ?? this.flags   ?? 0,
-            world:       this.w ?? this.world   ?? '',
-            capacity:    this.c ?? this.capacity ?? 0,
+            flags:        this.f ?? this.flags   ?? 0,
+            world:        this.w ?? this.world   ?? '',
+            capacity:     this.c ?? this.capacity ?? 0,
         };
     }
 

@@ -203,17 +203,27 @@ export class RelayController {
         const items = await this.relay.getAssignedInstances(id);
         const adress = await this.relay.address();
 
-        // Enrich with relay-internal slot number when relay is online
-        const slotMap = new Map<number, number>(); // dbId → relay slot
+        // Enrich with relay-internal slot number when relay is online.
+        // A relay may spawn multiple slots for the same DB instance (load-balancing),
+        // so track the slot with the highest player count per DB id.
+        const slotMap = new Map<number, number>(); // dbId → relay slot (most-active)
+        const slotPlayerMap = new Map<number, number>(); // dbId → player count for chosen slot
         if (this.relay.isRelayConnected(id)) {
             try {
                 const liveResult = await this.wsGateway.requestInstances(id, 1000, 0);
                 if (liveResult) {
                     for (const inst of liveResult.instances) {
                         const dto = plainToInstance(RelayInstanceItemDto, inst);
-                        const slot = Number(dto.i ?? dto.id ?? -1);
-                        const dbId = Number(dto.n ?? dto.internal_id ?? 0);
-                        if (dbId > 0 && slot >= 0) slotMap.set(dbId, slot);
+                        const slot = Number(dto.i ?? dto.internal_id ?? -1);
+                        const dbId = Number(dto.n ?? dto.node_id ?? 0);
+                        const players = typeof dto.p === 'number' ? dto.p : (Array.isArray(dto.p) ? dto.p.length : 0);
+                        if (dbId > 0 && slot >= 0) {
+                            // Prefer the slot with more players so the UI points to an active slot
+                            if (!slotMap.has(dbId) || players > (slotPlayerMap.get(dbId) ?? 0)) {
+                                slotMap.set(dbId, slot);
+                                slotPlayerMap.set(dbId, players);
+                            }
+                        }
                     }
                 }
             } catch { /* relay unavailable */ }
@@ -366,10 +376,10 @@ export class RelayController {
 
         const liveInst = liveResult.instances
             .map((i: unknown) => plainToInstance(RelayInstanceItemDto, i))
-            .find((i: RelayInstanceItemDto) => String(i.i ?? i.id) === iid);
+            .find((i: RelayInstanceItemDto) => String(i.i ?? i.internal_id) === iid);
         if (!liveInst) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${iid})`);
 
-        const dbId = Number((liveInst as RelayInstanceItemDto).n ?? (liveInst as RelayInstanceItemDto).internal_id ?? 0);
+        const dbId = Number((liveInst as RelayInstanceItemDto).n ?? (liveInst as RelayInstanceItemDto).node_id ?? 0);
         if (!dbId) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${iid}): no DB mapping`);
 
         const instance = await this.instances.findById(dbId);
@@ -403,20 +413,30 @@ export class RelayController {
         const result = await this.wsGateway.requestInstances(id, 1000, 0);
         if (!result) throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay did not respond');
 
-        const instance = result.instances
-            .map(i => plainToInstance(RelayInstanceItemDto, i))
-            .find(i => String(i.i ?? i.id) === iid);
+        const allInstances = result.instances.map(i => plainToInstance(RelayInstanceItemDto, i));
+        const instance = allInstances.find(i => String(i.i ?? i.internal_id) === iid);
         if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${iid})`);
 
-        const slotId = Number(instance.i ?? instance.id ?? 0);
-        const playersResult = await this.wsGateway.requestPlayers(id, slotId, 1000, 0, true);
-        if (!playersResult) throw new ApiException(ApiErrorCode.SERVICE_UNAVAILABLE, null, 'Relay did not respond');
+        // Find all relay slots sharing the same DB instance id (the relay may spawn
+        // multiple slots per DB instance for load-balancing). Aggregate players across
+        // all of those slots so the players page is never empty because the user
+        // happened to navigate to an idle slot.
+        const dbId = Number(instance.n ?? instance.node_id ?? 0);
+        const siblingSlots = allInstances
+            .filter(i => Number(i.n ?? i.node_id ?? 0) === dbId)
+            .map(i => Number(i.i ?? i.internal_id ?? 0));
 
-        const players = playersResult.i.map((p: unknown) =>
-            plainToInstance(RelayPlayerItemDto, p).normalize()
-        );
+        const allPlayers: ReturnType<RelayPlayerItemDto['normalize']>[] = [];
+        for (const slotId of siblingSlots) {
+            const playersResult = await this.wsGateway.requestPlayers(id, slotId, 1000, 0, true);
+            if (!playersResult) continue;
+            for (const p of playersResult.i) {
+                const player = plainToInstance(RelayPlayerItemDto, p).normalize();
+                allPlayers.push(player);
+            }
+        }
 
-        return { total: players.length, items: players };
+        return { total: allPlayers.length, items: allPlayers };
     }
 
     // ── Send command ───────────────────────────────────────────────────────────────
@@ -506,8 +526,8 @@ export class RelayController {
         if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
 
         try {
-            const providerId = await this.relay.restartRelay(id);
-            return { success: true, provider_id: providerId };
+            await this.relay.restartRelay(id);
+            return { success: true };
         } catch (err: any) {
             if (err?.message?.includes('not found')) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);
             throw new ApiException(ApiErrorCode.INTERNAL_SERVER_ERROR, null, err?.message ?? 'Failed to restart relay');
@@ -528,7 +548,7 @@ export class RelayController {
         if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
 
         try {
-            await this.relay.killRelay(id);
+            await this.relay.stopRelay(id, true);
             return { success: true };
         } catch (err: any) {
             if (err?.message?.includes('not found')) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Relay (${id})`);

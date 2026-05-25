@@ -6,7 +6,7 @@ export class RequestInstancesMessageDto {
     @IsOptional()
     @IsInt()
     @Min(1)
-    @Max(10)
+    @Max(256)
     @Type(() => Number)
     count?: number;
 }

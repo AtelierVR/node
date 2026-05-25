@@ -50,6 +50,9 @@ type RelayLifecycleHook = (relayId: number) => void;
 const connectHooks: RelayLifecycleHook[] = [];
 const disconnectHooks: RelayLifecycleHook[] = [];
 
+/** Callbacks fired when an instance is unassigned from a relay (receives the instance id). */
+const instanceUnassignedHooks: ((id: number) => void)[] = [];
+
 @Injectable()
 export class RelayService implements OnModuleInit {
 
@@ -75,6 +78,8 @@ export class RelayService implements OnModuleInit {
     async onModuleInit() {
         // Register relay-specific event validators
         this.events.registerValidator('relay_status_change', (s) => this.isRelayAdmin(s));
+        this.events.registerValidator('relay_added', (s) => this.isRelayAdmin(s));
+        this.events.registerValidator('relay_removed', (s) => this.isRelayAdmin(s));
         this.events.registerValidator('relay_logs', (s) => this.isRelayAdmin(s));
         this.events.registerValidator('relay_specs_update', (s) => this.isRelayAdmin(s));
         this.events.registerValidator('relay_client_connected', (s) => this.isRelayAdmin(s));
@@ -123,10 +128,10 @@ export class RelayService implements OnModuleInit {
             },
             include: { token: true },
         }) as RelayModel & { token: RelayTokenModel };
-        this.activity.create({ 
-            type: 'relay.create', 
-            message: `Relay #${relay.id} created`, 
-            details: { relay_id: relay.id, provider: relay.provider } 
+        this.activity.create({
+            type: 'relay.create',
+            message: `Relay #${relay.id} created`,
+            details: { relay_id: relay.id, provider: relay.provider }
         }).catch(() => { });
         return Relay.attach(relay, this, this.wsGateway) as RelayWithMethodsAndToken;
     }
@@ -134,29 +139,32 @@ export class RelayService implements OnModuleInit {
     // ── Tags ──────────────────────────────────────────────────────────────────────
 
     async getAssignedInstances(relayId: number): Promise<RelayAssignedInstance[]> {
-        const rows = await this.prisma.instances.findMany({
+        const rows = await this.prisma.relayInstance.findMany({
             where: { relayId },
-            select: { id: true, name: true, title: true, worldRef: true, ownerRef: true, capacity: true, createdAt: true },
+            include: { instance: true },
             orderBy: { createdAt: 'asc' },
         });
         return rows.map(r => ({
-            id: r.id,
-            name: r.name,
-            title: r.title,
-            worldRef: NoxIdentifier.parse(r.worldRef),
-            ownerRef: NoxIdentifier.parse(r.ownerRef),
-            capacity: r.capacity,
-            createdAt: r.createdAt,
+            id: r.instance.id,
+            name: r.instance.name,
+            title: r.instance.title,
+            worldRef: NoxIdentifier.parse(r.instance.worldRef),
+            ownerRef: NoxIdentifier.parse(r.instance.ownerRef),
+            capacity: r.instance.capacity,
+            createdAt: r.instance.createdAt,
         }));
     }
 
     async updateTags(id: number, tags: string[]): Promise<RelayWithMethods | null> {
         try {
-            const row = await this.prisma.relays.update({ where: { id }, data: { tags }, include: { token: true } });
+            const row = await this.prisma.relays.update({
+                where: { id },
+                data: { tags },
+                include: { token: true }
+            });
             return this.attachRelay(row);
         } catch (err: any) {
-            if (err?.code === 'P2025') return null;
-            throw err;
+            return null;
         }
     }
 
@@ -164,9 +172,10 @@ export class RelayService implements OnModuleInit {
 
     async assignInstance(relayId: number, instanceId: number): Promise<boolean> {
         try {
-            await this.prisma.instances.update({
-                where: { id: instanceId },
-                data: { relayId },
+            await this.prisma.relayInstance.upsert({
+                where: { instanceId },
+                create: { relayId, instanceId },
+                update: { relayId },
             });
             this.activity.create({
                 type: 'relay.assign_instance',
@@ -175,27 +184,23 @@ export class RelayService implements OnModuleInit {
             }).catch(() => { });
             return true;
         } catch (err: any) {
-            if (err?.code === 'P2025') return false;
-            throw err;
+            return false;
         }
     }
 
     async unassignInstance(instanceId: number): Promise<boolean> {
         try {
-            await this.prisma.instances.update({
-                where: { id: instanceId },
-                data: { relayId: null },
-            });
+            await this.prisma.relayInstance.delete({ where: { instanceId } });
+            for (const hook of instanceUnassignedHooks) hook(instanceId);
             return true;
         } catch (err: any) {
-            if (err?.code === 'P2025') return false;
-            throw err;
+            return false;
         }
     }
 
     // ── Runner lifecycle ──────────────────────────────────────────────────────────
 
-    private async buildStartConfig(relay: RelayWithMethods, maxInstances?: number) {
+    private async buildStartConfig(relay: RelayWithMethods, maxLink?: number) {
         // Pass the base URL (e.g. https://nox.hactazia.fr/) to the relay
         // The relay will append /api/ws to construct the WebSocket URL
         const nodeGateway = await this.wellKnown.webBaseUrl();
@@ -204,57 +209,57 @@ export class RelayService implements OnModuleInit {
             relayId: relay.id,
             token: relay.token!.token,
             nodeGateway,
-            maxInstances: maxInstances ?? Number(await this.config.getOptional<number>('relay.max_instances') ?? 3),
+            maxLink: relay.maxLink,
             label: relay.label ?? undefined,
         };
     }
 
-    async startRelay(id: number, maxInstances?: number): Promise<string> {
+    /** Relay IDs for which startRelay() is currently in progress (container being started). */
+    readonly pendingStartRelayIds = new Set<number>();
+
+    async startRelay(id: number, maxLink?: number): Promise<string> {
         const relay = await this.findById(id);
         if (!relay) throw new Error(`Relay (${id}) not found`);
         if (!relay.token) throw new Error(`Relay (${id}) has no authentication token`);
 
         const runner = this.runners.get(relay.provider);
-        const cfg = await this.buildStartConfig(relay, maxInstances);
-        const providerId = await runner.start(cfg);
+        const cfg = await this.buildStartConfig(relay, maxLink);
 
-        await this.prisma.relays.update({ where: { id }, data: { providerId } });
-        this.activity.create({ type: 'relay.start', message: `Relay #${id} started`, details: { relay_id: id, provider_id: providerId } }).catch(() => { });
-        return providerId;
+        this.pendingStartRelayIds.add(id);
+        try {
+            const providerId = await runner.start(cfg);
+
+            const updated = await this.prisma.relays.update({ where: { id }, data: { providerId } });
+            if (!updated) throw new Error(`Relay (${id}) was removed while starting`);
+
+            this.logger.log(`Relay #${id} started with provider ID ${providerId}`);
+            this.activity.create({ type: 'relay.start', message: `Relay #${id} started`, details: { relay_id: id, provider_id: providerId } }).catch(() => { });
+            return providerId;
+        } finally {
+            this.pendingStartRelayIds.delete(id);
+        }
     }
 
-    async stopRelay(id: number): Promise<void> {
+    async stopRelay(id: number, kill: boolean = false): Promise<void> {
         const relay = await this.findById(id);
         if (!relay) throw new Error(`Relay (${id}) not found`);
 
         const runner = this.runners.get(relay.provider);
-        if (relay.providerId) await runner.stop(relay.providerId);
+        if (relay.providerId) await runner.stop(relay.providerId, kill);
 
-        this.activity.create({ type: 'relay.stop', message: `Relay #${id} stopped`, details: { relay_id: id } }).catch(() => { });
+        this.logger.log(`Relay #${id} ${kill ? 'killed' : 'stopped'}`);
+        this.activity.create({ type: kill ? 'relay.kill' : 'relay.stop', message: `Relay #${id} ${kill ? 'killed' : 'stopped'}`, details: { relay_id: id } }).catch(() => { });
     }
 
-    async restartRelay(id: number): Promise<string> {
-        const relay = await this.findById(id);
-        if (!relay) throw new Error(`Relay (${id}) not found`);
-        if (!relay.token) throw new Error(`Relay (${id}) has no authentication token`);
-
-        const runner = this.runners.get(relay.provider);
-        const cfg = await this.buildStartConfig(relay);
-        const newProviderId = await runner.restart(relay.providerId ?? '', cfg);
-
-        await this.prisma.relays.update({ where: { id }, data: { providerId: newProviderId } });
-        this.activity.create({ type: 'relay.restart', message: `Relay #${id} restarted`, details: { relay_id: id, provider_id: newProviderId } }).catch(() => { });
-        return newProviderId;
-    }
-
-    async killRelay(id: number): Promise<void> {
+    async restartRelay(id: number): Promise<void> {
         const relay = await this.findById(id);
         if (!relay) throw new Error(`Relay (${id}) not found`);
 
         const runner = this.runners.get(relay.provider);
-        if (relay.providerId) await runner.kill(relay.providerId);
+        if (relay.providerId) await runner.restart(relay.providerId);
 
-        this.activity.create({ type: 'relay.kill', message: `Relay #${id} killed`, details: { relay_id: id } }).catch(() => { });
+        this.logger.log(`Relay #${id} restarted`);
+        this.activity.create({ type: 'relay.restart', message: `Relay #${id} restarted`, details: { relay_id: id } }).catch(() => { });
     }
 
     async getRunnerInfo(id: number): Promise<RelayRunnerInfo> {
@@ -266,13 +271,27 @@ export class RelayService implements OnModuleInit {
     }
 
     async delete(id: number): Promise<RelayWithMethods | null> {
+        // Capture which instances were linked to this relay before Cascade deletes the pairs
+        const affected = await this.prisma.relayInstance.findMany({
+            where: { relayId: id },
+            select: { instanceId: true },
+        });
         try {
             const row = await this.prisma.relays.delete({ where: { id } });
-            this.activity.create({ 
-                type: 'relay.delete', 
-                message: `Relay #${row.id} deleted`, 
-                details: { relay_id: row.id } 
+            
+            this.logger.log(`Relay #${id} deleted`);
+            this.activity.create({
+                type: 'relay.delete',
+                message: `Relay #${row.id} deleted`,
+                details: { relay_id: row.id }
             }).catch(() => { });
+
+            // relay_instances rows deleted via Cascade — fire hooks so instances get re-linked
+            for (const { instanceId } of affected)
+                for (const hook of instanceUnassignedHooks)
+                    hook(instanceId);
+
+            this.events.emit('relay_removed', { relay_id: row.id, time: Date.now() });
             return this.attachRelay(row);
         } catch (err: any) {
             if (err?.code === 'P2025') return null;
@@ -288,7 +307,7 @@ export class RelayService implements OnModuleInit {
     unregisterSocket(socketId: string) {
         this.handleSocketDisconnect(socketId);
         const relayId = relaySocketMap.get(socketId);
-        if (relayId !== undefined) 
+        if (relayId !== undefined)
             this.handleRelayDisconnected(relayId);
     }
 
@@ -304,6 +323,8 @@ export class RelayService implements OnModuleInit {
     onConnect(hook: (relayId: number) => void) { connectHooks.push(hook); }
     /** Register a callback invoked when any relay disconnects. */
     onDisconnect(hook: (relayId: number) => void) { disconnectHooks.push(hook); }
+    /** Register a callback invoked when an instance is unassigned (relayId set to null). */
+    onInstanceUnassigned(hook: (instanceId: number) => void) { instanceUnassignedHooks.push(hook); }
 
     getSocketsForRelay(relayId: number): string[] {
         const result: string[] = [];
@@ -315,6 +336,10 @@ export class RelayService implements OnModuleInit {
 
     isRelayConnected(relayId: number): boolean {
         return this.getSocketsForRelay(relayId).length > 0;
+    }
+
+    getConnectedRelayIds(): number[] {
+        return [...new Set(relaySocketMap.values())];
     }
 
     // ── Address resolution ────────────────────────────────────────────────────────
@@ -339,41 +364,38 @@ export class RelayService implements OnModuleInit {
         const errors = validateSync(dto);
         if (errors.length > 0) return { success: false, error: 'Invalid payload' };
 
-        const count = dto.count ?? 1;
+        const maxLink = dto.count ?? 3;
 
-        // First: instances already assigned to this relay
-        const alreadyAssigned = await this.prisma.instances.findMany({
+        // Persist the relay's self-reported capacity
+        await this.prisma.relays.update({ where: { id: relayId }, data: { maxLink } });
+
+        // Get currently assigned instances (oldest first)
+        const pairs = await this.prisma.relayInstance.findMany({
             where: { relayId },
+            include: { instance: true },
             orderBy: { createdAt: 'asc' },
         });
 
-        // Second: unassigned instances (relayId = null) to fill up to `count`
-        const remaining = count - alreadyAssigned.length;
-        const unassigned = remaining > 0
-            ? await this.prisma.instances.findMany({
-                where: { relayId: null },
-                orderBy: { createdAt: 'asc' },
-                take: remaining,
-            })
-            : [];
-
-        // Auto-assign the unassigned ones to this relay
-        if (unassigned.length > 0) {
-            const ids = unassigned.map(i => i.id);
-            await this.prisma.instances.updateMany({ where: { id: { in: ids } }, data: { relayId } });
-            this.logger.log(`Auto-assigned ${ids.length} instance(s) to relay #${relayId}: [${ids.join(', ')}]`);
+        // If more pairs than allowed, unlink the most recent ones (fire hooks → re-link elsewhere)
+        if (pairs.length > maxLink) {
+            const excess = pairs.slice(maxLink);
+            for (const pair of excess) {
+                await this.prisma.relayInstance.delete({ where: { instanceId: pair.instanceId } });
+                for (const hook of instanceUnassignedHooks) hook(pair.instanceId);
+            }
         }
 
-        const available = [...alreadyAssigned, ...unassigned];
+        const available = pairs.slice(0, maxLink);
 
         if (available.length === 0) {
-            this.logger.warn(`No instances available for relay #${relayId}`);
+            this.logger.warn(`No instances assigned to relay #${relayId}`);
             return { success: false, error: 'No instances available' };
         }
 
         const domain = await this.wellKnown.address();
         const slots: RelayInstanceSlot[] = [];
-        for (const i of available) {
+        for (const pair of available) {
+            const i = pair.instance;
             const worldNi = NoxIdentifier.parse(i.worldRef);
             const worldId = worldNi.numericId;
             if (!worldId) {
@@ -458,21 +480,23 @@ export class RelayService implements OnModuleInit {
         }
         const entry: RelayLogEntry = {
             relay_id: relayId,
-            time:    dto.a,
-            level:   dto.l,
+            time: dto.a,
+            level: dto.l,
             message: dto.m,
-            tag:     dto.t ?? null,
+            tag: dto.t ?? null,
         };
         this.events.emit<RelayLogEntry>('relay_logs', entry);
     }
 
     handleRelaySpecs(relayId: number, raw: WsRelaySpecs | null) {
-        this.events.emit('relay_specs_update', { relay_id: relayId, time: Date.now(), details: {
-            processor: { used: raw?.c?.u ?? 0, cores: raw?.c?.c ?? 1 },
-            memory:    { used: raw?.m?.u ?? 0, total: raw?.m?.t ?? 1 },
-            upload:    { used: raw?.u?.u ?? 0, bandwidth: raw?.u?.b ?? 0, packets: raw?.u?.p ?? 0 },
-            download:  { used: raw?.d?.u ?? 0, bandwidth: raw?.d?.b ?? 0, packets: raw?.d?.p ?? 0 },
-        } });
+        this.events.emit('relay_specs_update', {
+            relay_id: relayId, time: Date.now(), details: {
+                processor: { used: raw?.c?.u ?? 0, cores: raw?.c?.c ?? 1 },
+                memory: { used: raw?.m?.u ?? 0, total: raw?.m?.t ?? 1 },
+                upload: { used: raw?.u?.u ?? 0, bandwidth: raw?.u?.b ?? 0, packets: raw?.u?.p ?? 0 },
+                download: { used: raw?.d?.u ?? 0, bandwidth: raw?.d?.b ?? 0, packets: raw?.d?.p ?? 0 },
+            }
+        });
     }
 
     handleClientConnected(relayId: number, data: unknown) {
@@ -486,11 +510,11 @@ export class RelayService implements OnModuleInit {
             relay_id: relayId,
             time: Date.now(),
             client: {
-                id:           dto.id,
-                address:      dto.address  ?? null,
-                platform:     dto.platform ?? '',
-                engine:       dto.engine   ?? '',
-                user:         dto.user     ?? null,
+                id: dto.id,
+                address: dto.address ?? null,
+                platform: dto.platform ?? '',
+                engine: dto.engine ?? '',
+                user: dto.user ?? null,
                 connected_at: dto.connected_at ?? Date.now(),
             },
         };
@@ -506,9 +530,9 @@ export class RelayService implements OnModuleInit {
         }
         const event: RelayClientAuthentifiedEvent = {
             relay_id: relayId,
-            time:      Date.now(),
+            time: Date.now(),
             client_id: dto.id,
-            user:      dto.user,
+            user: dto.user,
         };
         this.events.emit<RelayClientAuthentifiedEvent>('relay_client_authentified', event);
     }
@@ -522,10 +546,10 @@ export class RelayService implements OnModuleInit {
         }
         const event: RelayClientDisconnectedEvent = {
             relay_id: relayId,
-            time:     Date.now(),
-            id:       dto.id,
-            reason:   dto.reason,
-            type:     dto.type,
+            time: Date.now(),
+            id: dto.id,
+            reason: dto.reason,
+            type: dto.type,
         };
         this.events.emit<RelayClientDisconnectedEvent>('relay_client_disconnected', event);
     }
@@ -541,12 +565,12 @@ export class RelayService implements OnModuleInit {
             relay_id: relayId,
             time: Date.now(),
             player: {
-                client_id:   dto.client_id,
-                player_id:   dto.player_id,
-                display:     dto.display,
+                client_id: dto.client_id,
+                player_id: dto.player_id,
+                display: dto.display,
                 internal_id: dto.internal_id,
-                flags:       dto.flags,
-                joined_at:   dto.joined_at,
+                flags: dto.flags,
+                joined_at: dto.joined_at,
             },
         };
         this.events.emit<RelayPlayerJoinEvent>('relay_player_join', event);
@@ -563,10 +587,10 @@ export class RelayService implements OnModuleInit {
             relay_id: relayId,
             time: Date.now(),
             player: {
-                player_id:   dto.player_id,
+                player_id: dto.player_id,
                 internal_id: dto.internal_id,
-                type:        dto.type,
-                reason:      dto.reason,
+                type: dto.type,
+                reason: dto.reason,
             },
         };
         this.events.emit<RelayPlayerLeaveEvent>('relay_player_leave', event);

@@ -146,6 +146,10 @@ export class PrismaService implements OnModuleInit {
         return this._client.relay;
     }
 
+    get relayInstance() {
+        return this._client.relayInstance;
+    }
+
     get relayTokens() {
         return this._client.relayToken;
     }

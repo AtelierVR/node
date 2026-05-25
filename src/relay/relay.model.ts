@@ -47,7 +47,6 @@ export class Relay {
         const connected = this.isConnected();
         const t0 = Date.now();
         const status = connected ? await this.wsGateway.requestStatus(this.id) : null;
-        console.log(status)
         const ping = (connected && status) ? Date.now() - t0 : null;
         const details = await this.relayService.getRunnerInfo(this.id).catch(() => null);
 
@@ -56,6 +55,7 @@ export class Relay {
             label: this.label ?? null,
             provider: this.provider ?? 'docker',
             provider_id: this.providerId ?? null,
+            max_link: this.maxLink,
             tags: this.tags ?? [],
             connected,
             runner: details ? {
@@ -63,6 +63,19 @@ export class Relay {
                 status: details.status,
                 started_at: details.startedAt?.getTime() ?? null,
                 meta: details.meta,
+                // Prefer relay-reported accessibility (supports quic + exotic protocols);
+                // fall back to Docker port bindings when the relay is offline.
+                ports: status?.a
+                    ? Object.entries(status.a)
+                        .filter((entry): entry is [string, string] => entry[1] != null)
+                        .flatMap(([proto, addr]) => {
+                            const lastColon = addr.lastIndexOf(':');
+                            if (lastColon === -1) return [];
+                            const host = addr.substring(0, lastColon) || '0.0.0.0';
+                            const port = parseInt(addr.substring(lastColon + 1), 10);
+                            return isNaN(port) ? [] : [{ protocol: proto, host, port }];
+                        })
+                    : details.ports,
             } : null,
             created_at: this.createdAt.toISOString(),
             status: status ? {
@@ -95,6 +108,7 @@ export class Relay {
                         bandwidth: status.s.d.b,
                         packets: status.s.d.p ?? 0,
                     },
+                    mtu: status.s.mtu ?? 1452,
                 } : null,
             } : null,
         };

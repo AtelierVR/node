@@ -224,6 +224,9 @@ export class ApiRelayDto {
     @ApiPropertyOptional({ type: 'string', description: 'Provider-specific resource ID (e.g. container ID), or null', example: 'a1b2c3d4e5f6', nullable: true })
     provider_id!: string | null;
 
+    @ApiProperty({ description: 'Maximum number of instances this relay can host', example: 3 })
+    max_link!: number;
+
     @ApiProperty({ description: 'Relay tags used for instance assignment rules', type: [String], example: ['eu', 'fast'] })
     tags!: string[];
 

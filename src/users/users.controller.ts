@@ -146,13 +146,35 @@ export class UsersController {
      */
     @ApiOperation({ summary: 'Search users', description: 'Paginated full-text search for users, or fetch by IDs.' })
     @ApiWrappedResponse(UserSearchResponseDto)
+    @ApiOptionalBearerAuth()
+    @UseGuards(OptionalAuthUserGuard)
     @Get()
     async search(
+        @Req() req: Request & OptionalUserAuthenticatedRequest,
+        @Query('server') s?: string,
         @Query('query') query?: string,
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
         @Query('id') id?: string | string[],
     ) {
+        if (s) {
+            if (!req.user)
+                throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+            if (!req.user.isAdmin() && !req.user.tags.includes('sys:can_external_fetch'))
+                throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
+            const server = await this.externalServers.findOrDiscover(s);
+            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${s})`);
+            const params = new URLSearchParams();
+            if (query) params.set('query', query);
+            if (limit) params.set('limit', limit);
+            if (offset) params.set('offset', offset);
+            if (id) (Array.isArray(id) ? id : [id]).forEach(v => params.append('id', v));
+            const qs = params.toString();
+            const resp = await server.fetch<any>(`/users${qs ? '?' + qs : ''}`, { user: req.user });
+            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.EXTERNAL_SERVER_ERROR, null, `Server (${s})`);
+            return resp.data;
+        }
+
         // validate and normalize paging
         if (!limit || typeof limit !== 'string' || !/^\d+$/.test(limit)) limit = '10';
         if (!offset || typeof offset !== 'string' || !/^\d+$/.test(offset)) offset = '0';

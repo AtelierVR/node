@@ -103,6 +103,16 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         const data: WsClientData = { mode, socketId, rooms: new Set() };
         this.clients.set(ws, data);
 
+        // Register handlers immediately so messages sent during async auth are buffered,
+        // not silently dropped (e.g. relay sends request_instances right after connect).
+        const buffer: RawData[] = [];
+        const bufferingHandler = (raw: RawData) => buffer.push(raw);
+        ws.on('message', bufferingHandler);
+        ws.on('close', () => this.handleDisconnect(ws));
+        ws.on('error', (err: Error) =>
+            this.logger.warn('WebSocket client error: ' + err.message),
+        );
+
         if (mode === 'user') {
             await this.resolveUser(ws, data, token!);
         } else if (mode === 'relay') {
@@ -113,11 +123,10 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
             this.logger.debug('Guest connected');
         }
 
+        // Swap buffering handler for real handler, then replay any buffered messages.
+        ws.off('message', bufferingHandler);
         ws.on('message', (raw: RawData) => this.handleMessage(ws, raw));
-        ws.on('close', () => this.handleDisconnect(ws));
-        ws.on('error', (err: Error) =>
-            this.logger.warn('WebSocket client error: ' + err.message),
-        );
+        for (const raw of buffer) this.handleMessage(ws, raw);
     }
 
     private async resolveUser(ws: WebSocket, data: WsClientData, token: string): Promise<void> {
@@ -220,8 +229,10 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
             }
         }
         if (data.mode === 'relay') {
-            this.logger.debug('Relay #' + data.relayId + ' disconnected');
-            this.relayService.unregisterSocket(data.socketId);
+            if (data.relayId) {
+                this.logger.debug('Relay #' + data.relayId + ' disconnected');
+                this.relayService.unregisterSocket(data.socketId);
+            }
         }
 
         this.clients.delete(ws);
@@ -425,27 +436,42 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         if (data.mode !== 'relay' || !data.relayId) return;
         this.logger.debug(`[Relay #${data.relayId}] Processing request_instances (id=${frame.id})`);
         const response = this.relayService.handleRequestInstances(data.relayId, frame.payload ?? {});
-        void response.then((result) => {
-            this.logger.debug(`[Relay #${data.relayId}] Sending response for request_instances (id=${frame.id})`);
-            this.sendFrame(ws, 'response', result, frame.id);
-        });
+        void response
+            .then((result) => {
+                this.logger.debug(`[Relay #${data.relayId}] Sending response for request_instances (id=${frame.id})`);
+                this.sendFrame(ws, 'response', result, frame.id);
+            })
+            .catch((err: unknown) => {
+                this.logger.error(`[Relay #${data.relayId}] request_instances error: ${err}`);
+                this.sendFrame(ws, 'response', { success: false, error: 'Internal server error' }, frame.id);
+            });
     }
 
     private onResolveUser(ws: WebSocket, data: WsClientData, frame: WsInboundFrame): void {
         if (data.mode !== 'relay' || !data.relayId) return;
         const response = this.relayService.handleResolveUser(data.relayId, frame.payload ?? {});
-        void response.then((result) => {
-            this.sendFrame(ws, 'response', result, frame.id);
-        });
+        void response
+            .then((result) => {
+                this.sendFrame(ws, 'response', result, frame.id);
+            })
+            .catch((err: unknown) => {
+                this.logger.error(`[Relay #${data.relayId}] resolve_user error: ${err}`);
+                this.sendFrame(ws, 'response', { result: 'error', error: 'Internal server error' }, frame.id);
+            });
     }
 
     private onSyncInstances(ws: WebSocket, data: WsClientData, frame: WsInboundFrame): void {
         if (data.mode !== 'relay' || !data.relayId) return;
         const response = this.relayService.handleSyncInstances(data.relayId, frame.payload ?? {});
-        void response.then((result) => {
-            this.logger.debug(`[Relay #${data.relayId}] Sending relay_sync_instances response: ${JSON.stringify(result)}`);
-            this.sendFrame(ws, 'response', result, frame.id);
-        });
+        void response
+            .then((result) => {
+                this.logger.debug(`[Relay #${data.relayId}] Sending relay_sync_instances response: ${JSON.stringify(result)}`);
+                this.sendFrame(ws, 'response', result, frame.id);
+            })
+            .catch((err: unknown) => {
+                this.logger.error(`[Relay #${data.relayId}] relay_sync_instances error: ${err}`);
+                this.sendFrame(ws, 'response', { success: false, error: 'Internal server error' }, frame.id);
+            });
     }
 
     private onClientConnected(ws: WebSocket, data: WsClientData, frame: WsInboundFrame): void {
@@ -595,6 +621,24 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
             this.pendingRequests.set(correlationId, { resolve, reject, timeout });
             this.sendFrame(ws, type, data, correlationId);
         });
+    }
+
+    /**
+     * Push a server-initiated frame to all sockets of a relay.
+     * Returns true if the relay is connected.
+     */
+    pushToRelay(relayId: number, type: string, payload: unknown): boolean {
+        const sockets = this.relayService.getSocketsForRelay(relayId);
+        if (sockets.length === 0) return false;
+        for (const socketId of sockets) {
+            const ws = Array.from(this.wss.clients).find(
+                (client) => this.clients.get(client)?.socketId === socketId,
+            );
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                this.sendFrame(ws, type, payload);
+            }
+        }
+        return true;
     }
 
     /**

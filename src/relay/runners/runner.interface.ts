@@ -5,14 +5,23 @@
  * start, stop, restart, kill, and introspect.
  *
  * Implementations:
- *   - DockerRunner  — manages relay Docker containers
- *   - ExternalRunner — no-op for relays managed outside the node
+ *   - ContainerRunner — manages relay containers
+ *   - ExternalRunner  — no-op for relays managed outside the node
  *   - (future) KubernetesRunner, ProxmoxRunner, …
  */
 
 // ── Runner info returned by getInfo() ────────────────────────────────────────
 
-export type RelayRunnerStatus = 'running' | 'stopped' | 'dead' | 'unknown';
+export type RelayRunnerStatus = 'running' | 'stopped' | 'starting' | 'stopping' | 'destroyed' | 'unknown';
+
+export interface RelayRunnerPort {
+    /** Transport protocol (e.g. 'quic', 'tcp', 'udp') */
+    protocol: string;
+    /** Host address the port is bound to */
+    host: string;
+    /** Port number (0–65535) */
+    port: number;
+}
 
 export interface RelayRunnerInfo {
     /** Provider-specific identifier (e.g. Docker container short ID) */
@@ -23,6 +32,8 @@ export interface RelayRunnerInfo {
     startedAt: Date | null;
     /** Provider-specific metadata (image name, node name, …) */
     meta: Record<string, string>;
+    /** Open ports and their associated protocol */
+    ports: RelayRunnerPort[];
 }
 
 // ── Config passed to start() ──────────────────────────────────────────────────
@@ -35,7 +46,7 @@ export interface RelayStartConfig {
     /** Base URL of the node (e.g. "https://example.com/") - relay will append /api/ws */
     nodeGateway: string;
     /** Max number of instances this relay may host */
-    maxInstances: number;
+    maxLink: number;
     /** Optional human-readable label */
     label?: string;
 }
@@ -55,19 +66,15 @@ export interface IRelayRunner {
     /**
      * Gracefully stop the relay (SIGTERM / docker stop).
      * @param providerId The value stored in `Relay.providerId`.
+     * @param kill Whether to forcefully kill the relay if it doesn't stop gracefully.
      */
-    stop(providerId: string): Promise<void>;
+    stop(providerId: string, kill: boolean): Promise<void>;
 
     /**
      * Restart the relay process.
      * Default implementation: stop → start.
      */
-    restart(providerId: string, config: RelayStartConfig): Promise<string>;
-
-    /**
-     * Forcefully kill the relay (SIGKILL / docker kill).
-     */
-    kill(providerId: string): Promise<void>;
+    restart(providerId: string): Promise<void>;
 
     /**
      * Return current runtime info for a relay.
@@ -78,4 +85,10 @@ export interface IRelayRunner {
      * Return true if the relay process is currently running.
      */
     isRunning(providerId: string | null): Promise<boolean>;
+
+    /**
+     * Return true if this runner can accept a new relay to manage.
+     * Managers should call this before requesting a new relay from this runner.
+     */
+    hasCapacity(): Promise<boolean>;
 }

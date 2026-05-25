@@ -19,6 +19,7 @@ import type { OptionalUserAuthenticatedRequest } from '../auth/auth.guard';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
 import { NoxIdentifier } from '../common/identifier';
+import { ExternalServersService } from '../external/external-servers.service';
 
 const multerTempOpts = {
     storage: diskStorage({
@@ -33,7 +34,10 @@ const multerTempOpts = {
 @ApiTags('Instances')
 @Controller('instances')
 export class InstancesController {
-    constructor(private readonly instances: InstancesService) { }
+    constructor(
+        private readonly instances: InstancesService,
+        private readonly externalServers: ExternalServersService,
+    ) { }
 
     // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,12 +60,32 @@ export class InstancesController {
 
     async search(
         @Req() req: Request & OptionalUserAuthenticatedRequest,
+        @Query('server') s?: string,
         @Query('q') query?: string,
         @Query('world') world?: string,
         @Query('owner') owner?: string,
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
     ) {
+        if (s) {
+            if (!req.user)
+                throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+            if (!req.user.isAdmin() && !req.user.tags.includes('sys:can_external_fetch'))
+                throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
+            const server = await this.externalServers.findOrDiscover(s);
+            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${s})`);
+            const params = new URLSearchParams();
+            if (query) params.set('q', query);
+            if (world) params.set('world', world);
+            if (owner) params.set('owner', owner);
+            if (rawLimit) params.set('limit', rawLimit);
+            if (rawOffset) params.set('offset', rawOffset);
+            const qs = params.toString();
+            const resp = await server.fetch<any>(`/instances${qs ? '?' + qs : ''}`, { user: req.user });
+            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.EXTERNAL_SERVER_ERROR, null, `Server (${s})`);
+            return resp.data;
+        }
+
         const { limit, offset } = this.parsePaging(rawLimit, rawOffset);
         
         // Normalize world identifier (convert local domain to ::)

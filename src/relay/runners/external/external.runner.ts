@@ -13,23 +13,29 @@ export class ExternalRunner implements IRelayRunner {
         throw new Error('External relays cannot be started by the node');
     }
 
-    async stop(_providerId: string): Promise<void> {
+    async stop(_providerId: string, _kill: boolean): Promise<void> {
         // External relays are managed outside the node — nothing to do
     }
 
-    async restart(_providerId: string, _cfg: RelayStartConfig): Promise<string> {
-        throw new Error('External relays cannot be restarted by the node');
-    }
-
-    async kill(_providerId: string): Promise<void> {
-        // No-op
+    async restart(_providerId: string): Promise<void> {
+        // External relays are managed outside the node — nothing to do
     }
 
     async getInfo(_providerId: string | null): Promise<RelayRunnerInfo> {
-        return { providerId: _providerId, status: 'unknown', startedAt: null, meta: {} };
+        return {
+            providerId: _providerId,
+            status: 'unknown',
+            startedAt: null,
+            meta: {},
+            ports: []
+        };
     }
 
     async isRunning(_providerId: string | null): Promise<boolean> {
+        return false;
+    }
+
+    async hasCapacity(): Promise<boolean> {
         return false;
     }
 }

@@ -43,7 +43,7 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(RelayAutoManager.name);
 
     private docker!: Docker;
-    
+
     private async group(): Promise<string> {
         return this.config.get<string>('relay.group');
     }
@@ -87,9 +87,10 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
 
         // Initialise Docker client (same config key as DockerRunner)
         let opts: any = await this.config.getOptional<string | object>('relay.docker_options');
-        if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch { opts = {}; } }
+        if (typeof opts === 'string')
+            try { opts = JSON.parse(opts); }
+            catch { opts = {}; }
         this.docker = new Docker((opts as Docker.DockerOptions) ?? {});
-
 
         // Subscribe to the Docker event stream
         try {
@@ -101,21 +102,17 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
                     ]
                 }
             });
+
             this.eventStream.on('data', (buf: Buffer) => this.onContainerEvent(buf));
-            this.eventStream.on('error', (err: Error) =>
-                this.logger.warn(`Docker event stream error: ${err.message}`));
+            this.eventStream.on('error', (err: Error) => this.logger.warn(`Docker event stream error: ${err.message}`));
             this.logger.log('Subscribed to Docker relay event stream');
         } catch (err: any) {
             this.logger.warn(`Could not subscribe to Docker events: ${err.message}`);
         }
 
         // Hook into relay disconnect events so we can track disconnect times
-        this.relay.onDisconnect((relayId) => {
-            this.disconnectTimes.set(relayId, new Date());
-        });
-        this.relay.onConnect((relayId) => {
-            this.disconnectTimes.delete(relayId);
-        });
+        this.relay.onDisconnect((relayId) => void this.disconnectTimes.set(relayId, new Date()));
+        this.relay.onConnect((relayId) => void this.disconnectTimes.delete(relayId));
 
         // Sync existing containers (treat running ones as already started)
         await this.syncExistingContainers();
@@ -196,14 +193,21 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
                 this.containerStartTimes.delete(event.relayId);
                 this.logger.log(`Container died for relay #${event.relayId}`);
                 this.events.emit('relay_status_change', { relay_id: event.relayId, status: 'down', time: Date.now() });
-                try { await this.docker.getContainer(event.id).remove({ force: true }); } catch { /* ignore */ }
+                // Do NOT remove the container here — the RestartPolicy (unless-stopped) will
+                // automatically restart it on transient failures. Force-removing it would fight
+                // the restart policy and leave the relay in a broken state. checkHosts() handles
+                // cleanup of relays that are truly dead (no connection after grace periods).
                 break;
 
             case 'destroy':
                 this.containerStartTimes.delete(event.relayId);
+                this.disconnectTimes.delete(event.relayId);
                 this.logger.log(`Container destroyed for relay #${event.relayId}`);
+                // Safe to delete the DB record here: the die handler no longer calls
+                // container.remove(), so destroy only fires from intentional removals
+                // (checkHosts cleanup or admin action), never from a transient crash.
+                // relay.delete() emits relay_removed internally if the record still exists.
                 await this.relay.delete(event.relayId).catch(() => null);
-                this.events.emit('relay_status_change', { relay_id: event.relayId, status: 'destroyed', time: Date.now() });
                 break;
         }
     }
@@ -235,10 +239,11 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
                 // (the container may not appear in listContainers immediately after startRelay).
                 if (!containersByRelayId.has(r.id)) {
                     if (this.pendingRelayIds.has(r.id)) continue;
+                    if (this.relay.pendingStartRelayIds.has(r.id)) continue;
                     const startTime = this.containerStartTimes.get(r.id);
                     if (startTime && (Date.now() - startTime.getTime()) / 1000 < STARTUP_GRACE_S) continue;
                     this.logger.warn(`Relay #${r.id}: no container found, removing DB record`);
-                    await this.prisma.relays.delete({ where: { id: r.id } }).catch(() => null);
+                    await this.relay.delete(r.id).catch(() => null);
                     this.containerStartTimes.delete(r.id);
                     this.disconnectTimes.delete(r.id);
                     continue;
@@ -269,9 +274,25 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
                     if (containerInfo.State === 'running') await container.stop({ t: 5 }).catch(() => null);
                     await container.remove({ force: true }).catch(() => null);
                 } catch { /* ignore */ }
-                await this.prisma.relays.delete({ where: { id: r.id } }).catch(() => null);
+                // relay.delete() emits relay_removed; container.remove() above will also trigger
+                // the destroy handler which calls relay.delete() again (no-op if already deleted).
+                await this.relay.delete(r.id).catch(() => null);
                 this.containerStartTimes.delete(r.id);
                 this.disconnectTimes.delete(r.id);
+            }
+
+            // Remove orphan containers: containers labelled with a relay ID that has no DB record.
+            // This happens when a relay is deleted via the API (DB deleted, container left running).
+            const relayIds = new Set(relays.map(r => r.id));
+            for (const [relayId, containerInfo] of containersByRelayId) {
+                if (!relayIds.has(relayId)) {
+                    this.logger.warn(`Relay #${relayId}: orphan container found (no DB record), removing`);
+                    try {
+                        const container = this.docker.getContainer(containerInfo.Id);
+                        if (containerInfo.State === 'running') await container.stop({ t: 5 }).catch(() => null);
+                        await container.remove({ force: true }).catch(() => null);
+                    } catch { /* ignore */ }
+                }
             }
 
             // Create a new relay if all are full (or none exist)
@@ -340,7 +361,7 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
             // grace" even before the Docker 'start' event fires.
             this.containerStartTimes.set(relay.id, new Date());
             this.logger.log(`Auto-created and started relay #${relay.id}`);
-            this.events.emit('relay_status_change', { relay_id: relay.id, status: 'created', time: Date.now() });
+            this.events.emit('relay_added', { relay_id: relay.id, time: Date.now() });
         } catch (err: any) {
             this.logger.error(`Failed to start auto-created relay #${relay.id}: ${err.message}`);
             await this.relay.delete(relay.id).catch(() => null);

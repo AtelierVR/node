@@ -3,13 +3,14 @@ import { RelayService } from './relay.service';
 import { RelayGateway } from './relay.gateway';
 import { RelayController } from './relay.controller';
 import { RelayAutoManager } from './relay-auto-manager.service';
+import { InstanceDistributorService } from './instance-distributor.service';
 import { GatewayModule } from '../gateway/gateway.module';
 import { FediverseModule } from '../fediverse/fediverse.module';
 import { AppConfigModule } from '../config/config.module';
 import { AuthModule } from '../auth/auth.module';
 import { InstancesModule } from '../instances/instances.module';
 import { ActivityModule } from '../activity/activity.module';
-import { RunnerFactory } from './runners/runner.factory';
+import { RunnerFactory, RELAY_RUNNERS } from './runners/runner.factory';
 import { DockerRunner } from './runners/docker/docker.runner';
 import { ExternalRunner } from './runners/external/external.runner';
 import { WsModule } from '../ws/ws.module';
@@ -25,7 +26,16 @@ import { WsModule } from '../ws/ws.module';
         forwardRef(() => WsModule),
     ],
     controllers: [RelayController],
-    providers: [RelayService, RelayGateway, RelayAutoManager, RunnerFactory, DockerRunner, ExternalRunner],
+    providers: [
+        RelayService, RelayGateway, RelayAutoManager, InstanceDistributorService,
+        DockerRunner, ExternalRunner,
+        {
+            provide: RELAY_RUNNERS,
+            useFactory: (docker: DockerRunner, external: ExternalRunner) => [docker, external],
+            inject: [DockerRunner, ExternalRunner],
+        },
+        RunnerFactory,
+    ],
     exports: [RelayService, RelayGateway],
 })
 export class RelayModule { }

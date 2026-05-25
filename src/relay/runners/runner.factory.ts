@@ -1,14 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { IRelayRunner } from './runner.interface';
-import { DockerRunner } from './docker/docker.runner';
 import { ExternalRunner } from './external/external.runner';
+
+export const RELAY_RUNNERS = Symbol('RELAY_RUNNERS');
 
 /**
  * RunnerFactory resolves the correct IRelayRunner implementation
  * for a given provider name stored in `Relay.provider`.
  *
  * To add a new provider (e.g. Kubernetes), create a new runner class
- * implementing IRelayRunner and register it here.
+ * implementing IRelayRunner and register it in the RELAY_RUNNERS provider.
  */
 @Injectable()
 export class RunnerFactory {
@@ -16,13 +17,10 @@ export class RunnerFactory {
     private readonly runners: Map<string, IRelayRunner>;
 
     constructor(
-        private readonly docker: DockerRunner,
+        @Inject(RELAY_RUNNERS) runners: IRelayRunner[],
         private readonly external: ExternalRunner,
     ) {
-        this.runners = new Map<string, IRelayRunner>([
-            [this.docker.name, this.docker],
-            [this.external.name, this.external],
-        ]);
+        this.runners = new Map(runners.map(r => [r.name.toLowerCase(), r]));
     }
 
     /**

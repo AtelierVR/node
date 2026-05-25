@@ -116,12 +116,19 @@ export interface RelayPlayer {
     u: string | null;
 }
 
+export interface ApiRelayRunnerPort {
+    protocol: string;
+    host: string;
+    port: number;
+}
+
 export interface ApiRelayRunnerInfo {
     provider_id: string | null;
     /** Lifecycle status: "running" | "stopped" | "dead" | "unknown" */
     status: string;
     started_at: number | null;
     meta: Record<string, string>;
+    ports: ApiRelayRunnerPort[];
 }
 
 export interface ApiRelaySpecs {
@@ -143,6 +150,7 @@ export interface ApiRelaySpecs {
         bandwidth: number;
         packets: number;
     };
+    mtu: number;
 }
 
 export interface WsRelayAccessibility {
@@ -169,6 +177,7 @@ export interface WsRelaySpecs {
     m: { u: number; t: number };
     u: { u: number; b: number; p?: number };
     d: { u: number; b: number; p?: number };
+    mtu?: number;
 }
 
 export interface ApiRelayStatus {
@@ -189,6 +198,7 @@ export interface ApiRelay {
     label: string | null;
     provider: string;
     provider_id: string | null;
+    max_link: number;
     tags: string[];
     connected: boolean;
     runner: ApiRelayRunnerInfo | null;

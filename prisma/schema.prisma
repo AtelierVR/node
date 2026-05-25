@@ -94,8 +94,8 @@ model User {
 
 /// Relation type between two users.
 enum UserRelationType {
-  FOLLOW   // Accepted follow
-  REQUEST  // Pending follow request (requires manual validation)
+  FOLLOW // Accepted follow
+  REQUEST // Pending follow request (requires manual validation)
 
   @@map("user_relation_type")
 }
@@ -162,7 +162,7 @@ model ExternalServer {
   id        Int            @id @default(autoincrement())
   rank      Float          @default(0)
   address   String         @unique
-  public    Bytes          @map("public") @unique
+  public    Bytes          @unique @map("public")
   lastSeen  DateTime       @default(now()) @map("last_seen")
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
@@ -291,14 +291,14 @@ model WorldAsset {
 /// Server-side activity/audit log.
 /// Stores important events surfaced to admins via GET /api/activity.
 model ActivityEvent {
-  id         Int                @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   /// Dot-namespaced event type (e.g. "world.upload", "node.ready", "maintenance.started")
-  type       String
-  message    String
-  details    Json?
+  type      String
+  message   String
+  details   Json?
   /// NoxIdentifier string of the author (e.g. "u:1@::", "system")
-  authorRef  String?             @map("author_ref")
-  createdAt  DateTime           @default(now()) @map("created_at")
+  authorRef String?  @map("author_ref")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([type])
   @@index([createdAt])
@@ -307,20 +307,36 @@ model ActivityEvent {
 
 /// A relay server connected to this node to host world instances.
 model Relay {
-  id         Int         @id @default(autoincrement())
+  id              Int             @id @default(autoincrement())
   /// Human-readable label for this relay (e.g. "EU-West #1")
-  label      String?
+  label           String?
   /// Runner provider type: "docker" | "external" | "kubernetes" | "proxmox"
-  provider   String      @default("docker")
+  provider        String          @default("docker")
   /// Provider-specific resource identifier (e.g. Docker container ID)
-  providerId String?     @map("provider_id")
-  token      RelayToken?
-  tags       String[]    @default([])
-  instances  Instance[]
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
+  providerId      String?         @map("provider_id")
+  /// Maximum number of instances this relay can host (updated at runtime by the relay binary)
+  maxLink         Int             @default(3) @map("max_link")
+  token           RelayToken?
+  tags            String[]        @default([])
+  links           RelayInstance[]
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
 
   @@map("relays")
+}
+
+/// Join table linking a relay to the instances it hosts.
+/// Each instance can be assigned to at most one relay at a time (instanceId is unique).
+model RelayInstance {
+  id         Int      @id @default(autoincrement())
+  relayId    Int      @map("relay_id")
+  relay      Relay    @relation(fields: [relayId], references: [id], onDelete: Cascade)
+  instanceId Int      @unique @map("instance_id")
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([relayId])
+  @@map("relay_instances")
 }
 
 /// Authentication token used by a relay to connect via WebSocket.
@@ -335,26 +351,25 @@ model RelayToken {
 
 /// A hosted world instance (running room) managed by a relay.
 model Instance {
-  id            Int      @id @default(autoincrement())
-  name          String   @unique
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
   title         String?
   description   String?
-  capacity      Int      @default(10)
+  capacity      Int            @default(10)
   /// NoxIdentifier of the world (e.g. "1@::")
-  worldRef      String   @map("world_ref")
+  worldRef      String         @map("world_ref")
   /// NoxIdentifier of the owner user (e.g. "1@::")
-  ownerRef      String   @map("owner_ref")
+  ownerRef      String         @map("owner_ref")
   tags          String[]
   thumbnail     String?
-  useWhitelist  Boolean  @default(false) @map("use_whitelist")
-  whitelistRefs String[] @default([]) @map("whitelist_refs")
-  usePassword   Boolean  @default(false) @map("use_password")
+  useWhitelist  Boolean        @default(false) @map("use_whitelist")
+  whitelistRefs String[]       @default([]) @map("whitelist_refs")
+  usePassword   Boolean        @default(false) @map("use_password")
   password      String?
-  /// Relay assigned to host this instance (optional)
-  relayId       Int?     @map("relay_id")
-  relay         Relay?   @relation(fields: [relayId], references: [id], onDelete: SetNull)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  /// Back-reference to the relay assignment (null when not yet assigned)
+  link          RelayInstance?
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
 
   @@map("instances")
 }
