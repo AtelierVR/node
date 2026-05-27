@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { StorageService } from './storage.service';
 import { StorageController } from './storage.controller';
 import { LocalFileProvider } from './local-file.provider';
+import { ImageResizeService } from './image-resize.service';
 import { FediverseModule } from '../fediverse/fediverse.module';
 
 @Module({
@@ -11,7 +12,8 @@ import { FediverseModule } from '../fediverse/fediverse.module';
     { provide: 'IStorageProvider', useClass: LocalFileProvider },
     StorageService,
     LocalFileProvider,
+    ImageResizeService,
   ],
-  exports: [StorageService],
+  exports: [StorageService, ImageResizeService],
 })
 export class StorageModule {}
