@@ -255,7 +255,7 @@ export class AvatarsService {
             const f = file as DiskMulterFile;
             const stored = await this.storage.store({ source: f.path!, mimetype: f.mimetype });
             updates.thumbnail = stored.key;
-        } else if (Object.prototype.hasOwnProperty.call(dto, 'thumbnail')) {
+        } else if (dto.thumbnail !== undefined) {
             updates.thumbnail = dto.thumbnail ?? null;
         }
 
