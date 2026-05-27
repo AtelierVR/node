@@ -67,7 +67,7 @@ export class InstancesController {
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
     ) {
-        if (s) {
+        if (s && s !== await this.instances.domain()) {
             if (!req.user)
                 throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
             if (!req.user.isAdmin() && !req.user.tags.includes('sys:can_external_fetch'))
