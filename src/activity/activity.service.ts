@@ -3,6 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import type { CreateActivityEventDto, ApiActivityEvent } from './activity.types';
 import { EventsService } from '../gateway/events.service';
 import { NoxIdentifier } from '../common/identifier';
+import { WellKnownService } from '../fediverse/well-known.service';
 
 @Injectable()
 export class ActivityService {
@@ -10,22 +11,26 @@ export class ActivityService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly events: EventsService,
+        private readonly wellKnown: WellKnownService,
     ) { }
 
-    private sanitize(row: {
+    private async sanitize(row: {
         id: number;
         type: string;
         message: string;
         details: unknown;
         authorRef: string | null;
         createdAt: Date;
-    }): ApiActivityEvent {
+    }, domain?: string): Promise<ApiActivityEvent> {
+        domain ??= await this.wellKnown.address();
         return {
             id: row.id,
             type: row.type,
             message: row.message,
             details: row.details ?? null,
-            author: row.authorRef ?? null,
+            author: row.authorRef
+                ? NoxIdentifier.type(null, NoxIdentifier.parse(row.authorRef)).toString(domain)
+                : null,
             created_at: row.createdAt.toISOString(),
         };
     }
@@ -37,7 +42,7 @@ export class ActivityService {
             const ni = NoxIdentifier.type(null, NoxIdentifier.parse(dto.author));
             authorRef = ni.toString();
         }
-        
+
         const row = await this.prisma.activityEvents.create({
             data: {
                 type: dto.type,
@@ -46,7 +51,8 @@ export class ActivityService {
                 authorRef,
             },
         });
-        const event = this.sanitize(row);
+
+        const event = await this.sanitize(row);
         this.events.emit('activity', event);
         return event;
     }
@@ -58,11 +64,13 @@ export class ActivityService {
         offset: number;
     }): Promise<{ total: number; items: ApiActivityEvent[] }> {
         const where: any = {};
+        
         if (opts.type) where.type = opts.type;
         if (opts.q) where.OR = [
             { type: { contains: opts.q, mode: 'insensitive' } },
             { message: { contains: opts.q, mode: 'insensitive' } },
         ];
+
         const [total, rows] = await Promise.all([
             this.prisma.activityEvents.count({ where }),
             this.prisma.activityEvents.findMany({
@@ -72,7 +80,12 @@ export class ActivityService {
                 skip: opts.offset,
             }),
         ]);
-        return { total, items: rows.map(r => this.sanitize(r)) };
+
+        let domain = await this.wellKnown.address();
+        return {
+            total,
+            items: await Promise.all(rows.map(r => this.sanitize(r, domain))),
+        };
     }
 
     async deleteById(id: number): Promise<boolean> {
