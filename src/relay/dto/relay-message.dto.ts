@@ -16,6 +16,12 @@ export class ResolveUserMessageDto {
     @IsInt()
     @Type(() => Number)
     user_id!: number;
+
+    @IsString()
+    server!: string;
+
+    @IsString()
+    fingerprint!: string;
 }
 
 /** Single item in relay_sync_instances payload */

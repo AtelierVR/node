@@ -35,7 +35,7 @@ export class UsersService implements OnModuleInit {
     public readonly logger = new Logger(UsersService.name);
 
     constructor(
-        private readonly prisma: PrismaService,
+        public readonly prisma: PrismaService,
         private readonly config: AppConfigService,
         public readonly wellKnown: WellKnownService,
         private readonly verification: VerificationService,

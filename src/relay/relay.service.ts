@@ -9,6 +9,7 @@ import { InstancesService } from '../instances/instances.service';
 import { WellKnownService } from '../fediverse/well-known.service';
 import { ActivityService } from '../activity/activity.service';
 import { NoxIdentifier } from '../common/identifier';
+import { ExternalUsersService } from '../external/external-users.service';
 import { RunnerFactory } from './runners/runner.factory';
 import type { RelayRunnerInfo } from './runners/runner.interface';
 import {
@@ -68,6 +69,7 @@ export class RelayService implements OnModuleInit {
         private readonly events: EventsService,
         private readonly wellKnown: WellKnownService,
         private readonly activity: ActivityService,
+        private readonly externalUsers: ExternalUsersService,
         private readonly runners: RunnerFactory,
         @Inject(forwardRef(() => InstancesService))
         private readonly instances: InstancesService,
@@ -278,7 +280,7 @@ export class RelayService implements OnModuleInit {
         });
         try {
             const row = await this.prisma.relays.delete({ where: { id } });
-            
+
             this.logger.log(`Relay #${id} deleted`);
             this.activity.create({
                 type: 'relay.delete',
@@ -425,6 +427,28 @@ export class RelayService implements OnModuleInit {
         const errors = validateSync(dto);
         if (errors.length > 0) return { result: 'invalid_user', error: 'Missing or invalid user_id' };
 
+        const domain = await this.wellKnown.address();
+        const identifier = new NoxIdentifier(null, String(dto.user_id), dto.server);
+        const isExternal = !identifier.isLocal(domain);
+
+        if (isExternal) {
+            const externalUser = await this.externalUsers.findOrDiscover(identifier);
+            if (!externalUser) return { result: 'invalid_user', error: 'User not found on remote server' };
+
+            const server = await externalUser.server();
+            const resp = await server.fetch<{ display: string }>(`/api/users/${dto.user_id}?fp=${encodeURIComponent(dto.fingerprint)}`);
+            if (resp.error || !resp.data) return { result: 'invalid_user', error: 'Invalid fingerprint' };
+
+            return {
+                result: 'success',
+                user: {
+                    id: dto.user_id,
+                    server: dto.server,
+                    display: resp.data.display
+                }
+            };
+        }
+
         const user = await this.prisma.users.findUnique({ where: { id: dto.user_id } });
         if (!user) return { result: 'invalid_user', error: 'User not found' };
 
@@ -433,7 +457,16 @@ export class RelayService implements OnModuleInit {
             return { result: 'blacklisted', error: bl?.reason ?? 'You are blacklisted', expire_at: bl?.expires ?? 0 };
         }
 
-        const domain = await this.wellKnown.address();
+        const sessionCount = await this.prisma.sessions.count({
+            where: { userId: user.id, fingerprint: dto.fingerprint, expires: { gt: new Date() } },
+            take: 1,
+        });
+        if (sessionCount === 0)
+            return {
+                result: 'invalid_user',
+                error: 'Invalid fingerprint'
+            };
+
         return { result: 'success', user: { id: user.id, server: domain, display: user.display } };
     }
 

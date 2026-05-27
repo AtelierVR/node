@@ -621,6 +621,7 @@ export class UsersController {
     @Get(':id')
     async getUser(
         @Param('id') id: string,
+        @Query('fp') fp: string | undefined,
         @Req() req: Request & (OptionalUserAuthenticatedRequest | OptionalServerAsUserAuthenticatedRequest),
     ): Promise<ApiUser> {
         const identifier = NoxIdentifier.parse(id);
@@ -632,7 +633,8 @@ export class UsersController {
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
-            const resp = await server.fetch<ApiUser>(`/users/${identifier.toString()}`);
+            const fpParam = fp ? `?fp=${encodeURIComponent(fp)}` : '';
+            const resp = await server.fetch<ApiUser>(`/users/${identifier.toString()}${fpParam}`);
             if (resp.error || !resp.data) {
                 this.users.logger.error(`Failed to fetch user ${identifier.toString()} from server ${identifier.server}:`, resp.error?.code, resp.error?.message);
                 throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${id})`);
@@ -643,6 +645,14 @@ export class UsersController {
         const user = await this.users.findByIdentifier(identifier);
         if (!user)
             throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);
+
+        if (fp) {
+            const sessionCount = await this.users.prisma.sessions.count({
+                where: { userId: user.id, fingerprint: fp, expires: { gt: new Date() } },
+            });
+            if (sessionCount === 0)
+                throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);
+        }
 
         const viewer = await req.user?.identifier() ?? null;
         return user.sanitize(viewer);

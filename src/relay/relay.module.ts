@@ -14,6 +14,7 @@ import { RunnerFactory, RELAY_RUNNERS } from './runners/runner.factory';
 import { DockerRunner } from './runners/docker/docker.runner';
 import { ExternalRunner } from './runners/external/external.runner';
 import { WsModule } from '../ws/ws.module';
+import { ExternalUsersModule } from '../external/external-users.module';
 
 @Module({
     imports: [
@@ -24,6 +25,7 @@ import { WsModule } from '../ws/ws.module';
         ActivityModule,
         forwardRef(() => InstancesModule),
         forwardRef(() => WsModule),
+        ExternalUsersModule,
     ],
     controllers: [RelayController],
     providers: [
