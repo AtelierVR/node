@@ -2,6 +2,7 @@ import { AvatarModel } from 'src/generated/prisma/models/Avatar';
 import type { ApiAvatar } from './avatars.types';
 import type { AvatarsService } from './avatars.service';
 import { NoxIdentifier } from 'src/common/identifier';
+import { ensureImageSize, IMAGE_PRESETS } from 'src/storage/image-resize.constants';
 
 export type AvatarWithMethods = AvatarModel & {
     manager: AvatarsService;
@@ -27,11 +28,11 @@ export class Avatar {
 
     async sanitize(this: AvatarWithMethods): Promise<ApiAvatar> {
         const address = await this.manager.address();
-        const makePublic = async (val: string | null) => {
+        const makePublic = async (val: string | null, preset?: number) => {
             if (!val) return null;
             try {
                 const file = await this.manager.storage.get(val);
-                return file.url.toString();
+                return preset !== undefined ? ensureImageSize(file.url, preset) : file.url.toString();
             } catch {
                 return null;
             }
@@ -41,7 +42,7 @@ export class Avatar {
             name: this.name ?? null,
             title: this.title,
             description: this.description ?? null,
-            thumbnail: await makePublic(this.thumbnail ?? null),
+            thumbnail: await makePublic(this.thumbnail ?? null, IMAGE_PRESETS.OTHER_THUMBNAIL),
             tags: this.tags ?? [],
             release: await this.manager.resolveRelease(this.id, this.release),
             server: address,

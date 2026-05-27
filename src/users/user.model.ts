@@ -2,6 +2,7 @@ import { UserModel } from 'src/generated/prisma/models/User';
 import { UsersService } from './users.service';
 import { NoxIdentifier } from '../common/identifier';
 import { ApiUser as ApiUser, ApiCurrentUser, ApiUserRelations, PRESENCE_TO_API, PRESENCE_VISIBILITY } from './users.types';
+import { ensureImageSize, IMAGE_PRESETS } from '../storage/image-resize.constants';
 
 export type UserWithMethods = UserModel & {
   manager: UsersService;
@@ -39,11 +40,11 @@ export class User {
     const manager = this.manager;
     const tags = user.tags ?? [];
 
-    const makePublic = async (val: string | null) => {
+    const makePublic = async (val: string | null, preset?: number) => {
       if (!val) return null;
       try {
         const file = await manager.storage.get(val);
-        return file.url.toString();
+        return preset !== undefined ? ensureImageSize(file.url, preset) : file.url.toString();
       } catch {
         return null;
       }
@@ -88,8 +89,8 @@ export class User {
       pronoun: user.pronoun ?? null,
       server: await manager.wellKnown.address(),
       tags: tags,
-      thumbnail: await makePublic(user.thumbnail ?? null),
-      banner: await makePublic(user.banner ?? null),
+      thumbnail: await makePublic(user.thumbnail ?? null, IMAGE_PRESETS.USER_THUMBNAIL),
+      banner: await makePublic(user.banner ?? null, IMAGE_PRESETS.USER_BANNER),
       links: manager.parseLinks(user.links),
       relations: viewerRelations,
       public: manager.compactPublicKey(Buffer.from(user.public)),

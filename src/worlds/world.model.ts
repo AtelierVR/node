@@ -2,6 +2,7 @@ import { WorldModel } from 'src/generated/prisma/models/World';
 import type { ApiWorld } from './worlds.types';
 import { WorldsService } from './worlds.service';
 import { NoxIdentifier } from 'src/common/identifier';
+import { ensureImageSize, IMAGE_PRESETS } from 'src/storage/image-resize.constants';
 
 export type WorldWithMethods = WorldModel & {
     manager: WorldsService;
@@ -29,11 +30,11 @@ export class World {
 
     async sanitize(this: WorldWithMethods): Promise<ApiWorld> {
         const address = await this.manager.address();
-        const makePublic = async (val: string | null) => {
+        const makePublic = async (val: string | null, preset?: number) => {
             if (!val) return null;
             try {
                 const file = await this.manager.storage.get(val);
-                return file.url.toString();
+                return preset !== undefined ? ensureImageSize(file.url, preset) : file.url.toString();
             } catch {
                 return null;
             }
@@ -44,7 +45,7 @@ export class World {
             name: this.name ?? null,
             title: this.title,
             description: this.description ?? null,
-            thumbnail: await makePublic(this.thumbnail ?? null),
+            thumbnail: await makePublic(this.thumbnail ?? null, IMAGE_PRESETS.OTHER_THUMBNAIL),
             tags: this.tags ?? [],
             capacity: this.capacity,
             release: release,
