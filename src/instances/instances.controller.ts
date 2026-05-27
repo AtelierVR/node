@@ -18,6 +18,7 @@ import { AuthUserGuard, UserAuthenticatedRequest, OptionalAuthUserGuard } from '
 import type { OptionalUserAuthenticatedRequest } from '../auth/auth.guard';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
+import { IMAGE_PRESETS, ensureImageSize } from '../storage/image-resize.constants';
 import { NoxIdentifier } from '../common/identifier';
 import { ExternalServersService } from '../external/external-servers.service';
 
@@ -211,14 +212,19 @@ export class InstancesController {
     @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the thumbnail URL.' })
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @Get(':id/thumbnail')
-    async getThumbnail(@Param('id') rawId: string, @Res() res: Response) {
+    async getThumbnail(
+        @Param('id') rawId: string,
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const id = parseInt(rawId, 10);
         if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
         const instance = await this.instances.findById(id);
         if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
         if (!instance.thumbnail) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
         const file = await this.instances.storage.get(instance.thumbnail);
-        return res.redirect(302, file.url.toString());
+        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.OTHER_THUMBNAIL, size, unoptimized));
     }
 
     /** POST /api/instances/:id/thumbnail */
@@ -237,6 +243,8 @@ export class InstancesController {
         @Req() req: Request & UserAuthenticatedRequest,
         @Res() res: Response,
         @UploadedFile() file?: Express.Multer.File,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
     ) {
         const id = parseInt(rawId, 10);
         if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
@@ -256,7 +264,7 @@ export class InstancesController {
         if (oldThumb && oldThumb !== stored.key)
             await this.instances.storage.delete(oldThumb);
         const storedFile = await this.instances.storage.get(updated.thumbnail!);
-        return res.redirect(302, storedFile.url.toString());
+        return res.redirect(302, ensureImageSize(storedFile.url, IMAGE_PRESETS.OTHER_THUMBNAIL, size, unoptimized));
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────────

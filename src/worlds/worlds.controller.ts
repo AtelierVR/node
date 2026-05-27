@@ -12,6 +12,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiWrappedSuccessResponse, ApiErrorResponse, ApiOptionalBearerAuth } from '../api/swagger';
 import { ApiWorldDto, ApiWorldAssetDto } from './dto/world-response.dto';
 import { ApiAssetJobStatusDto } from '../storage/dto/storage-response.dto';
+import { IMAGE_PRESETS, ensureImageSize } from '../storage/image-resize.constants';
 import { WorldsService } from './worlds.service';
 import { NoxIdentifier } from '../common/identifier';
 import { ApiException } from '../api/api-exception';
@@ -249,7 +250,13 @@ export class WorldsController {
     @ApiOptionalBearerAuth()
     @UseGuards(OptionalAuthUserGuard)
     @Get(':id/thumbnail')
-    async getThumbnail(@Param('id') id: string, @Req() req: Request & OptionalUserAuthenticatedRequest, @Res() res: Response) {
+    async getThumbnail(
+        @Param('id') id: string,
+        @Req() req: Request & OptionalUserAuthenticatedRequest,
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const { world, identifier, remote } = await this.resolveWorldOrRemote(id);
         if (remote) {
             this.requireExternalFetch(req);
@@ -261,7 +268,7 @@ export class WorldsController {
         if (!world!.thumbnail)
             throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
         const file = await this.worlds.storage.get(world!.thumbnail);
-        return res.redirect(302, file.url.toString());
+        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.OTHER_THUMBNAIL, size, unoptimized));
     }
 
     /** POST /api/worlds/:id/thumbnail */
@@ -280,6 +287,8 @@ export class WorldsController {
         @Req() req: Request & UserAuthenticatedRequest,
         @Res() res: Response,
         @UploadedFile() file?: Express.Multer.File,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
     ) {
         const world = await this.resolveLocalWorld(id);
         const domain = await this.worlds.address();
@@ -297,7 +306,7 @@ export class WorldsController {
         const thumb = updated.thumbnail;
         if (!thumb) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
         const stored = await this.worlds.storage.get(thumb);
-        return res.redirect(302, stored.url.toString());
+        return res.redirect(302, ensureImageSize(stored.url, IMAGE_PRESETS.OTHER_THUMBNAIL, size, unoptimized));
     }
 
     // ── Assets ────────────────────────────────────────────────────────────────────

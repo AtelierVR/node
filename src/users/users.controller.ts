@@ -7,6 +7,7 @@ import { UserSearchResponseDto } from './dto/user-search-response.dto';
 import { UsersService } from './users.service';
 import { UserWithMethods } from './user.model';
 import { StorageService } from '../storage/storage.service';
+import { IMAGE_PRESETS, ensureImageSize } from '../storage/image-resize.constants';
 import { RelationsService } from '../relations/relations.service';
 import { ExternalServersService } from '../external/external-servers.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -82,13 +83,13 @@ export class UsersController {
         }),
     }))
     @Post('@me/thumbnail')
-    async uploadThumbnail(@Req() req: Request & UserAuthenticatedRequest, @UploadedFile() file: Express.Multer.File | undefined, @Res() res: Response) {
+    async uploadThumbnail(@Req() req: Request & UserAuthenticatedRequest, @UploadedFile() file: Express.Multer.File | undefined, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
         const fn = file ? { thumbnail: [file] } : undefined;
         const updated = await this.users.updateUser(req.user.id, {} as UpdateUserDto, fn);
         const thumb = updated.thumbnail;
         if (!thumb) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
         const fileInfo = await this.storage.get(thumb);
-        return res.redirect(302, fileInfo.url.toString());
+        return res.redirect(302, ensureImageSize(fileInfo.url, IMAGE_PRESETS.USER_THUMBNAIL, size, unoptimized));
     }
 
     @ApiOperation({ summary: 'Upload profile banner', description: 'Upload an image (multipart/form-data, field: file) as the current user banner.' })
@@ -108,13 +109,13 @@ export class UsersController {
         }),
     }))
     @Post('@me/banner')
-    async uploadBanner(@Req() req: Request & UserAuthenticatedRequest, @UploadedFile() file: Express.Multer.File | undefined, @Res() res: Response) {
+    async uploadBanner(@Req() req: Request & UserAuthenticatedRequest, @UploadedFile() file: Express.Multer.File | undefined, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
         const fn = file ? { banner: [file] } : undefined;
         const updated = await this.users.updateUser(req.user.id, {} as UpdateUserDto, fn);
         const banner = updated.banner;
         if (!banner) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Banner');
         const fileInfo = await this.storage.get(banner);
-        return res.redirect(302, fileInfo.url.toString());
+        return res.redirect(302, ensureImageSize(fileInfo.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized));
     }
 
     /**
@@ -221,11 +222,11 @@ export class UsersController {
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
     @Get('@me/thumbnail')
-    async serveMyThumbnail(@Req() req: Request & UserAuthenticatedRequest, @Res() res: Response) {
+    async serveMyThumbnail(@Req() req: Request & UserAuthenticatedRequest, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
         const thumb = req.user.thumbnail;
         if (!thumb) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
         let file = await this.storage.get(thumb);
-        return res.redirect(302, file.url.toString());
+        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_THUMBNAIL, size, unoptimized));
     }
 
     /** Serve admin user's thumbnail (public) */
@@ -233,14 +234,14 @@ export class UsersController {
     @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the thumbnail URL.' })
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @Get('@admin/thumbnail')
-    async serveAdminThumbnail(@Res() res: Response) {
+    async serveAdminThumbnail(@Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
         const admin = await this.users.findById(await this.users.mainAdminId());
         if (!admin) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Admin user');
 
         const thumb = admin.thumbnail;
         if (!thumb) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
         let file = await this.storage.get(thumb);
-        return res.redirect(302, file.url.toString());
+        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_THUMBNAIL, size, unoptimized));
     }
 
     /** Serve a user's thumbnail file (local files) or redirect to external URL */
@@ -252,7 +253,7 @@ export class UsersController {
     @ApiOptionalBearerAuth()
     @UseGuards(OptionalAuthUserGuard)
     @Get(':id/thumbnail')
-    async serveThumbnail(@Param('id') id: string, @Req() req: Request & OptionalUserAuthenticatedRequest, @Res() res: Response) {
+    async serveThumbnail(@Param('id') id: string, @Req() req: Request & OptionalUserAuthenticatedRequest, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
         const identifier = NoxIdentifier.parse(id);
         if (!identifier.isLocal(await this.users.domain())) {
             if (!req.user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
@@ -270,7 +271,7 @@ export class UsersController {
         const thumb = user.thumbnail;
         if (!thumb) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
         let file = await this.storage.get(thumb);
-        return res.redirect(302, file.url.toString());
+        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_THUMBNAIL, size, unoptimized));
     }
 
     @ApiOperation({ summary: 'Get own banner', description: 'Redirect to the current user banner URL.' })
@@ -280,25 +281,25 @@ export class UsersController {
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
     @Get('@me/banner')
-    async serveMyBanner(@Req() req: Request & UserAuthenticatedRequest, @Res() res: Response) {
+    async serveMyBanner(@Req() req: Request & UserAuthenticatedRequest, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
         const banner = req.user.banner;
         if (!banner) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Banner');
         let file = await this.storage.get(banner);
-        return res.redirect(302, file.url.toString());
+        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized));
     }
 
     @ApiOperation({ summary: 'Get admin banner', description: 'Redirect to the admin user banner URL.' })
     @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the banner URL.' })
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @Get('@admin/banner')
-    async serveAdminBanner(@Res() res: Response) {
+    async serveAdminBanner(@Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
         const admin = await this.users.findById(await this.users.mainAdminId());
         if (!admin) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Admin user');
 
         const banner = admin.banner;
         if (!banner) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Banner');
         let file = await this.storage.get(banner);
-        return res.redirect(302, file.url.toString());
+        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized));
     }
 
     /** Serve a user's banner file (local files) or redirect to external URL */
@@ -310,7 +311,7 @@ export class UsersController {
     @ApiOptionalBearerAuth()
     @UseGuards(OptionalAuthUserGuard)
     @Get(':id/banner')
-    async serveBanner(@Param('id') id: string, @Req() req: Request & OptionalUserAuthenticatedRequest, @Res() res: Response) {
+    async serveBanner(@Param('id') id: string, @Req() req: Request & OptionalUserAuthenticatedRequest, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
         const identifier = NoxIdentifier.parse(id);
         if (!identifier.isLocal(await this.users.domain())) {
             if (!req.user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
@@ -328,7 +329,7 @@ export class UsersController {
         const banner = user.banner;
         if (!banner) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Banner');
         let file = await this.storage.get(banner);
-        return res.redirect(302, file.url.toString());
+        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized));
     }
 
     // ── Relations ─────────────────────────────────────────────────────────────────
