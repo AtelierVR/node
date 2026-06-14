@@ -10,6 +10,7 @@ import { ApiInstanceConnectionDto } from './dto/instance-response.dto';
 import type { UserWithMethods } from '../users/user.model';
 import { Instance } from 'src/generated/prisma/client';
 import type { WsGateway } from '../ws/ws.gateway';
+import type { RelayService } from '../relay/relay.service';
 
 export interface CreateInstanceDto {
     name?: string;
@@ -59,6 +60,8 @@ export class InstancesService {
         public readonly storage: StorageService,
         @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
         private readonly wsGateway: WsGateway,
+        @Inject(forwardRef(() => require('../relay/relay.service').RelayService))
+        private readonly relayService: RelayService,
     ) { }
 
     /** Register a callback invoked when any instance is created. */
@@ -237,12 +240,15 @@ export class InstancesService {
             p: status.p ?? 0,
         };
 
+        // Region comes from the provider, not the relay binary
+        const runnerInfo = await this.relayService.getRunnerInfo(relayId).catch(() => null);
+
         this.logger.debug(`[getConnectionInfo] Successfully built connection for instance ${instance.id} on relay ${relayId}`);
 
         return {
             method: 'relay',
             data: Buffer.from(JSON.stringify(connectionData)).toString('base64'),
-            region: status.r ?? null,
+            region: runnerInfo?.region ?? null,
         };
     }
 

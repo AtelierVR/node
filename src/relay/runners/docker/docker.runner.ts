@@ -181,6 +181,7 @@ export class DockerRunner implements IRelayRunner {
                 startedAt: null,
                 meta: {},
                 ports: [],
+                region: null,
             };
 
         try {
@@ -215,6 +216,7 @@ export class DockerRunner implements IRelayRunner {
                     code: state.Running ? '-1' : String(state.ExitCode),
                 },
                 ports,
+                region: (await this.config.getOptional<string>('relay.docker_region')) || null,
             };
         } catch (err) {
             return {
@@ -223,6 +225,7 @@ export class DockerRunner implements IRelayRunner {
                 startedAt: null,
                 meta: {},
                 ports: [],
+                region: null,
             };
         }
     }

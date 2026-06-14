@@ -34,6 +34,8 @@ export interface RelayRunnerInfo {
     meta: Record<string, string>;
     /** Open ports and their associated protocol */
     ports: RelayRunnerPort[];
+    /** ISO 3166-1 alpha-2 region code (e.g. "fr"), null if unknown */
+    region: string | null;
 }
 
 // ── Config passed to start() ──────────────────────────────────────────────────

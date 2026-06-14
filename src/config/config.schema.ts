@@ -458,6 +458,13 @@ export class RelayConfig {
   @IsBoolean()
   docker_auto_pull: boolean;
 
+  @Label('Relay Docker Region')
+  @Description('ISO 3166-1 alpha-2 region code assigned to Docker-managed relays (e.g. "fr", "eu").')
+  @Default('')
+  @ConfigVar({ key: 'relay.docker_region', env: 'RELAY_DOCKER_REGION' })
+  @IsString()
+  docker_region: string;
+
   @Label('Relay Min Port')
   @Description('Minimum UDP port used for relay QUIC endpoints.')
   @Default(8000)

@@ -170,8 +170,6 @@ export interface WsRelayStatus {
     u: number;
     s: WsRelaySpecs;
     a: WsRelayAccessibility;
-    /** ISO 3166-1 alpha-2 region code (lowercase), e.g. "fr", null for worldwide */
-    r: string | null;
 }
 
 export interface WsRelaySpecs {
@@ -200,6 +198,7 @@ export interface ApiRelay {
     label: string | null;
     provider: string;
     provider_id: string | null;
+    region: string | null;
     max_link: number;
     tags: string[];
     connected: boolean;

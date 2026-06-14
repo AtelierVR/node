@@ -55,6 +55,7 @@ export class Relay {
             label: this.label ?? null,
             provider: this.provider ?? 'docker',
             provider_id: this.providerId ?? null,
+            region: details?.region ?? null,
             max_link: this.maxLink,
             tags: this.tags ?? [],
             connected,

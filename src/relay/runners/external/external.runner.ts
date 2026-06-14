@@ -27,7 +27,8 @@ export class ExternalRunner implements IRelayRunner {
             status: 'unknown',
             startedAt: null,
             meta: {},
-            ports: []
+            ports: [],
+            region: null,
         };
     }
 
