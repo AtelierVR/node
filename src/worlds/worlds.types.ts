@@ -14,8 +14,8 @@ export interface ApiWorld {
     thumbnail: string | null;
     tags: string[];
     capacity: number;
-    /** Recommended version to download. -1 means no uploaded version found. */
-    release: number;
+    /** Release version info: resolved = actual version used, raw = -1 when auto/latest. */
+    release: { resolved: number; raw: number };
     server: string;
     /** NoxIdentifier string of the owner */
     owner: string;

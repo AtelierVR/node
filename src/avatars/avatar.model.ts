@@ -44,7 +44,7 @@ export class Avatar {
             description: this.description ?? null,
             thumbnail: await makePublic(this.thumbnail ?? null, IMAGE_PRESETS.OTHER_THUMBNAIL),
             tags: this.tags ?? [],
-            release: await this.manager.resolveRelease(this.id, this.release),
+            release: { resolved: await this.manager.resolveRelease(this.id, this.release), raw: this.release ?? -1 },
             server: address,
             owner: NoxIdentifier.parse(this.ownerRef).toString(address),
             contributors: this.contributorRefs.map(ref => NoxIdentifier.parse(ref).toString(address)),

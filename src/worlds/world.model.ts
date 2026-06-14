@@ -48,7 +48,7 @@ export class World {
             thumbnail: await makePublic(this.thumbnail ?? null, IMAGE_PRESETS.OTHER_THUMBNAIL),
             tags: this.tags ?? [],
             capacity: this.capacity,
-            release: release,
+            release: { resolved: release, raw: this.release ?? -1 },
             server: address,
             owner: NoxIdentifier.parse(this.ownerRef).toString(address),
             contributors: this.contributorRefs.map(ref => NoxIdentifier.parse(ref).toString(address)),
