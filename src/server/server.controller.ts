@@ -11,6 +11,7 @@ import Logger from '../utils/logger';
 import { CONFIG_REGISTRY, getLabel, getDescription, getIsRisky } from '../config/config.decorators';
 import { ConfigService } from '@nestjs/config';
 import { ConfigPatchItemDto } from './dto/patch-configs.dto';
+import { ALLOWED_WIDTHS } from '../storage/image-resize.constants';
 
 @ApiTags('Server')
 @Controller()
@@ -19,7 +20,7 @@ export class ServerController {
     private readonly appConfig: AppConfigService,
     private readonly users: UsersService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @ApiOperation({ summary: 'Get server logs', description: 'Return recent in-memory log entries. Admin only.' })
   @ApiWrappedResponse(ServerLogsResponseDto)
@@ -50,13 +51,16 @@ export class ServerController {
   @Get('configs')
   async getInstanceConfig() {
     return {
-      allowUserRegistration: await this.appConfig.get<boolean>('instance.registration'),
-      allowInstanceCreation: await this.appConfig.get<boolean>('instance.instanceCreation'),
-      allowInstanceCreationByExternal: await this.appConfig.get<boolean>('instance.instanceCreationByExternal'),
-      allowWorldCreation: await this.appConfig.get<boolean>('instance.worldCreation'),
-      allowWorldCreationByExternal: await this.appConfig.get<boolean>('instance.worldCreationByExternal'),
-      allowAvatarCreation: await this.appConfig.get<boolean>('instance.avatarCreation'),
-      allowAvatarCreationByExternal: await this.appConfig.get<boolean>('instance.avatarCreationByExternal'),
+      allow_user_registration: await this.appConfig.get<boolean>('instance.registration'),
+      allow_instance_creation: await this.appConfig.get<boolean>('instance.instanceCreation'),
+      allow_instance_creation_by_external: await this.appConfig.get<boolean>('instance.instanceCreationByExternal'),
+      allow_world_creation: await this.appConfig.get<boolean>('instance.worldCreation'),
+      allow_world_creation_by_external: await this.appConfig.get<boolean>('instance.worldCreationByExternal'),
+      allow_avatar_creation: await this.appConfig.get<boolean>('instance.avatarCreation'),
+      allow_avatar_creation_by_external: await this.appConfig.get<boolean>('instance.avatarCreationByExternal'),
+      regions: await this.appConfig.get<string[]>('instance.regions'),
+      default_region: await this.appConfig.getOptional<string>('instance.defaultRegion'),
+      allowed_image_widths: [...ALLOWED_WIDTHS],
     };
   }
 

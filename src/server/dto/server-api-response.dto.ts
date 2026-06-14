@@ -85,4 +85,13 @@ export class InstanceConfigDto {
 
     @ApiProperty({ description: 'Allow external users to create avatars', example: false })
     allowAvatarCreationByExternal!: boolean;
+
+    @ApiProperty({ description: 'List of available regions', example: ['eu-west', 'us-east'], type: [String] })
+    regions!: string[];
+
+    @ApiPropertyOptional({ description: 'Default region pre-selected when creating an instance', example: 'eu-west', nullable: true, type: String })
+    defaultRegion!: string | null;
+
+    @ApiProperty({ description: 'Allowed image resize widths (pixels)', example: [64, 128, 256, 512, 1024, 1280, 1920], type: [Number] })
+    allowedImageWidths!: number[];
 }

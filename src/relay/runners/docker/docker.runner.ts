@@ -18,8 +18,8 @@ export class DockerRunner implements IRelayRunner {
     private readonly logger = new Logger(DockerRunner.name);
     private docker!: Docker;
 
-    /** Ports currently being allocated (between findFreePort and container start). */
-    private readonly pendingPorts = new Set<number>();
+    /** Prevents two simultaneous relay starts (belt-and-suspenders with RelayAutoManager). */
+    private creating = false;
 
     private async group(): Promise<string> {
         return this.config.get<string>('relay.group');
@@ -53,9 +53,9 @@ export class DockerRunner implements IRelayRunner {
         return all[0] ?? null;
     }
 
-    /** Find a free UDP port, accounting for ports already being allocated in parallel. */
+    /** Find a free UDP port from containers currently using ports. */
     private async findFreePort(min: number, max: number): Promise<number | null> {
-        const used = new Set<number>(this.pendingPorts);
+        const used = new Set<number>();
         const containers = await this.docker.listContainers({
             all: true,
             filters: {
@@ -80,33 +80,40 @@ export class DockerRunner implements IRelayRunner {
     // ── IRelayRunner ──────────────────────────────────────────────────────────
 
     async start(cfg: RelayStartConfig): Promise<string> {
-        const image = await this.config.getOptional<string>('relay.docker_image') ?? 'nox-relay:latest';
-        const network = await this.config.getOptional<string>('relay.docker_network') ?? 'bridge';
-        const dockerAddress = await this.config.getOptional<string>('relay.docker_address') ?? '127.0.0.1';
-        const minPort = Number(await this.config.getOptional<number>('relay.min_port') ?? 23000);
-        const maxPort = Number(await this.config.getOptional<number>('relay.max_port') ?? 24000);
+        if (this.creating) {
+            throw new Error('A relay is already being created — wait for it to finish before starting another');
+        }
+        this.creating = true;
 
-        const port = await this.findFreePort(minPort, maxPort);
-        if (port === null)
-            throw new Error('No free UDP port available in the configured range');
-
-        this.pendingPorts.add(port);
         try {
+            const image = await this.config.getOptional<string>('relay.docker_image') ?? 'nox-relay:latest';
+            const network = await this.config.getOptional<string>('relay.docker_network') ?? 'bridge';
+            const dockerAddress = await this.config.getOptional<string>('relay.docker_address') ?? '127.0.0.1';
+            const minPort = Number(await this.config.getOptional<number>('relay.min_port') ?? 23000);
+            const maxPort = Number(await this.config.getOptional<number>('relay.max_port') ?? 24000);
+
+            const port = await this.findFreePort(minPort, maxPort);
+            if (port === null)
+                throw new Error('No free UDP port available in the configured range');
+
             const suffix = randomBytes(4).toString('hex');
             const containerName = `relay_${cfg.relayId}_${suffix}`;
 
             this.logger.log(`Starting relay #${cfg.relayId} on port ${port} (image: ${image})`);
 
-            // Pull the image if it is not already present locally.
-            await new Promise<void>((resolve, reject) => {
-                this.docker.pull(image, (err: Error | null, stream: NodeJS.ReadableStream) => {
-                    if (err) return reject(err);
-                    this.docker.modem.followProgress(stream, (err: Error | null) => {
+            // Pull the image unless auto-pull is disabled.
+            const autoPull = (await this.config.getOptional<boolean>('relay.docker_auto_pull')) ?? true;
+            if (autoPull) {
+                await new Promise<void>((resolve, reject) => {
+                    this.docker.pull(image, (err: Error | null, stream: NodeJS.ReadableStream) => {
                         if (err) return reject(err);
-                        resolve();
+                        this.docker.modem.followProgress(stream, (err: Error | null) => {
+                            if (err) return reject(err);
+                            resolve();
+                        });
                     });
                 });
-            });
+            }
 
             const container = await this.docker.createContainer({
                 Image: image,
@@ -142,7 +149,7 @@ export class DockerRunner implements IRelayRunner {
             await container.start();
             return container.id;
         } finally {
-            this.pendingPorts.delete(port);
+            this.creating = false;
         }
     }
 
@@ -241,6 +248,6 @@ export class DockerRunner implements IRelayRunner {
             },
         });
 
-        return containers.length + this.pendingPorts.size < maxCapacity;
+        return containers.length < maxCapacity;
     }
 }

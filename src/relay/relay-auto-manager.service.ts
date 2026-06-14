@@ -5,6 +5,7 @@ import { AppConfigService } from '../config/config.service';
 import { EventsService } from '../gateway/events.service';
 import { RelayService } from './relay.service';
 import { RelayGateway } from './relay.gateway';
+import type { RelayWithMethodsAndToken } from './relay.model';
 import { WsGateway } from '../ws/ws.gateway';
 
 /** Label used to identify relay containers. */
@@ -51,7 +52,7 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
     private checkTimer: NodeJS.Timeout | null = null;
     private eventStream: any = null;
 
-    /** Lock — prevents two simultaneous relay creations. */
+    /** Lock — prevents two simultaneous relay creations (exposed for InstanceDistributorService). */
     private creating = false;
 
     /** Relay IDs currently being created (between create() and container start event). */
@@ -297,17 +298,7 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
 
             // Create a new relay if all are full (or none exist)
             if (await this.isFull()) {
-                if (this.creating) {
-                    this.logger.debug('Relay creation already in progress, skipping');
-                    return;
-                }
-                this.creating = true;
-                try {
-                    this.logger.log('All relays full or none exist — auto-creating new relay...');
-                    await this.createRelayContainer();
-                } finally {
-                    this.creating = false;
-                }
+                await this.ensureRelayExists();
             }
         } catch (err: any) {
             this.logger.warn(`checkHosts error: ${err.message}`);
@@ -352,7 +343,29 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
         return !anyNotFull;
     }
 
-    private async createRelayContainer() {
+    /**
+     * Public entry point for other services (e.g. InstanceDistributorService) that need
+     * a relay but find none with capacity.  Uses the same `creating` lock as the periodic
+     * checker to guarantee only one relay is spawned at a time.
+     *
+     * @returns the newly created relay (with token), or null if creation was skipped
+     *          because another caller is already creating one.
+     */
+    async ensureRelayExists(): Promise<RelayWithMethodsAndToken | null> {
+        if (this.creating) {
+            this.logger.debug('Relay creation already in progress, skipping');
+            return null;
+        }
+        this.creating = true;
+        try {
+            this.logger.log('All relays full or none exist — auto-creating new relay...');
+            return await this.createRelayContainer();
+        } finally {
+            this.creating = false;
+        }
+    }
+
+    private async createRelayContainer(): Promise<RelayWithMethodsAndToken> {
         const relay = await this.relay.create({ provider: 'docker' });
         this.pendingRelayIds.add(relay.id);
         try {
@@ -362,9 +375,11 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
             this.containerStartTimes.set(relay.id, new Date());
             this.logger.log(`Auto-created and started relay #${relay.id}`);
             this.events.emit('relay_added', { relay_id: relay.id, time: Date.now() });
+            return relay;
         } catch (err: any) {
             this.logger.error(`Failed to start auto-created relay #${relay.id}: ${err.message}`);
             await this.relay.delete(relay.id).catch(() => null);
+            throw err;
         } finally {
             this.pendingRelayIds.delete(relay.id);
         }

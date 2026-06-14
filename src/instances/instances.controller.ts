@@ -161,6 +161,7 @@ export class InstancesController {
             ownerRef:      req.user.identifier().toString(),
             tags:          body.tags           ?? [],
             thumbnail:     body.thumbnail      ?? null,
+            region:        body.region         ?? null,
             useWhitelist:  body.use_whitelist  ?? false,
             whitelistRefs: (body.whitelist_refs ?? []).map(ref => NoxIdentifier.type(null, NoxIdentifier.parse(ref)).toString()),
             usePassword:   body.use_password   ?? false,

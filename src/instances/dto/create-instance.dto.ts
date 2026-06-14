@@ -37,6 +37,11 @@ export class CreateInstanceDto {
     @IsString({ each: true })
     tags?: string[];
 
+    @ApiPropertyOptional({ type: 'string', description: 'ISO 3166-1 alpha-2 region code (lowercase), e.g. "fr"', example: 'fr' })
+    @IsOptional()
+    @IsString()
+    region?: string;
+
     @ApiPropertyOptional({ type: 'string', description: 'Thumbnail URL, or null', example: null, nullable: true })
     @IsOptional()
     @IsString()

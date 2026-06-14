@@ -3,6 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { WellKnownService } from '../fediverse/well-known.service';
 import { NoxIdentifier } from '../common/identifier';
 import { RelayService } from './relay.service';
+import { RelayAutoManager } from './relay-auto-manager.service';
 import { InstancesService } from '../instances/instances.service';
 import { WsGateway } from '../ws/ws.gateway';
 import type { RelayInstanceSlot } from './relay.types';
@@ -20,6 +21,7 @@ export class InstanceDistributorService implements OnModuleInit, OnModuleDestroy
         private readonly prisma: PrismaService,
         private readonly wellKnown: WellKnownService,
         private readonly relayService: RelayService,
+        private readonly autoManager: RelayAutoManager,
         @Inject(forwardRef(() => WsGateway))
         private readonly wsGateway: WsGateway,
         @Inject(forwardRef(() => InstancesService))
@@ -60,8 +62,13 @@ export class InstanceDistributorService implements OnModuleInit, OnModuleDestroy
         let targetId = await this.findRelayWithCapacity();
 
         if (targetId === null) {
-            const relay = await this.relayService.create({ provider: 'docker' });
-            await this.relayService.startRelay(relay.id);
+            const relay = await this.autoManager.ensureRelayExists();
+            if (!relay) {
+                // Another caller is already creating a relay — the instance will be picked
+                // up by linkAllUnassigned() on the next safety-net tick.
+                this.logger.debug(`Instance #${instanceId} waiting for in-progress relay creation`);
+                return;
+            }
             targetId = relay.id;
             this.logger.log(`No relay had capacity — created relay #${targetId} for instance #${instanceId}`);
         }

@@ -169,7 +169,9 @@ export interface WsRelayStatus {
     p: number;
     u: number;
     s: WsRelaySpecs;
-    a: WsRelayAccessibility; // accessibility for 'connection' part in api/instances/
+    a: WsRelayAccessibility;
+    /** ISO 3166-1 alpha-2 region code (lowercase), e.g. "fr", null for worldwide */
+    r: string | null;
 }
 
 export interface WsRelaySpecs {

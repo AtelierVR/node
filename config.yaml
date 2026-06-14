@@ -23,3 +23,8 @@
 # instance:
 #   name: 'My Nox'               # default: Nox
 #   description: 'A Nox instance'
+  # regions:                    # ISO 3166-1 alpha-2 lowercase, provided by relay providers. null = worldwide fallback
+  #   - fr
+  #   - us
+  #   - jp
+  # default_region: null         # Pre-selected region when creating an instance (default: null)

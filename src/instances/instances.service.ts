@@ -6,6 +6,7 @@ import { StorageService } from '../storage/storage.service';
 import { NoxIdentifier } from '../common/identifier';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
+import { ApiInstanceConnectionDto } from './dto/instance-response.dto';
 import type { UserWithMethods } from '../users/user.model';
 import { Instance } from 'src/generated/prisma/client';
 import type { WsGateway } from '../ws/ws.gateway';
@@ -19,6 +20,7 @@ export interface CreateInstanceDto {
     ownerRef: string;
     tags?: string[];
     thumbnail?: string | null;
+    region?: string | null;
     useWhitelist?: boolean;
     whitelistRefs?: string[];
     usePassword?: boolean;
@@ -199,7 +201,7 @@ export class InstancesService {
 
     // ── Connection info ───────────────────────────────────────────────────────────
 
-    async getConnectionInfo(instance: Instance): Promise<{ method: string; data: string } | null> {
+    async getConnectionInfo(instance: Instance): Promise<ApiInstanceConnectionDto | null> {
         const link = await this.prisma.relayInstance.findUnique({ where: { instanceId: instance.id } });
         const relayId = link?.relayId;
         if (!relayId) {
@@ -207,7 +209,7 @@ export class InstancesService {
             return null;
         }
 
-        // Request status from relay to get address map
+        // Request status from relay to get address map and region
         const status = await this.wsGateway.requestStatus(relayId);
         if (!status || !status.a) {
             this.logger.debug(`[getConnectionInfo] No status/address from relay ${relayId} for instance ${instance.id}`);
@@ -240,6 +242,7 @@ export class InstancesService {
         return {
             method: 'relay',
             data: Buffer.from(JSON.stringify(connectionData)).toString('base64'),
+            region: status.r ?? null,
         };
     }
 

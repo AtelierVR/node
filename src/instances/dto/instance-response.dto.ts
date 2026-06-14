@@ -15,6 +15,9 @@ export class ApiInstanceConnectionDto {
 
     @ApiProperty({ description: 'Connection endpoint data (URL or address)', example: 'wss://relay.my-server.com' })
     data!: string;
+
+    @ApiPropertyOptional({ type: 'string', description: 'ISO 3166-1 alpha-2 region code (lowercase) reported by the relay provider, or null', example: 'fr', nullable: true })
+    region!: string | null;
 }
 
 export class ApiInstanceDto {

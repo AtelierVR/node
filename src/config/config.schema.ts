@@ -334,6 +334,27 @@ export class InstanceConfig {
   @ConfigVar({ key: 'instance.avatarCreationByExternal', env: 'AVATAR_CREATION_BY_EXTERNAL' })
   @IsBoolean()
   avatarCreationByExternal: boolean;
+
+  @Label('Instance Regions')
+  @Description('List of ISO 3166-1 alpha-2 region codes (lowercase) available for hosting instances, provided by relay providers. Use null as fallback when a provider has no region.')
+  @Default([])
+  @ConfigVar({ key: 'instance.regions', env: 'INSTANCE_REGIONS' })
+  @Transform(({ value }) => Array.isArray(value) 
+    ? value 
+    : typeof value === 'string' 
+      ? value.split(',').map((s: string) => s.trim()).filter(Boolean) 
+      : value
+  )
+  @IsArray()
+  @IsString({ each: true })
+  regions: string[];
+
+  @Label('Default Region')
+  @Description('Default region to pre-select when creating an instance. Must be one of the values in instance.regions, or null for no default.')
+  @ConfigVar({ key: 'instance.defaultRegion', env: 'INSTANCE_DEFAULT_REGION' })
+  @IsOptional()
+  @IsString()
+  defaultRegion: string | null;
 }
 
 export class AdminConfig {
@@ -429,6 +450,13 @@ export class RelayConfig {
   @IsString()
   @IsNotEmpty()
   docker_options: string;
+
+  @Label('Relay Docker Auto Pull')
+  @Description('Whether to pull the Docker image before starting a relay container. Disable when using local builds.')
+  @Default(true)
+  @ConfigVar({ key: 'relay.docker_auto_pull', env: 'RELAY_DOCKER_AUTO_PULL' })
+  @IsBoolean()
+  docker_auto_pull: boolean;
 
   @Label('Relay Min Port')
   @Description('Minimum UDP port used for relay QUIC endpoints.')
