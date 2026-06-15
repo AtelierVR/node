@@ -4,15 +4,35 @@
 export const ACTIVITYPUB_CONTENT_TYPE = 'application/activity+json';
 export const ACTIVITYSTREAMS_CONTENT_TYPE = 'application/ld+json; profile="https://www.w3.org/ns/activitystreams"';
 
-export const AP_CONTEXT = [
+export const AP_CONTEXT: (string | Record<string, unknown>)[] = [
     'https://www.w3.org/ns/activitystreams',
     'https://w3id.org/security/v1',
+    {
+        // Mastodon / schema.org extensions for PropertyValue attachments
+        schema: 'http://schema.org#',
+        PropertyValue: 'schema:PropertyValue',
+        value: 'schema:value',
+        // Mastodon-specific namespace
+        toot: 'http://joinmastodon.org/ns#',
+        discoverable: 'toot:discoverable',
+        suspended: 'toot:suspended',
+        memorial: 'toot:memorial',
+        indexable: 'toot:indexable',
+        featured: { '@id': 'toot:featured', '@type': '@id' },
+        featuredTags: { '@id': 'toot:featuredTags', '@type': '@id' },
+        // ActivityPub extensions (alsoKnownAs, movedTo)
+        alsoKnownAs: { '@id': 'as:alsoKnownAs', '@type': '@id' },
+        movedTo: { '@id': 'as:movedTo', '@type': '@id' },
+        // Misskey/Firefish compatibility
+        isCat: 'misskey:isCat',
+        speakAsCat: 'misskey:speakAsCat',
+    },
 ];
 
 // ── Core Objects ─────────────────────────────────────────────────────────────
 
 export interface APObject {
-    '@context': string | string[];
+    '@context': string | (string | Record<string, unknown>)[];
     id: string;
     type: string;
     name?: string;
@@ -43,6 +63,28 @@ export interface APActor extends APObject {
     image?: APImage;
     url?: string;
     manuallyApprovesFollowers?: boolean;
+    discoverable?: boolean;
+    indexable?: boolean;
+    memorial?: boolean;
+    attachment?: APPropertyValue[];
+    tag?: APHashtag[];
+    featured?: string;
+    featuredTags?: string;
+    endpoints?: {
+        sharedInbox?: string;
+    };
+}
+
+export interface APPropertyValue {
+    type: 'PropertyValue';
+    name: string;
+    value: string;
+}
+
+export interface APHashtag {
+    type: 'Hashtag';
+    href: string;
+    name: string;
 }
 
 export interface APImage {
@@ -100,7 +142,7 @@ export interface APLike extends APActivity {
 // ── Collections ──────────────────────────────────────────────────────────────
 
 export interface APCollection {
-    '@context': string | string[];
+    '@context': string | (string | Record<string, unknown>)[];
     id: string;
     type: 'Collection' | 'OrderedCollection';
     totalItems: number;
@@ -110,7 +152,7 @@ export interface APCollection {
 }
 
 export interface APOrderedCollection {
-    '@context': string | string[];
+    '@context': string | (string | Record<string, unknown>)[];
     id: string;
     type: 'OrderedCollection';
     totalItems: number;
@@ -120,7 +162,7 @@ export interface APOrderedCollection {
 }
 
 export interface APCollectionPage {
-    '@context': string | string[];
+    '@context': string | (string | Record<string, unknown>)[];
     id: string;
     type: 'CollectionPage' | 'OrderedCollectionPage';
     partOf: string;

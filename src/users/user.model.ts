@@ -201,13 +201,33 @@ export class User {
 
   async buildActor(this: UserWithMethods): Promise<APActor> {
     const actorUrl = `${await this.manager.wellKnown.activityPubUrl()}u/${this.username}`;
+    const profileUrl = `${await this.manager.wellKnown.webBaseUrl()}u/${this.username}`;
 
     let icon: APActor['icon'];
     if (this.thumbnail) {
       try {
         const file = await this.manager.storage.get(this.thumbnail);
-        icon = { type: 'Image', url: file.url.toString(), mediaType: file.mimetype };
+        icon = { type: 'Image', mediaType: file.mimetype, url: file.url.toString() };
       } catch { /* omit */ }
+    }
+
+    let image: APActor['image'];
+    if (this.banner) {
+      try {
+        const file = await this.manager.storage.get(this.banner);
+        image = { type: 'Image', mediaType: file.mimetype, url: file.url.toString() };
+      } catch { /* omit */ }
+    }
+
+    // Map user links to Mastodon-compatible PropertyValue attachments
+    let attachment: APActor['attachment'];
+    const links = this.manager.parseLinks(this.links);
+    if (links.length) {
+      attachment = links.map((l) => ({
+        type: 'PropertyValue' as const,
+        name: l.label,
+        value: `<a href="${l.value}" target="_blank" rel="noopener me">${l.value}</a>`,
+      }));
     }
 
     const publicKeyPem = createPublicKey({
@@ -227,13 +247,20 @@ export class User {
       outbox: `${actorUrl}/outbox`,
       followers: `${actorUrl}/followers`,
       following: `${actorUrl}/following`,
-      url: actorUrl,
+      url: profileUrl,
       published: this.createdAt?.toISOString(),
       icon,
+      image,
+      attachment,
+      manuallyApprovesFollowers: false,
+      discoverable: true,
       publicKey: {
         id: `${actorUrl}#main-key`,
         owner: actorUrl,
         publicKeyPem,
+      },
+      endpoints: {
+        sharedInbox: `${await this.manager.wellKnown.activityPubUrl()}inbox`,
       },
     };
   }

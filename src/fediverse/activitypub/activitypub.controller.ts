@@ -35,6 +35,19 @@ export class ActivityPubController {
         return res.json(actor);
     }
 
+    // ── Shared Inbox ────────────────────────────────────────────────────────
+
+    @Post('inbox')
+    @HttpCode(HttpStatus.ACCEPTED)
+    async postSharedInbox(@Req() req: Request) {
+        const activity = req.body as APObject;
+        if (!activity || !activity.type) {
+            return { error: 'Invalid ActivityPub activity' };
+        }
+        await this.ap.processSharedInbox(activity);
+        return { status: 'accepted' };
+    }
+
     // ── Inbox ───────────────────────────────────────────────────────────────
 
     @Post('u/:username/inbox')

@@ -100,6 +100,20 @@ export class ActivityPubService {
         }
     }
 
+    /** Process an incoming activity delivered to the shared inbox. */
+    async processSharedInbox(activity: APObject): Promise<void> {
+        this.logger.log(`Shared inbox: ${activity.type} from ${(activity as any).actor}`);
+        // Deliver to all registered handlers
+        for (const handler of this.inboxHandlers) {
+            try {
+                const sender = await this.resolveActor((activity as any).actor);
+                if (sender) await handler(activity, sender);
+            } catch (e) {
+                this.logger.error(`Shared inbox handler error: ${e}`);
+            }
+        }
+    }
+
     // ── Follow handling ─────────────────────────────────────────────────────
 
     private async handleFollow(targetUsername: string, follow: APFollow): Promise<void> {
