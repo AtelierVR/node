@@ -1,10 +1,7 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { readFileSync } from 'node:fs';
+import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { join } from 'node:path';
 import type { NodeInfoDocument, NodeInfoLinks, WebFingerDocument } from './fediverse.types';
 import { WellKnownService } from './well-known.service';
-import { PrismaService } from '../database/prisma.service';
-import { User, UserWithMethods } from '../users/user.model';
 import { UsersService } from '../users/users.service';
 
 /**
@@ -17,7 +14,8 @@ export class FediverseService implements OnModuleInit {
 
     constructor(
         private readonly wellKnown: WellKnownService,
-        private readonly prisma: PrismaService,
+        @Inject(forwardRef(() => UsersService))
+        private readonly users: UsersService,
     ) { }
 
     onModuleInit() {
@@ -109,26 +107,9 @@ export class FediverseService implements OnModuleInit {
     }
 
     private async buildWebFingerForUsername(username: string): Promise<WebFingerDocument | null> {
-        const model = await this.prisma.users.findFirst({ where: { username: username.toLowerCase() } });
-        if (!model) return null;
-        const domain = await this.wellKnown.address();
-        const actorUrl = `${await this.wellKnown.activityPubUrl()}u/${model.username}`;
-        return {
-            subject: `acct:${model.username}@${domain}`,
-            aliases: [actorUrl],
-            links: [
-                {
-                    rel: 'self',
-                    type: 'application/activity+json',
-                    href: actorUrl,
-                },
-                {
-                    rel: 'http://webfinger.net/rel/profile-page',
-                    type: 'text/html',
-                    href: `${await this.wellKnown.webBaseUrl()}u/${model.username}`,
-                },
-            ],
-        };
+        const user = await this.users.findByUsername(username);
+        if (!user) return null;
+        return user.buildWebFinger();
     }
 }
 

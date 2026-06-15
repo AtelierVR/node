@@ -165,21 +165,37 @@ export class User {
   async buildWebFinger(this: UserWithMethods): Promise<WebFingerDocument> {
     const domain = await this.manager.wellKnown.address();
     const actorUrl = `${await this.manager.wellKnown.activityPubUrl()}u/${this.username}`;
+    const profileUrl = `${await this.manager.wellKnown.webBaseUrl()}u/${this.username}`;
+
+    const links: WebFingerDocument['links'] = [
+      {
+        rel: 'http://webfinger.net/rel/profile-page',
+        type: 'text/html',
+        href: profileUrl,
+      },
+      {
+        rel: 'self',
+        type: 'application/activity+json',
+        href: actorUrl,
+      },
+    ];
+
+    // Avatar link (same as Mastodon)
+    if (this.thumbnail) {
+      try {
+        const file = await this.manager.storage.get(this.thumbnail);
+        links.push({
+          rel: 'http://webfinger.net/rel/avatar',
+          type: file.mimetype,
+          href: file.url.toString(),
+        });
+      } catch { /* omit */ }
+    }
+
     return {
       subject: `acct:${this.username}@${domain}`,
-      aliases: [actorUrl],
-      links: [
-        {
-          rel: 'self',
-          type: 'application/activity+json',
-          href: actorUrl,
-        },
-        {
-          rel: 'http://webfinger.net/rel/profile-page',
-          type: 'text/html',
-          href: `${await this.manager.wellKnown.webBaseUrl()}u/${this.username}`,
-        }
-      ]
+      aliases: [profileUrl, actorUrl],
+      links,
     };
   }
 
@@ -190,7 +206,7 @@ export class User {
     if (this.thumbnail) {
       try {
         const file = await this.manager.storage.get(this.thumbnail);
-        icon = { type: 'Image', url: file.url.toString(), mediaType: 'image/png' };
+        icon = { type: 'Image', url: file.url.toString(), mediaType: file.mimetype };
       } catch { /* omit */ }
     }
 
