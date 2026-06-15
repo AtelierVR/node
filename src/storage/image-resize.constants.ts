@@ -1,15 +1,5 @@
 import type { Sharp } from 'sharp';
 
-/** MIME types that support resizing */
-export const RESIZABLE_MIME_TYPES = new Set([
-    'image/jpeg',
-    'image/jpg',
-    'image/png',
-    'image/webp',
-    'image/gif',
-    'image/avif',
-    'image/tiff',
-]);
 
 /** Allowed output widths. Height is always derived from the caller's ratio. */
 export const ALLOWED_WIDTHS: ReadonlyArray<number> = [64, 128, 256, 512, 1024, 1280, 1920];
@@ -17,9 +7,9 @@ export const ALLOWED_WIDTHS: ReadonlyArray<number> = [64, 128, 256, 512, 1024, 1
 /** Default output widths for each image context. */
 export const IMAGE_PRESETS = {
     /** User profile picture (square, 1:1) */
-    USER_THUMBNAIL:  256,
+    USER_THUMBNAIL: 256,
     /** User banner (4:3) */
-    USER_BANNER:     256,
+    USER_BANNER: 256,
     /** World / instance thumbnail (4:3) */
     OTHER_THUMBNAIL: 256,
 } as const satisfies Record<string, number>;
@@ -31,11 +21,6 @@ export const IMAGE_PRESETS = {
 export function closestAllowedWidth(requested: number): number {
     const sorted = [...ALLOWED_WIDTHS].sort((a, b) => b - a); // descending
     return sorted.find(w => w <= requested) ?? sorted[sorted.length - 1];
-}
-
-/** Check whether a MIME type supports resizing */
-export function isResizableMimeType(mimetype: string): boolean {
-    return RESIZABLE_MIME_TYPES.has(mimetype.toLowerCase());
 }
 
 /**
@@ -67,13 +52,44 @@ export function ensureImageSize(
 
 export type Encoder = (mime: string, pipeline: Sharp) => Sharp;
 
-/** Per-MIME encoder functions. Falls back to 'default' for unmatched types. */
-export const IMAGE_ENCODERS: Record<string, Encoder> = {
-    'image/gif':  (_, p) => p.webp({ quality: 80 }),   // animated WebP
-    'image/avif': (_, p) => p.avif({ quality: 60 }),
-    'image/png':  (_, p) => p.png({ compressionLevel: 8 }),
-    'image/jpeg': (_, p) => p.webp({ quality: 80 }),
-    'image/jpg':  (_, p) => p.webp({ quality: 80 }),
-    'image/webp': (_, p) => p.webp({ quality: 80 }),
-    'default':    (_, p) => p,
+export interface ImageEncoder {
+    /** Options passed to the sharp() constructor (e.g. { animated: true } for GIF/WebP/APNG). */
+    options?: import('sharp').SharpOptions;
+    /** Encode the pipeline to the target output format. */
+    encode: Encoder;
+}
+
+/** Per-MIME encoder configs. Falls back to 'default' for unmatched types. */
+export const IMAGE_ENCODERS: Record<string, ImageEncoder> = {
+    'image/gif': {
+        options: { animated: true },
+        encode: (_, p) => p.gif({ effort: 10 })
+    },
+    'image/webp': {
+        options: { animated: true },
+        encode: (_, p) => p.webp({ quality: 80 })
+    },
+    'image/png': {
+        options: { animated: true },
+        encode: (_, p) => p.png({ compressionLevel: 8 })
+    },
+    'image/avif': {
+        encode: (_, p) => p.avif({ quality: 60 })
+    },
+    'image/jpeg': {
+        encode: (_, p) => p.webp({ quality: 80 })
+    },
+    'image/jpg': {
+        encode: (_, p) => p.webp({ quality: 80 })
+    },
+    'default': {
+        encode: (_, p) => p
+    },
 };
+
+
+/** MIME types that support resizing */
+export function isResizableMimeType(mimetype: string): boolean {
+    if (!mimetype || mimetype === 'default') return false;
+    return Object.keys(IMAGE_ENCODERS).includes(mimetype.toLowerCase());
+}

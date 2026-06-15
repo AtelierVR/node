@@ -88,11 +88,11 @@ export class ImageResizeService {
             mkdirSync(dir, { recursive: true });
 
         const mime = mimetype.toLowerCase();
-        const encode = IMAGE_ENCODERS[mime] ?? IMAGE_ENCODERS['default'];
+        const encoder = IMAGE_ENCODERS[mime] ?? IMAGE_ENCODERS['default'];
 
-        const pipeline = encode(
+        const pipeline = encoder.encode(
             mime,
-            sharp(sourceFilePath)
+            sharp(sourceFilePath, encoder.options ?? {})
                 .resize(size, undefined, {
                     withoutEnlargement: true,
                 }),
@@ -115,6 +115,7 @@ export class ImageResizeService {
     private outputMime(sourceMime: string): string {
         const lower = sourceMime.toLowerCase();
         if (lower === 'image/png') return 'image/png';
+        if (lower === 'image/gif') return 'image/gif';
         if (lower === 'image/avif') return 'image/avif';
         return 'image/webp';
     }
