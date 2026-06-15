@@ -17,6 +17,8 @@ export type UserWithMethods = UserModel & {
   relationsWith(viewer: NoxIdentifier): Promise<ApiUserRelations>;
   isHideFollowers(): boolean;
   isHideFollowing(): boolean;
+  isManualFollowApproval(): boolean;
+  isDiscoverable(): boolean;
   isAdmin(): boolean;
   identifier(): NoxIdentifier;
   isLocal(): this is UserWithMethods;
@@ -146,6 +148,14 @@ export class User {
     return (this.tags ?? []).includes('usr:hide_following');
   }
 
+  isManualFollowApproval(this: UserWithMethods): boolean {
+    return (this.tags ?? []).includes('manual_follow');
+  }
+
+  isDiscoverable(this: UserWithMethods): boolean {
+    return !(this.tags ?? []).includes('usr:no_discover');
+  }
+
   async followers(this: UserWithMethods): Promise<number> {
     return this.manager.relations.getFollowersCount(this);
   }
@@ -252,8 +262,8 @@ export class User {
       icon,
       image,
       attachment,
-      manuallyApprovesFollowers: false,
-      discoverable: true,
+      manuallyApprovesFollowers: this.isManualFollowApproval(),
+      discoverable: this.isDiscoverable(),
       publicKey: {
         id: `${actorUrl}#main-key`,
         owner: actorUrl,

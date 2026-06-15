@@ -94,7 +94,7 @@ export class RelationsService {
             if (!targetUser) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Target user');
 
             if (targetUser)
-                requiresRequest = (targetUser.tags ?? []).includes('manual_follow');
+                requiresRequest = targetUser.isManualFollowApproval();
 
             const type = requiresRequest ? UserRelationType.REQUEST : UserRelationType.FOLLOW;
             const rel = Relation.attach(await this.prisma.userRelations.create({
@@ -232,7 +232,7 @@ export class RelationsService {
             case 'follow': {
                 const targetUser = await this.users.findById(dto.target);
                 if (!targetUser) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Target user');
-                const requiresRequest = (targetUser.tags ?? []).includes('manual_follow');
+                const requiresRequest = targetUser.isManualFollowApproval();
                 const existing = await this.findRelation(initiator, target);
                 if (existing) return; // idempotent
                 await this.prisma.userRelations.create({
