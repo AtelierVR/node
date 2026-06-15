@@ -39,10 +39,16 @@ async function bootstrap() {
 
   if (prefix)
     app.setGlobalPrefix(prefix, {
-      exclude: ROOT_ONLY_PATHS.map(path => ({
-        path: path,
-        method: RequestMethod.GET
-      })),
+      exclude: ROOT_ONLY_PATHS.flatMap(path => [
+        {
+          path,
+          method: RequestMethod.ALL
+        },
+        {
+          path: `/${path}/(.*)`,
+          method: RequestMethod.ALL
+        },
+      ]),
     });
 
   app.useGlobalFilters(new ApiExceptionFilter(prefix, ROOT_ONLY_PATHS));
@@ -64,7 +70,7 @@ async function bootstrap() {
   await app.listen(port, host, () => {
     logger.log(`Server is running on http://${host}:${port}`, 'Bootstrap');
     if (corsEnabled)
-      logger.log(`CORS enabled for origins: ${corsOrigins} — credentials: ${corsCredentials}`, 'Bootstrap');
+      logger.log(`CORS enabled for origins (credentials: ${corsCredentials}):\n${corsOrigins.map((o) => `  - ${o}`).join('\n')}`, 'Bootstrap');
   });
 
 

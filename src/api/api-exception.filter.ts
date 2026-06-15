@@ -21,7 +21,7 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
     }
 
     private isApiRoute(requestPath: string): boolean {
-        // Root-only paths (well-known, nodeinfo) are never API routes
+        // Root-only paths (well-known, nodeinfo, ap) are never API routes
         if (this.excludedPaths.some(p => requestPath === `/${p}` || requestPath.startsWith(`/${p}/`))) return false;
         // No prefix → every other route is an API route
         if (!this.globalPrefix) return true;

@@ -12,7 +12,7 @@ import { GatewayModule } from '../gateway/gateway.module';
 
 @Module({
     imports: [
-        FediverseModule,
+        forwardRef(() => FediverseModule),
         forwardRef(() => UsersModule),
         ExternalServersModule,
         ExternalUsersModule,

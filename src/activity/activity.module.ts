@@ -9,7 +9,7 @@ import { FediverseModule } from '../fediverse/fediverse.module';
     imports: [
         forwardRef(() => UsersModule),
         forwardRef(() => GatewayModule),
-        FediverseModule,
+        forwardRef(() => FediverseModule),
     ],
     controllers: [ActivityController],
     providers: [ActivityService],

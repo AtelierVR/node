@@ -229,7 +229,20 @@ export class GatewayConfig {
   @ConfigVar({ key: 'gateway.web', env: 'GATEWAY_WEB' })
   @IsString()
   @IsNotEmpty()
-  web: string
+  web: string;
+
+  @Label('ActivityPub Base URL')
+  @Description('Public base URL for ActivityPub actor/profile endpoints. Defaults to gateway.web with /ap/ suffix.')
+  @Default((r) => {
+    const secure = r.get('http.secure') === 'true';
+    const ssl = r.get('http.ssl') === 'true';
+    const domain = r.get('http.domain') ?? 'localhost:3000';
+    return `http${secure || ssl ? 's' : ''}://${domain}/ap/`;
+  })
+  @ConfigVar({ key: 'gateway.activitypub', env: 'GATEWAY_ACTIVITYPUB' })
+  @IsString()
+  @IsNotEmpty()
+  activitypub: string;
 }
 
 export class InstanceConfig {

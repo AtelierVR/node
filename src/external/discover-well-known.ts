@@ -68,7 +68,7 @@ async function discoverViaSrv(address: string): Promise<DiscoveredWellKnown | nu
     try {
         records = await dns.resolveSrv(`_nox._tcp.${address}`);
     } catch (e) {
-        console.error(`Failed to resolve SRV record for _nox._tcp.${address}:`, e);
+        // console.error(`Failed to resolve SRV record for _nox._tcp.${address}:`, e);
         return null; // NXDOMAIN or resolver error
     }
 
@@ -95,20 +95,19 @@ async function discoverViaTxt(address: string): Promise<DiscoveredWellKnown | nu
     try {
         records = await dns.resolveTxt(`_nox.${address}`);
     } catch (e) {
-        console.error(`Failed to resolve TXT record for _nox.${address}:`, e);
+        // console.error(`Failed to resolve TXT record for _nox.${address}:`, e);
         return null; // NXDOMAIN or resolver error
     }
 
     for (const parts of records) {
         const line = parts.join('');
         const match = line.match(/(?:^|[;\s])ng=([^\s;]+)/);
-        console.debug(`TXT record for _nox.${address}:`, line, 'ng match:', match);
         if (!match?.[1]) continue;
         const result = await tryFetchWellKnown(match[1]);
         if (result) return result;
     }
 
-    console.error(`No valid ng= URL found in TXT records for _nox.${address}`);
+    // console.error(`No valid ng= URL found in TXT records for _nox.${address}`);
     return null;
 }
 
@@ -134,7 +133,7 @@ async function discoverViaNodeInfo(address: string): Promise<DiscoveredWellKnown
             // network error — try next scheme
         }
 
-    console.error(`No valid NodeInfo link found for ${address}`);
+    // console.error(`No valid NodeInfo link found for ${address}`);
     return null;
 }
 
@@ -149,7 +148,7 @@ async function discoverManual(address: string): Promise<DiscoveredWellKnown | nu
         if (result) return result;
     }
 
-    console.error(`Failed to discover ${WELL_KNOWN_PATH} for ${address} via manual fallback`);
+    // console.error(`Failed to discover ${WELL_KNOWN_PATH} for ${address} via manual fallback`);
     return null;
 }
 
@@ -166,8 +165,8 @@ async function discoverManual(address: string): Promise<DiscoveredWellKnown | nu
  */
 export async function discoverWellKnown(address: string): Promise<DiscoveredWellKnown | null> {
     return (
-        (await discoverViaSrv(address)) ??
         (await discoverViaTxt(address)) ??
+        (await discoverViaSrv(address)) ??
         (await discoverViaNodeInfo(address)) ??
         (await discoverManual(address))
     );

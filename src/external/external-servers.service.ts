@@ -23,7 +23,10 @@ export class ExternalServersService implements OnModuleInit {
         try {
             const server = await this.discover(domain);
             const wk = await server.wellKnown();
-            this.logger.log(`Self well-known OK — ${wk.data.metadata.title} @ ${wk.data.address} (TTL ${Math.round((wk.expiresAt.getTime() - Date.now()) / 1000)}s remaining)`);
+            const title = typeof wk.data.metadata.title === 'object'
+                ? Object.values(wk.data.metadata.title)[0] ?? '(no title)'
+                : wk.data.metadata.title ?? '(no title)';
+            this.logger.log(`Self well-known OK — '${title}' @ ${wk.data.address} (TTL ${Math.round((wk.expiresAt.getTime() - Date.now()) / 1000)}s remaining)`);
         } catch (e) {
             this.logger.error(`Self well-known check failed: ${(e as Error).message}`);
         }

@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NodeInfoDocument, NodeInfoLinks, WebFingerDocument } from './fediverse.types';
 import { WellKnownService } from './well-known.service';
+import { PrismaService } from '../database/prisma.service';
+import { User, UserWithMethods } from '../users/user.model';
+import { UsersService } from '../users/users.service';
 
 /**
  * Handles ActivityPub-specific logic: actor lookup, WebFinger resolution.
@@ -14,6 +17,7 @@ export class FediverseService implements OnModuleInit {
 
     constructor(
         private readonly wellKnown: WellKnownService,
+        private readonly prisma: PrismaService,
     ) { }
 
     onModuleInit() {
@@ -76,17 +80,55 @@ export class FediverseService implements OnModuleInit {
     }
 
     /**
-     * Look up an actor by resource URI.
-     * Returns null when no actor matches (caller should respond 404).
-     * Extend this method once Actor entities are implemented.
-     *
-     * @param _resource - e.g. "acct:alice@example.com" or a URL
-     * @returns WebFingerDocument or null
+     * Look up an actor by resource URI (WebFinger).
+     * Handles acct:username@domain and https://domain/u/username formats.
      */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    findWebFinger(_resource: string): WebFingerDocument | null {
-        // TODO: resolve actors from database
+    async findWebFinger(resource: string): Promise<WebFingerDocument | null> {
+        const domain = await this.wellKnown.address();
+
+        // Handle acct: format
+        const acctMatch = resource.match(/^acct:(.+)@(.+)$/);
+        if (acctMatch) {
+            const [, username, host] = acctMatch;
+            if (host !== domain) return null;
+            return this.buildWebFingerForUsername(username);
+        }
+
+        // Handle https:// URL format
+        try {
+            const url = new URL(resource);
+            if (url.hostname !== domain) return null;
+            const pathParts = url.pathname.split('/').filter(Boolean);
+            if ((pathParts[0] === 'u' || (pathParts[0] === 'ap' && pathParts[1] === 'u')) && pathParts[pathParts.length - 1]) {
+                const username = pathParts[0] === 'u' ? pathParts[1] : pathParts[2];
+                return this.buildWebFingerForUsername(username);
+            }
+        } catch { /* invalid URL */ }
+
         return null;
+    }
+
+    private async buildWebFingerForUsername(username: string): Promise<WebFingerDocument | null> {
+        const model = await this.prisma.users.findFirst({ where: { username: username.toLowerCase() } });
+        if (!model) return null;
+        const domain = await this.wellKnown.address();
+        const actorUrl = `${await this.wellKnown.activityPubUrl()}u/${model.username}`;
+        return {
+            subject: `acct:${model.username}@${domain}`,
+            aliases: [actorUrl],
+            links: [
+                {
+                    rel: 'self',
+                    type: 'application/activity+json',
+                    href: actorUrl,
+                },
+                {
+                    rel: 'http://webfinger.net/rel/profile-page',
+                    type: 'text/html',
+                    href: `${await this.wellKnown.webBaseUrl()}u/${model.username}`,
+                },
+            ],
+        };
     }
 }
 

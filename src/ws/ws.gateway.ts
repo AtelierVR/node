@@ -120,7 +120,7 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         } else {
             // Guest — allowed without any credentials
             this.sendFrame(ws, 'hello', { mode: 'guest' });
-            this.logger.debug('Guest connected');
+            // this.logger.debug('Guest connected');
         }
 
         // Swap buffering handler for real handler, then replay any buffered messages.
@@ -217,7 +217,7 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         }
 
         if (data.mode === 'user') {
-            this.logger.debug('User "' + (data.user?.username ?? '?') + '" disconnected');
+            // this.logger.debug('User "' + (data.user?.username ?? '?') + '" disconnected');
             if (data.user) {
                 const set = this.userSockets.get(data.user.id);
                 if (set) { 
@@ -305,14 +305,14 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         }
 
         // Log successful subscriptions
-        if (subscribed.length > 0) {
-            const clientInfo = data.mode === 'user' 
-                ? `User ${data.user?.username ?? '?'}` 
-                : data.mode === 'relay' 
-                    ? `Relay #${data.relayId}` 
-                    : 'Guest';
-            this.logger.log(`${clientInfo} subscribed to: ${subscribed.join(', ')}`);
-        }
+        // if (subscribed.length > 0) {
+        //     const clientInfo = data.mode === 'user' 
+        //         ? `User ${data.user?.username ?? '?'}` 
+        //         : data.mode === 'relay' 
+        //             ? `Relay #${data.relayId}` 
+        //             : 'Guest';
+        //     this.logger.log(`${clientInfo} subscribed to: ${subscribed.join(', ')}`);
+        // }
 
         this.sendFrame(ws, 'subscribed', { subscribed, ...(denied.length ? { denied } : {}) });
     }
@@ -335,14 +335,14 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         }
 
         // Log successful unsubscriptions
-        if (unsubscribed.length > 0) {
-            const clientInfo = data.mode === 'user' 
-                ? `User ${data.user?.username ?? '?'}` 
-                : data.mode === 'relay' 
-                    ? `Relay #${data.relayId}` 
-                    : 'Guest';
-            this.logger.log(`${clientInfo} unsubscribed from: ${unsubscribed.join(', ')}`);
-        }
+        // if (unsubscribed.length > 0) {
+        //     const clientInfo = data.mode === 'user' 
+        //         ? `User ${data.user?.username ?? '?'}` 
+        //         : data.mode === 'relay' 
+        //             ? `Relay #${data.relayId}` 
+        //             : 'Guest';
+        //     this.logger.log(`${clientInfo} unsubscribed from: ${unsubscribed.join(', ')}`);
+        // }
 
         this.sendFrame(ws, 'unsubscribed', { unsubscribed });
     }

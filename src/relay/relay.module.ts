@@ -19,7 +19,7 @@ import { ExternalUsersModule } from '../external/external-users.module';
 @Module({
     imports: [
         GatewayModule,
-        FediverseModule,
+        forwardRef(() => FediverseModule),
         AppConfigModule,
         AuthModule,
         ActivityModule,

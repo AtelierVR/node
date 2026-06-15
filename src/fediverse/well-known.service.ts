@@ -79,6 +79,11 @@ export class WellKnownService {
         return await this.config.get<string>('gateway.web');
     }
 
+    /** e.g. https://example.com/ap/ — base URL for ActivityPub actor endpoints, customizable independently. */
+    async activityPubUrl(): Promise<string> {
+        return await this.config.get<string>('gateway.activitypub');
+    }
+
     async address(): Promise<string> {
         return await this.config.get<string>('address');
     }

@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ExternalUsersService } from './external-users.service';
 import { FediverseModule } from 'src/fediverse/fediverse.module';
 import { ExternalServersModule } from './external-servers.module';
 
 @Module({
-  imports: [FediverseModule, ExternalServersModule],
+  imports: [forwardRef(() => FediverseModule), ExternalServersModule],
   controllers: [],
   providers: [ExternalUsersService],
   exports: [ExternalUsersService],

@@ -16,9 +16,34 @@ import { ActivityModule } from '../activity/activity.module';
 import { WsModule } from '../ws/ws.module';
 
 @Module({
-  imports: [FediverseModule, forwardRef(() => AuthModule), StorageModule, forwardRef(() => RelationsModule), ExternalServersModule, ExternalUsersModule, forwardRef(() => ActivityModule), forwardRef(() => WsModule)],
+  imports: [
+    forwardRef(() => FediverseModule),
+    forwardRef(() => AuthModule),
+    StorageModule,
+    forwardRef(() => RelationsModule),
+    ExternalServersModule,
+    ExternalUsersModule,
+    forwardRef(() => ActivityModule),
+    forwardRef(() => WsModule)
+  ],
   controllers: [UsersController],
-  providers: [UsersService, SessionService, AuthUserGuard, OptionalAuthUserGuard, AdminUserGuard, OptionalServerGuard, ServerGuard, OptionalServerAsUserGuard, ServerAsUserGuard],
-  exports: [UsersService, SessionService, AuthUserGuard, OptionalAuthUserGuard, AdminUserGuard],
+  providers: [
+    UsersService,
+    SessionService,
+    AuthUserGuard,
+    OptionalAuthUserGuard,
+    AdminUserGuard,
+    OptionalServerGuard,
+    ServerGuard,
+    OptionalServerAsUserGuard,
+    ServerAsUserGuard
+  ],
+  exports: [
+    UsersService,
+    SessionService,
+    AuthUserGuard,
+    OptionalAuthUserGuard,
+    AdminUserGuard
+  ]
 })
-export class UsersModule {}
+export class UsersModule { }

@@ -27,10 +27,10 @@ export class WellKnownController {
     @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Missing resource parameter.' })
     @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'No actor found for the given resource.' })
     @Get('webfinger')
-    webfinger(
+    async webfinger(
         @Query('resource') resource: string | undefined,
         @Res() res: Response,
-    ): void {
+    ): Promise<void> {
         if (!resource) {
             res.status(HttpStatus.BAD_REQUEST).json({
                 error: 'missing_resource',
@@ -39,7 +39,7 @@ export class WellKnownController {
             return;
         }
 
-        const doc: WebFingerDocument | null = this.fediverse.findWebFinger(resource);
+        const doc: WebFingerDocument | null = await this.fediverse.findWebFinger(resource);
 
         if (!doc) {
             res.status(HttpStatus.NOT_FOUND).json({

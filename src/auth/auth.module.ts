@@ -14,7 +14,7 @@ import { ExternalUsersModule } from '../external/external-users.module';
 import { FediverseModule } from '../fediverse/fediverse.module';
 
 @Module({
-    imports: [forwardRef(() => UsersModule), ExternalServersModule, ExternalUsersModule, FediverseModule],
+    imports: [forwardRef(() => UsersModule), ExternalServersModule, ExternalUsersModule, forwardRef(() => FediverseModule)],
     controllers: [AuthController],
     providers: [
         AuthService,

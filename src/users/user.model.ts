@@ -3,6 +3,10 @@ import { UsersService } from './users.service';
 import { NoxIdentifier } from '../common/identifier';
 import { ApiUser as ApiUser, ApiCurrentUser, ApiUserRelations, PRESENCE_TO_API, PRESENCE_VISIBILITY } from './users.types';
 import { ensureImageSize, IMAGE_PRESETS } from '../storage/image-resize.constants';
+import type { WebFingerDocument } from '../fediverse/fediverse.types';
+import type { APActor } from '../fediverse/activitypub/activitypub.types';
+import { AP_CONTEXT } from '../fediverse/activitypub/activitypub.types';
+import { createPublicKey } from 'node:crypto';
 
 export type UserWithMethods = UserModel & {
   manager: UsersService;
@@ -16,6 +20,8 @@ export type UserWithMethods = UserModel & {
   isAdmin(): boolean;
   identifier(): NoxIdentifier;
   isLocal(): this is UserWithMethods;
+  buildWebFinger(): Promise<WebFingerDocument>;
+  buildActor(): Promise<APActor>;
 };
 
 export class User {
@@ -154,6 +160,66 @@ export class User {
 
   identifier(this: UserWithMethods): NoxIdentifier {
     return new NoxIdentifier(null, String(this.id));
+  }
+
+  async buildWebFinger(this: UserWithMethods): Promise<WebFingerDocument> {
+    const domain = await this.manager.wellKnown.address();
+    const actorUrl = `${await this.manager.wellKnown.activityPubUrl()}u/${this.username}`;
+    return {
+      subject: `acct:${this.username}@${domain}`,
+      aliases: [actorUrl],
+      links: [
+        {
+          rel: 'self',
+          type: 'application/activity+json',
+          href: actorUrl,
+        },
+        {
+          rel: 'http://webfinger.net/rel/profile-page',
+          type: 'text/html',
+          href: `${await this.manager.wellKnown.webBaseUrl()}u/${this.username}`,
+        }
+      ]
+    };
+  }
+
+  async buildActor(this: UserWithMethods): Promise<APActor> {
+    const actorUrl = `${await this.manager.wellKnown.activityPubUrl()}u/${this.username}`;
+
+    let icon: APActor['icon'];
+    if (this.thumbnail) {
+      try {
+        const file = await this.manager.storage.get(this.thumbnail);
+        icon = { type: 'Image', url: file.url.toString(), mediaType: 'image/png' };
+      } catch { /* omit */ }
+    }
+
+    const publicKeyPem = createPublicKey({
+      key: Buffer.from(this.public),
+      format: 'der',
+      type: 'spki',
+    }).export({ format: 'pem', type: 'spki' }) as string;
+
+    return {
+      '@context': AP_CONTEXT,
+      id: actorUrl,
+      type: 'Person',
+      preferredUsername: this.username,
+      name: this.display ?? this.username,
+      summary: this.bio ?? undefined,
+      inbox: `${actorUrl}/inbox`,
+      outbox: `${actorUrl}/outbox`,
+      followers: `${actorUrl}/followers`,
+      following: `${actorUrl}/following`,
+      url: actorUrl,
+      published: this.createdAt?.toISOString(),
+      icon,
+      publicKey: {
+        id: `${actorUrl}#main-key`,
+        owner: actorUrl,
+        publicKeyPem,
+      },
+    };
   }
 
   isLocal(this: UserWithMethods): this is UserWithMethods {
