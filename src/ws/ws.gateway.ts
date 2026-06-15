@@ -151,7 +151,7 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
             mode: 'user',
             user: await user.sanitizeCurrent(),
         });
-        this.logger.debug('User "' + user.username + '" connected');
+        // this.logger.debug('User "' + user.username + '" connected');
     }
 
     private async resolveRelay(ws: WebSocket, data: WsClientData, token: string): Promise<void> {
