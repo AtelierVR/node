@@ -32,6 +32,7 @@ export class ImageResizeService {
         size: number,
         cacheDir: string,
         res: Response,
+        targetMime?: string,
     ): Promise<void> {
         if (!isResizableMimeType(mimetype)) {
             // Non-resizable: fall back to streaming the original
@@ -40,12 +41,12 @@ export class ImageResizeService {
             return;
         }
 
-        const cachedPath = this.cachedPath(cacheDir, sourceFilePath, size);
+        const outputMime = targetMime ?? this.outputMime(mimetype);
+        const cachedPath = this.cachedPath(cacheDir, sourceFilePath, size, outputMime);
 
         if (!existsSync(cachedPath))
-            await this.ensureResized(sourceFilePath, mimetype, size, cachedPath);
+            await this.ensureResized(sourceFilePath, mimetype, size, cachedPath, outputMime);
 
-        const outputMime = this.outputMime(mimetype);
         res.setHeader('Content-Type', outputMime);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
 
@@ -64,12 +65,13 @@ export class ImageResizeService {
         mimetype: string,
         size: number,
         cachedPath: string,
+        targetMime?: string,
     ): Promise<void> {
         const key = cachedPath;
 
         let promise = this.inFlight.get(key);
         if (!promise) {
-            promise = this.doResize(sourceFilePath, mimetype, size, cachedPath)
+            promise = this.doResize(sourceFilePath, mimetype, size, cachedPath, targetMime)
                 .finally(() => this.inFlight.delete(key));
             this.inFlight.set(key, promise);
         }
@@ -82,16 +84,17 @@ export class ImageResizeService {
         mimetype: string,
         size: number,
         cachedPath: string,
+        targetMime?: string,
     ): Promise<string> {
         const dir = join(cachedPath, '..');
         if (!existsSync(dir))
             mkdirSync(dir, { recursive: true });
 
-        const mime = mimetype.toLowerCase();
-        const encoder = IMAGE_ENCODERS[mime] ?? IMAGE_ENCODERS['default'];
+        const encodeMime = (targetMime ?? mimetype).toLowerCase();
+        const encoder = IMAGE_ENCODERS[encodeMime] ?? IMAGE_ENCODERS['default'];
 
         const pipeline = encoder.encode(
-            mime,
+            encodeMime,
             sharp(sourceFilePath, encoder.options ?? {})
                 .resize(size, undefined, {
                     withoutEnlargement: true,
@@ -105,16 +108,17 @@ export class ImageResizeService {
         return cachedPath;
     }
 
-    /** Deterministic cache path: <cacheDir>/<sizeKey>/<hash>.bin */
-    private cachedPath(cacheDir: string, sourceFilePath: string, size: number): string {
+    /** Deterministic cache path: <cacheDir>/<fmt>/<sizeKey>/<hash>.bin */
+    private cachedPath(cacheDir: string, sourceFilePath: string, size: number, fmt: string): string {
         const hash = createHash('sha1').update(sourceFilePath).digest('hex');
-        return join(cacheDir, `${size}`, hash);
+        return join(cacheDir, fmt.replace('/', '_'), `${size}`, hash);
     }
 
     /** Output MIME type for a given source MIME type */
     private outputMime(sourceMime: string): string {
         const lower = sourceMime.toLowerCase();
         if (lower === 'image/png') return 'image/png';
+        if (lower === 'image/apng') return 'image/apng';
         if (lower === 'image/gif') return 'image/gif';
         if (lower === 'image/avif') return 'image/avif';
         return 'image/webp';

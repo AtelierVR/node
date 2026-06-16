@@ -127,7 +127,7 @@ export class AvatarsController {
         if (!this.avatars.canCreateAvatar(req.user))
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'create avatar');
         const avatar = await this.avatars.createAvatar(body, req.user);
-        return avatar.sanitize();
+        return avatar.sanitize({ privileged: true });
     }
 
     // ── Single avatar ─────────────────────────────────────────────────────────────
@@ -152,7 +152,8 @@ export class AvatarsController {
             if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Avatar (${id})`);
             return resp.data;
         }
-        return avatar!.sanitize();
+        const privileged = !!req.user && (avatar!.isOwner(await req.user.identifier()) || avatar!.isContributor(await req.user.identifier()));
+        return avatar!.sanitize({ privileged });
     }
 
     /** POST /api/avatars/:id */
@@ -179,7 +180,7 @@ export class AvatarsController {
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'change contributors');
 
         const updated = await this.avatars.updateAvatar(avatar.id, body);
-        return updated.sanitize();
+        return updated.sanitize({ privileged: true });
     }
 
     /** DELETE /api/avatars/:id — owner only */

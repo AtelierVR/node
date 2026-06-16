@@ -70,7 +70,11 @@ export const IMAGE_ENCODERS: Record<string, ImageEncoder> = {
         encode: (_, p) => p.webp({ quality: 80 })
     },
     'image/png': {
-        options: { animated: true },
+        options: { animated: true, pages: -1 },
+        encode: (_, p) => p.png({ compressionLevel: 8 })
+    },
+    'image/apng': {
+        options: { animated: true, pages: -1 },
         encode: (_, p) => p.png({ compressionLevel: 8 })
     },
     'image/avif': {
@@ -92,4 +96,47 @@ export const IMAGE_ENCODERS: Record<string, ImageEncoder> = {
 export function isResizableMimeType(mimetype: string): boolean {
     if (!mimetype || mimetype === 'default') return false;
     return Object.keys(IMAGE_ENCODERS).includes(mimetype.toLowerCase());
+}
+
+/** List of image MIME types the server can produce (encoder keys minus 'default'). */
+export const SUPPORTED_IMAGE_TYPES: ReadonlyArray<string> =
+    Object.keys(IMAGE_ENCODERS).filter(k => k !== 'default');
+
+/**
+ * Parse the Accept header and return the first image MIME type the client
+ * accepts that the server can produce. Falls back to `sourceMime`.
+ *
+ * When the source is animated (its encoder has `animated: true`), only
+ * animated-compatible output formats are considered — static-only formats
+ * like AVIF/JPEG are skipped.
+ */
+export function negotiateImageAccept(
+    acceptHeader: string | undefined,
+    sourceMime: string,
+): string {
+    if (!acceptHeader) return sourceMime;
+
+    const lowerSource = sourceMime.toLowerCase();
+    const sourceAnimated = IMAGE_ENCODERS[lowerSource]?.options?.animated === true;
+
+    const types = acceptHeader
+        .split(',')
+        .map(part => {
+            const [type, qParam] = part.trim().split(';');
+            const q = qParam?.trim().startsWith('q=')
+                ? parseFloat(qParam.trim().slice(2))
+                : 1.0;
+            return { type: type.trim().toLowerCase(), q: Number.isFinite(q) ? q : 1.0 };
+        })
+        .sort((a, b) => b.q - a.q);
+
+    for (const { type } of types) {
+        if (type === '*/*' || type === 'image/*') return sourceMime;
+        if (!SUPPORTED_IMAGE_TYPES.includes(type)) continue;
+        // Skip static-only output formats when the source is animated
+        if (sourceAnimated && !IMAGE_ENCODERS[type]?.options?.animated) continue;
+        return type;
+    }
+
+    return sourceMime;
 }

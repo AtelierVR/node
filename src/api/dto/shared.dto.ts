@@ -15,3 +15,11 @@ export class ApiLinkResponseDto {
     @ApiProperty({ description: 'Link URL', example: 'https://github.com/johndoe' })
     value!: string;
 }
+
+export class ReleaseInfoDto {
+    @ApiProperty({ description: 'Actual version number. -1 = none available.', example: 2 })
+    value!: number;
+
+    @ApiProperty({ description: 'Whether the release was auto-detected (latest available).', example: false })
+    auto!: boolean;
+}

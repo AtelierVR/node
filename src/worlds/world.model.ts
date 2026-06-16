@@ -1,12 +1,12 @@
 import { WorldModel } from 'src/generated/prisma/models/World';
-import type { ApiWorld } from './worlds.types';
+import type { ApiWorld, ApiWorldPrivileged } from './worlds.types';
 import { WorldsService } from './worlds.service';
 import { NoxIdentifier } from 'src/common/identifier';
 import { ensureImageSize, IMAGE_PRESETS } from 'src/storage/image-resize.constants';
 
 export type WorldWithMethods = WorldModel & {
     manager: WorldsService;
-    sanitize(): Promise<ApiWorld>;
+    sanitize(options?: { privileged?: boolean }): Promise<ApiWorld | ApiWorldPrivileged>;
     isOwner(userRef: string): boolean;
     isContributor(userRef: string): boolean;
     canModify(userRef: string): boolean;
@@ -28,7 +28,7 @@ export class World {
         return obj;
     }
 
-    async sanitize(this: WorldWithMethods): Promise<ApiWorld> {
+    async sanitize(this: WorldWithMethods, options?: { privileged?: boolean }): Promise<ApiWorld | ApiWorldPrivileged> {
         const address = await this.manager.address();
         const makePublic = async (val: string | null, preset?: number) => {
             if (!val) return null;
@@ -39,8 +39,8 @@ export class World {
                 return null;
             }
         };
-        let release = await this.manager.resolveRelease(this.id, this.release);
-        return {
+        const release = await this.manager.resolveRelease(this.id, this.release);
+        const base = {
             id: this.id,
             name: this.name ?? null,
             title: this.title,
@@ -48,7 +48,6 @@ export class World {
             thumbnail: await makePublic(this.thumbnail ?? null, IMAGE_PRESETS.OTHER_THUMBNAIL),
             tags: this.tags ?? [],
             capacity: this.capacity,
-            release: { resolved: release, raw: this.release ?? -1 },
             server: address,
             owner: NoxIdentifier.parse(this.ownerRef).toString(address),
             contributors: this.contributorRefs.map(ref => NoxIdentifier.parse(ref).toString(address)),
@@ -58,6 +57,10 @@ export class World {
                 ...(this.name ? [{ key: 'nid', value: `${this.name}@${address}` }] : []),
             ],
         };
+        if (options?.privileged) {
+            return { ...base, release: { value: release, auto: this.release === null } };
+        }
+        return { ...base, release };
     }
 
     isOwner(this: WorldWithMethods, userRef: string): boolean {

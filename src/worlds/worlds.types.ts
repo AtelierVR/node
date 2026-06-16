@@ -14,14 +14,20 @@ export interface ApiWorld {
     thumbnail: string | null;
     tags: string[];
     capacity: number;
-    /** Release version info: resolved = actual version used, raw = -1 when auto/latest. */
-    release: { resolved: number; raw: number };
+    /** Recommended asset version to download. -1 = none available. */
+    release: number;
     server: string;
     /** NoxIdentifier string of the owner */
     owner: string;
     /** NoxIdentifier strings of contributors */
     contributors: string[];
     alias: ApiAlias[];
+}
+
+/** Privileged view of a world for owners and contributors — includes release auto-detection flag. */
+export interface ApiWorldPrivileged extends Omit<ApiWorld, 'release'> {
+    /** Release version info: value = actual version used (-1 if none), auto = was auto-detected (latest). */
+    release: { value: number; auto: boolean };
 }
 
 export interface ApiWorldAsset {

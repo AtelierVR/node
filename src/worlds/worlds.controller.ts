@@ -163,7 +163,7 @@ export class WorldsController {
 
 
         const world = await this.worlds.createWorld(body, user);
-        return await world.sanitize();
+        return await world.sanitize({ privileged: true });
     }
 
     // ── Single world ─────────────────────────────────────────────────────────────
@@ -191,7 +191,9 @@ export class WorldsController {
             }
             return resp.data;
         }
-        return await world!.sanitize();
+        const domain = await this.worlds.address();
+        const privileged = !!req.user && (world!.isOwner(`${req.user.id}@${domain}`) || world!.isContributor(`${req.user.id}@${domain}`));
+        return await world!.sanitize({ privileged });
     }
 
     /** POST /api/worlds/:id */
@@ -216,7 +218,7 @@ export class WorldsController {
             throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify world');
 
         const updated = await this.worlds.updateWorld(world.id, body);
-        return await updated.sanitize();
+        return await updated.sanitize({ privileged: true });
     }
 
     /** DELETE /api/worlds/:id — owner only */

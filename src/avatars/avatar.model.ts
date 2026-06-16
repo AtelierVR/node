@@ -1,12 +1,12 @@
 import { AvatarModel } from 'src/generated/prisma/models/Avatar';
-import type { ApiAvatar } from './avatars.types';
+import type { ApiAvatar, ApiAvatarPrivileged } from './avatars.types';
 import type { AvatarsService } from './avatars.service';
 import { NoxIdentifier } from 'src/common/identifier';
 import { ensureImageSize, IMAGE_PRESETS } from 'src/storage/image-resize.constants';
 
 export type AvatarWithMethods = AvatarModel & {
     manager: AvatarsService;
-    sanitize(): Promise<ApiAvatar>;
+    sanitize(options?: { privileged?: boolean }): Promise<ApiAvatar | ApiAvatarPrivileged>;
     isOwner(userRef: NoxIdentifier): boolean;
     isContributor(userRef: NoxIdentifier): boolean;
     canModify(userRef: NoxIdentifier): boolean;
@@ -26,7 +26,7 @@ export class Avatar {
         return obj;
     }
 
-    async sanitize(this: AvatarWithMethods): Promise<ApiAvatar> {
+    async sanitize(this: AvatarWithMethods, options?: { privileged?: boolean }): Promise<ApiAvatar | ApiAvatarPrivileged> {
         const address = await this.manager.address();
         const makePublic = async (val: string | null, preset?: number) => {
             if (!val) return null;
@@ -37,14 +37,14 @@ export class Avatar {
                 return null;
             }
         };
-        return {
+        const release = await this.manager.resolveRelease(this.id, this.release);
+        const base = {
             id: this.id,
             name: this.name ?? null,
             title: this.title,
             description: this.description ?? null,
             thumbnail: await makePublic(this.thumbnail ?? null, IMAGE_PRESETS.OTHER_THUMBNAIL),
             tags: this.tags ?? [],
-            release: { resolved: await this.manager.resolveRelease(this.id, this.release), raw: this.release ?? -1 },
             server: address,
             owner: NoxIdentifier.parse(this.ownerRef).toString(address),
             contributors: this.contributorRefs.map(ref => NoxIdentifier.parse(ref).toString(address)),
@@ -54,6 +54,10 @@ export class Avatar {
                 ...(this.name ? [{ key: 'nid', value: `${this.name}@${address}` }] : []),
             ],
         };
+        if (options?.privileged) {
+            return { ...base, release: { value: release, auto: this.release === null } };
+        }
+        return { ...base, release };
     }
 
     isOwner(this: AvatarWithMethods, user: NoxIdentifier): boolean {

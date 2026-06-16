@@ -23,7 +23,7 @@ export class ApiWorldDto {
     @ApiProperty({ description: 'Maximum concurrent players', example: 32 })
     capacity!: number;
 
-    @ApiProperty({ description: 'Recommended asset version to download. -1 = none available.', example: 1 })
+    @ApiProperty({ description: 'Recommended asset version to download. -1 = none available. Owners/contributors receive { value, auto } instead.', example: 1 })
     release!: number;
 
     @ApiProperty({ description: 'Server hostname this world belongs to', example: 'my-server.com' })
