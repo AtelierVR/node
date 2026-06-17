@@ -27,4 +27,3 @@
   #   - fr
   #   - us
   #   - jp
-  # default_region: null         # Pre-selected region when creating an instance (default: null)

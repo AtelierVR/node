@@ -59,7 +59,6 @@ export class ServerController {
       allow_avatar_creation: await this.appConfig.get<boolean>('instance.avatarCreation'),
       allow_avatar_creation_by_external: await this.appConfig.get<boolean>('instance.avatarCreationByExternal'),
       regions: await this.appConfig.get<string[]>('instance.regions'),
-      default_region: await this.appConfig.getOptional<string>('instance.defaultRegion'),
       allowed_image_widths: [...ALLOWED_WIDTHS],
     };
   }
