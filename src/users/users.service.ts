@@ -19,6 +19,7 @@ import { AppConfigService } from 'src/config/config.service';
 import { StorageService } from '../storage/storage.service';
 import { RelationsService } from '../relations/relations.service';
 import { ActivityService } from '../activity/activity.service';
+import { CacheService } from '../cache/cache.service';
 import type { WsGateway } from '../ws/ws.gateway';
 
 export interface Ed25519KeyPair {
@@ -28,6 +29,9 @@ export interface Ed25519KeyPair {
 }
 
 type DiskMulterFile = Express.Multer.File & { path?: string };
+
+const USER_CACHE_PREFIX = 'user:';
+const USER_CACHE_TTL = 300; // 5 minutes
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -46,6 +50,7 @@ export class UsersService implements OnModuleInit {
         public readonly activity: ActivityService,
         @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
         public readonly wsGateway: WsGateway,
+        private readonly cache: CacheService,
     ) { }
 
     async onModuleInit(): Promise<void> {
@@ -176,8 +181,15 @@ export class UsersService implements OnModuleInit {
     // ── Lookup ───────────────────────────────────────────────────────────────────
 
     async findById(id: number): Promise<UserWithMethods | null> {
+        const cacheKey = `${USER_CACHE_PREFIX}${id}`;
+
+        const cached = await this.cache.get<any>(cacheKey);
+        if (cached) return User.attach(cached, this);
+
         const model = await this.users.findFirst({ where: { id } });
         if (!model) return null;
+
+        await this.cache.set(cacheKey, model, USER_CACHE_TTL);
         return User.attach(model, this);
     }
 
@@ -430,6 +442,9 @@ export class UsersService implements OnModuleInit {
             } catch (err) {
                 this.logger.warn(`Failed to create/send verification code for user ${updated.id}: ${(err as Error).message}`);
             }
+
+        // Invalidate cache on update
+        await this.cache.del(`${USER_CACHE_PREFIX}${model.id}`);
 
         return User.attach(updated, this);
     }

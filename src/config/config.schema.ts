@@ -505,6 +505,46 @@ export class RelayConfig {
   group: string;
 }
 
+export class RedisConfig {
+  @Label('Redis URL')
+  @Description('Redis connection URL (e.g. redis://redis:6379). Used by Cache, Queue, and Session modules.')
+  @Default('redis://127.0.0.1:6379')
+  @ConfigVar({ key: 'redis.url', env: 'REDIS_URL' })
+  @IsString()
+  @IsNotEmpty()
+  url: string;
+}
+
+export class QueueConfig {
+  @Label('Queue Provider')
+  @Description('Active job queue provider: "sync" (in-process, default) or "bullmq" (Redis-backed).')
+  @Default('sync')
+  @ConfigVar({ key: 'queue.provider', env: 'QUEUE_PROVIDER' })
+  @IsString()
+  @IsNotEmpty()
+  provider: string;
+}
+
+export class CacheConfig {
+  @Label('Cache Provider')
+  @Description('Active cache provider: "memory" (in-process, default) or "redis" (Redis-backed).')
+  @Default('memory')
+  @ConfigVar({ key: 'cache.provider', env: 'CACHE_PROVIDER' })
+  @IsString()
+  @IsNotEmpty()
+  provider: string;
+}
+
+export class SearchConfig {
+  @Label('Search Provider')
+  @Description('Active search provider: "postgres" (built-in tsvector, default) or "noop" (empty results).')
+  @Default('postgres')
+  @ConfigVar({ key: 'search.provider', env: 'SEARCH_PROVIDER' })
+  @IsString()
+  @IsNotEmpty()
+  provider: string;
+}
+
 export class AppConfig {
   @Label('Instance Identifier')
   @Description('Unique identifier for this specific node. In a cluster where multiple nodes share the same domain behind a load balancer, this distinguishes which node responded. Defaults to the public domain.')
@@ -557,6 +597,26 @@ export class AppConfig {
   @Type(() => RelayConfig)
   @IsOptional()
   relay?: RelayConfig;
+
+  @ValidateNested()
+  @Type(() => RedisConfig)
+  @IsOptional()
+  redis?: RedisConfig;
+
+  @ValidateNested()
+  @Type(() => QueueConfig)
+  @IsOptional()
+  queue?: QueueConfig;
+
+  @ValidateNested()
+  @Type(() => CacheConfig)
+  @IsOptional()
+  cache?: CacheConfig;
+
+  @ValidateNested()
+  @Type(() => SearchConfig)
+  @IsOptional()
+  search?: SearchConfig;
 
   /**
    * Dot-notation keys locked by a '!' prefix in YAML/Env.

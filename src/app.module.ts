@@ -19,6 +19,9 @@ import { GatewayModule } from './gateway/gateway.module';
 import { InstancesModule } from './instances/instances.module';
 import { RelayModule } from './relay/relay.module';
 import { WsModule } from './ws/ws.module';
+import { JobQueueModule } from './jobs/job-queue.module';
+import { CacheModule } from './cache/cache.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -42,6 +45,9 @@ import { WsModule } from './ws/ws.module';
     InstancesModule,
     RelayModule,
     WsModule,
+    JobQueueModule,
+    CacheModule,
+    SearchModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ApiInterceptor },

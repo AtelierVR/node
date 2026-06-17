@@ -1,9 +1,13 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { WellKnownService } from '../fediverse/well-known.service';
+import { CacheService } from '../cache/cache.service';
 import { ExternalServerDelegate } from 'src/generated/prisma/models';
 import { ExternalServer, ExternalServerWithMethods } from './external-server.model';
 import { discoverWellKnown } from './discover-well-known';
+
+const SERVER_CACHE_PREFIX = 'extserver:';
+const SERVER_CACHE_TTL = 600; // 10 minutes
 
 @Injectable()
 export class ExternalServersService implements OnModuleInit {
@@ -14,6 +18,7 @@ export class ExternalServersService implements OnModuleInit {
     constructor(
         private readonly prisma: PrismaService,
         public readonly wellKnown: WellKnownService,
+        private readonly cache: CacheService,
     ) { }
 
     async onModuleInit(): Promise<void> { }
@@ -40,8 +45,15 @@ export class ExternalServersService implements OnModuleInit {
     }
 
     async findByAddress(address: string): Promise<ExternalServerWithMethods | null> {
+        const cacheKey = `${SERVER_CACHE_PREFIX}${address.toLowerCase()}`;
+
+        const cached = await this.cache.get<any>(cacheKey);
+        if (cached) return ExternalServer.attach(cached, this);
+
         const model = await this.externalServers.findFirst({ where: { address } });
         if (!model) return null;
+
+        await this.cache.set(cacheKey, model, SERVER_CACHE_TTL);
         return ExternalServer.attach(model, this);
     }
 

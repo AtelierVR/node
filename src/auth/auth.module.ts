@@ -12,10 +12,19 @@ import { AuthOrServerAsUserGuard, OptionalAuthOrServerAsUserGuard } from './auth
 import { ExternalServersModule } from '../external/external-servers.module';
 import { ExternalUsersModule } from '../external/external-users.module';
 import { FediverseModule } from '../fediverse/fediverse.module';
+import { CacheModule } from '../cache/cache.module';
 
 @Module({
-    imports: [forwardRef(() => UsersModule), ExternalServersModule, ExternalUsersModule, forwardRef(() => FediverseModule)],
-    controllers: [AuthController],
+    imports: [
+        forwardRef(() => UsersModule),
+        ExternalServersModule,
+        ExternalUsersModule,
+        forwardRef(() => FediverseModule),
+        CacheModule
+    ],
+    controllers: [
+        AuthController
+    ],
     providers: [
         AuthService,
         SessionService,

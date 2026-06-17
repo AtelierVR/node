@@ -14,6 +14,7 @@ import { OptionalServerGuard, ServerGuard } from '../auth/server.guard';
 import { OptionalServerAsUserGuard, ServerAsUserGuard } from '../auth/server-as-user.guard';
 import { ActivityModule } from '../activity/activity.module';
 import { WsModule } from '../ws/ws.module';
+import { CacheModule } from '../cache/cache.module';
 
 @Module({
   imports: [
@@ -24,7 +25,8 @@ import { WsModule } from '../ws/ws.module';
     ExternalServersModule,
     ExternalUsersModule,
     forwardRef(() => ActivityModule),
-    forwardRef(() => WsModule)
+    forwardRef(() => WsModule),
+    CacheModule,
   ],
   controllers: [UsersController],
   providers: [
