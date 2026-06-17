@@ -24,7 +24,6 @@ export type ExternalServerWithMethods = ExternalServerModel & {
     wellKnown(): Promise<ServerWellKnown>;
     fetch<T = any>(path: string, options?: ApiRequestInit): Promise<ApiResponse<T>>;
     touchLastSeen(): Promise<void>;
-    _wkc?: ServerWellKnown;
 };
 
 interface ServerWellKnown {
@@ -50,9 +49,13 @@ export class ExternalServer {
     }
 
     async wellKnown(this: ExternalServerWithMethods): Promise<ServerWellKnown> {
+        const cacheKey = `wk:${this.address}`;
         const now = new Date();
-        if (this._wkc && this._wkc.expiresAt > now)
-            return this._wkc;
+
+        // Try Redis cache first
+        const cached = await this.manager.cache.get<ServerWellKnown>(cacheKey);
+        if (cached && new Date(cached.expiresAt) > now)
+            return cached;
 
         const discovered = await discoverWellKnown(this.address);
         if (!discovered)
@@ -60,8 +63,13 @@ export class ExternalServer {
 
         const fetchedAt = new Date();
         const expiresAt = new Date(fetchedAt.getTime() + discovered.ttlMs);
-        this._wkc = { data: discovered.data, fetchedAt, expiresAt };
-        return this._wkc;
+        const entry: ServerWellKnown = { data: discovered.data, fetchedAt, expiresAt };
+
+        // Cache in Redis with TTL matching the well-known expiration
+        const ttl = Math.max(60, Math.floor(discovered.ttlMs / 1000));
+        await this.manager.cache.set(cacheKey, entry, ttl);
+
+        return entry;
     }
 
     async fetch<T = any>(this: ExternalServerWithMethods, path: string, options?: ApiRequestInit): Promise<ApiResponse<T>> {

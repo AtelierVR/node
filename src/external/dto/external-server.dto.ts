@@ -13,6 +13,9 @@ export class ExternalServerListItemDto {
 
     @ApiProperty({ description: 'Unix timestamp (ms) of first discovery', example: 1680000000000 })
     created_at!: number;
+
+    @ApiPropertyOptional({ type: () => NoxWellKnownDto, description: 'Cached well-known document, or null if unreachable', nullable: true })
+    wellknown!: NoxWellKnownDto | null;
 }
 
 export class ExternalServerDetailDto extends ExternalServerListItemDto {

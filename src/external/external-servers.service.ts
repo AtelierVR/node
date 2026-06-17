@@ -18,7 +18,7 @@ export class ExternalServersService implements OnModuleInit {
     constructor(
         private readonly prisma: PrismaService,
         public readonly wellKnown: WellKnownService,
-        private readonly cache: CacheService,
+        public readonly cache: CacheService,
     ) { }
 
     async onModuleInit(): Promise<void> { }
@@ -41,6 +41,15 @@ export class ExternalServersService implements OnModuleInit {
 
     async findAll(): Promise<ExternalServerWithMethods[]> {
         const models = await this.externalServers.findMany({ orderBy: { rank: 'desc' } });
+        return models.map((m) => ExternalServer.attach(m, this));
+    }
+
+    async findAllPaginated(limit: number, offset: number): Promise<ExternalServerWithMethods[]> {
+        const models = await this.externalServers.findMany({
+            orderBy: { rank: 'desc' },
+            take: limit,
+            skip: offset,
+        });
         return models.map((m) => ExternalServer.attach(m, this));
     }
 
@@ -103,12 +112,13 @@ export class ExternalServersService implements OnModuleInit {
         });
 
         const server = ExternalServer.attach(model, this);
-        // Pre-populate the well-known cache with the already-fetched document
-        server._wkc = {
+        // Cache the well-known document in Redis so list endpoints can read it
+        const ttl = Math.max(60, Math.floor(discovered.ttlMs / 1000));
+        await this.cache.set(`wk:${canonicalAddress}`, {
             data: discovered.data,
             fetchedAt: new Date(),
             expiresAt: new Date(Date.now() + discovered.ttlMs),
-        };
+        }, ttl);
         return server;
     }
 
