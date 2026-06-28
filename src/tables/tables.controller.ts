@@ -61,10 +61,11 @@ export class TablesController {
     @UseGuards(AuthUserGuard)
     @Get('@me/tables/:key')
     async getTable(
-        @Param('key') key: string,
+        @Param('key') rawKey: string,
         @Req() req: Request & UserAuthenticatedRequest,
         @Res() res: Response,
     ) {
+        const key = decodeURIComponent(rawKey);
         const table = await this.tables.get(key, req.user.id);
         if (!table) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Table');
 
@@ -88,10 +89,11 @@ export class TablesController {
     @UseGuards(AuthUserGuard)
     @Post('@me/tables/:key')
     async setTable(
-        @Param('key') key: string,
+        @Param('key') rawKey: string,
         @Req() req: Request & UserAuthenticatedRequest & { rawBody?: Buffer },
         @Res() res: Response,
     ) {
+        const key = decodeURIComponent(rawKey);
         let body: Buffer | undefined = req.rawBody;
         if (!body || body.length === 0) 
             body = await new Promise<Buffer>((resolve, reject) => {
@@ -134,9 +136,10 @@ export class TablesController {
     @HttpCode(HttpStatus.OK)
     @Delete('@me/tables/:key')
     async deleteTable(
-        @Param('key') key: string,
+        @Param('key') rawKey: string,
         @Req() req: Request & UserAuthenticatedRequest,
     ) {
+        const key = decodeURIComponent(rawKey);
         const deleted = await this.tables.delete(key, req.user.id);
         if (!deleted) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Table');
         return { success: true, key };
@@ -156,10 +159,11 @@ export class TablesController {
     @UseGuards(AuthUserGuard)
     @Get('@me/public/:type')
     async getMyPublic(
-        @Param('type') type: string,
+        @Param('type') rawType: string,
         @Req() req: Request & UserAuthenticatedRequest,
         @Res() res: Response,
     ) {
+        const type = decodeURIComponent(rawType);
         const table = await this.tables.getPublic(type, req.user.id);
         if (!table) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'public element');
 
@@ -185,10 +189,11 @@ export class TablesController {
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @Get('@admin/public/:type')
     async getAdminPublic(
-        @Param('type') type: string,
+        @Param('type') rawType: string,
         @Req() req: Request,
         @Res() res: Response,
     ) {
+        const type = decodeURIComponent(rawType);
         const adminId = await this.users.mainAdminId();
         const table = await this.tables.getPublic(type, adminId);
         if (!table) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'public element');
