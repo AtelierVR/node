@@ -22,6 +22,7 @@ import { WsModule } from './ws/ws.module';
 import { JobQueueModule } from './jobs/job-queue.module';
 import { CacheModule } from './cache/cache.module';
 import { SearchModule } from './search/search.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { SearchModule } from './search/search.module';
     JobQueueModule,
     CacheModule,
     SearchModule,
+    EmailModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ApiInterceptor },

@@ -4,7 +4,9 @@ import { AuthController } from './auth.controller';
 import { SessionService } from './session.service';
 import { DeviceService } from './device.service';
 import { VerificationService } from './verification.service';
+import { TotpService } from './totp.service';
 import { UsersModule } from '../users/users.module';
+import { EmailModule } from '../email/email.module';
 import { AuthUserGuard, OptionalAuthUserGuard } from './auth.guard';
 import { ServerGuard, OptionalServerGuard } from './server.guard';
 import { ServerAsUserGuard, OptionalServerAsUserGuard } from './server-as-user.guard';
@@ -17,6 +19,7 @@ import { CacheModule } from '../cache/cache.module';
 @Module({
     imports: [
         forwardRef(() => UsersModule),
+        forwardRef(() => EmailModule),
         ExternalServersModule,
         ExternalUsersModule,
         forwardRef(() => FediverseModule),
@@ -30,6 +33,7 @@ import { CacheModule } from '../cache/cache.module';
         SessionService,
         DeviceService,
         VerificationService,
+        TotpService,
         AuthUserGuard,
         OptionalAuthUserGuard,
         OptionalServerGuard,

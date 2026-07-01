@@ -1,8 +1,9 @@
-import { Controller, HttpStatus, Post, Delete, Body, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, HttpStatus, Post, Delete, Body, Req, Res, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { AuthUserGuard, OptionalAuthUserGuard, UserAuthenticatedRequest } from './auth.guard';
-import type { OptionalUserAuthenticatedRequest } from './auth.guard';
+import { VerificationService } from './verification.service';
+import { AuthUserGuard, OptionalAuthUserGuard } from './auth.guard';
+import type { OptionalUserAuthenticatedRequest, UserAuthenticatedRequest } from './auth.guard';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import type { Request, Response } from 'express';
 import { ApiWrappedResponse, ApiWrappedSuccessResponse, ApiErrorResponse } from '../api/swagger';
@@ -11,7 +12,10 @@ import { ApiSessionDto } from '../users/dto/user-response.dto';
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-    constructor(private readonly auth: AuthService) { }
+    constructor(
+        private readonly auth: AuthService,
+        private readonly verification: VerificationService,
+    ) { }
 
     @ApiOperation({ summary: 'Register', description: 'Create a new user account and return a session token.' })
     @ApiWrappedResponse(ApiSessionDto, HttpStatus.CREATED)
@@ -66,5 +70,36 @@ export class AuthController {
         const success = req.session ? await this.auth.logoutByToken(req.session.token) : false;
         res.clearCookie('_uid');
         return { success };
+    }
+
+    // ── Auth Methods (email, totp, etc.) ────────────────────────────────
+
+    @ApiOperation({ summary: 'Send verification code', description: 'Send a 2FA verification code via the requested method.' })
+    @UseGuards(AuthUserGuard)
+    @Post('methods/:method/send')
+    async sendVerificationCode(@Req() req: UserAuthenticatedRequest, @Param('method') method: string) {
+        const success = await this.verification.sendFactorCode(req.user, method);
+        return { success };
+    }
+
+    @ApiOperation({ summary: 'Setup auth method', description: 'Initialize setup for an auth method (e.g. TOTP, email).' })
+    @UseGuards(AuthUserGuard)
+    @Post('methods/:method/setup')
+    async setupMethod(@Req() req: UserAuthenticatedRequest, @Param('method') method: string, @Body() body: any) {
+        return this.verification.setupMethod(req.user, method, body);
+    }
+
+    @ApiOperation({ summary: 'Enable auth method', description: 'Verify and enable an auth method. Uses optional auth — public for link tokens (e.g. email), authenticated for code-based flows.' })
+    @UseGuards(OptionalAuthUserGuard)
+    @Post('methods/:method/enable')
+    async enableMethod(@Req() req: OptionalUserAuthenticatedRequest, @Param('method') method: string, @Body() body: any) {
+        return this.verification.enableMethod(req.user, method, body);
+    }
+
+    @ApiOperation({ summary: 'Disable auth method', description: 'Remove an auth method. Requires verification (factor_code).' })
+    @UseGuards(AuthUserGuard)
+    @Post('methods/:method/disable')
+    async disableMethod(@Req() req: UserAuthenticatedRequest, @Param('method') method: string, @Body() body: any) {
+        return this.verification.disableMethod(req.user, method, body?.factor_code);
     }
 }

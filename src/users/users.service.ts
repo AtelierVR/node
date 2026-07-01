@@ -21,6 +21,7 @@ import { RelationsService } from '../relations/relations.service';
 import { ActivityService } from '../activity/activity.service';
 import { CacheService } from '../cache/cache.service';
 import type { WsGateway } from '../ws/ws.gateway';
+import type { EmailVerificationService } from '../email/email-verification.service';
 
 export interface Ed25519KeyPair {
     public: Buffer;
@@ -50,7 +51,9 @@ export class UsersService implements OnModuleInit {
         public readonly activity: ActivityService,
         @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
         public readonly wsGateway: WsGateway,
-        private readonly cache: CacheService,
+        public readonly cache: CacheService,
+        @Inject(forwardRef(() => require('../email/email-verification.service').EmailVerificationService))
+        private readonly emailVerification: EmailVerificationService,
     ) { }
 
     async onModuleInit(): Promise<void> {
@@ -271,7 +274,6 @@ export class UsersService implements OnModuleInit {
         if (!model) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');
 
         let sensitive = false;
-        let emailChanged = false;
         const updates: any = {};
 
         // Username
@@ -380,36 +382,22 @@ export class UsersService implements OnModuleInit {
             updates.password = await hashPassword(input.password);
             sensitive = true;
         }
-
-        // Email changes
-        if (input.email !== undefined && input.email !== model.email) 
-            if (input.email && input.email !== model.email) {
-                const existing = await this.users.findFirst({ where: { email: input.email } });
-                if (existing && existing.id !== model.id) throw new ApiException(ApiErrorCode.CONFLICT, null, 'Email');
-                updates.email = input.email;
-                updates.emailVerified = false;
-                sensitive = true;
-                emailChanged = true;
-            } else if (input.email === null && model.email !== null) {
-                updates.email = null;
-                updates.emailVerified = false;
-                sensitive = true;
-                emailChanged = true;
-            }
             
         // If sensitive changes require verification
-        if (sensitive && this.verification.isVerificationRequired(model))
+        if (sensitive && this.verification.isVerificationRequired(model)) {
+            const wrappedModel = User.attach(model, this);
             if (input.factor_code) {
-                const verifyResult = await this.verification.verifyFactorCode(model, input.factor_code);
+                const verifyResult = await this.verification.verifyFactorCode(wrappedModel, input.factor_code);
                 if (!verifyResult.success)
                     throw new ApiException(ApiErrorCode.VALIDATION_ERROR, { field: 'factor_code', message: verifyResult.message }, verifyResult.message);
             } else {
-                const methods = this.verification.getAvailableVerificationMethods(model);
+                const methods = this.verification.getAvailableVerificationMethods(wrappedModel);
                 throw new ApiException(ApiErrorCode.VERIFICATION_REQUIRED, { verification_required: true, methods }, 'Verification required');
             }
+        }
 
-        // Apply update
-        const updated = await this.users.update({ where: { id: model.id }, data: updates });
+        // Apply update via the model's own method (handles DB, cache, WebSocket)
+        const wrapped = await User.attach(model, this).update(updates);
 
         // Cleanup old files: if we changed thumbnail/banner and the previous value
         // was a local provider URL (file://...), delete the old file.
@@ -435,17 +423,6 @@ export class UsersService implements OnModuleInit {
             this.logger.warn(`Failed to delete old banner for user ${model.id}: ${(err as Error).message}`);
         }
 
-        // Try to send verification code when email changed (best-effort)
-        if (emailChanged && updated.email)
-            try {
-                await this.verification.sendVerificationCode(updated, 'email');
-            } catch (err) {
-                this.logger.warn(`Failed to create/send verification code for user ${updated.id}: ${(err as Error).message}`);
-            }
-
-        // Invalidate cache on update
-        await this.cache.del(`${USER_CACHE_PREFIX}${model.id}`);
-
-        return User.attach(updated, this);
+        return wrapped;
     }
 }

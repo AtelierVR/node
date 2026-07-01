@@ -98,8 +98,8 @@ export class PrismaService implements OnModuleInit {
         return this._client.device;
     }
 
-    get verificationFactors() {
-        return this._client.verificationFactor;
+    get verifications() {
+        return this._client.verification;
     }
 
     get externalUsers() {

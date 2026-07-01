@@ -545,6 +545,75 @@ export class SearchConfig {
   provider: string;
 }
 
+export class EmailConfig {
+  @Label('Email Enabled')
+  @Description('Enable SMTP email sending. When false, email operations are no-ops.')
+  @Default(false)
+  @ConfigVar({ key: 'email.enabled', env: 'EMAIL_ENABLED' })
+  @IsBoolean()
+  @IsOptional()
+  enabled: boolean;
+
+  @Label('SMTP Host')
+  @Description('SMTP server hostname.')
+  @ConfigVar({ key: 'email.host', env: 'EMAIL_HOST' })
+  @Default('smtp.example.com')
+  @IsString()
+  @IsOptional()
+  host: string;
+
+  @Label('SMTP Port')
+  @Description('SMTP server port (587 for TLS, 465 for SSL).')
+  @Default(587)
+  @ConfigVar({ key: 'email.port', env: 'EMAIL_PORT' })
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  @IsOptional()
+  port: number;
+
+  @Label('SMTP Secure')
+  @Description('Use SSL/TLS (true for port 465, false for 587 with STARTTLS).')
+  @Default(false)
+  @ConfigVar({ key: 'email.secure', env: 'EMAIL_SECURE' })
+  @IsBoolean()
+  @IsOptional()
+  secure: boolean;
+
+  @Label('SMTP User')
+  @Description('SMTP authentication username.')
+  @ConfigVar({ key: 'email.user', env: 'EMAIL_USER' })
+  @Default('')
+  @IsString()
+  @IsOptional()
+  user: string;
+
+  @Label('SMTP Password')
+  @Description('SMTP authentication password.')
+  @IsRisky()
+  @ConfigVar({ key: 'email.password', env: 'EMAIL_PASSWORD' })
+  @Default('')
+  @IsString()
+  @IsOptional()
+  password: string;
+
+  @Label('From Address')
+  @Description('Sender email address. Falls back to SMTP user if empty.')
+  @ConfigVar({ key: 'email.from', env: 'EMAIL_FROM' })
+  @Default('')
+  @IsString()
+  @IsOptional()
+  from: string;
+
+  @Label('From Name')
+  @Description('Display name for the sender. Falls back to instance title if empty.')
+  @ConfigVar({ key: 'email.from_name', env: 'EMAIL_FROM_NAME' })
+  @Default('')
+  @IsString()
+  @IsOptional()
+  fromName: string;
+}
+
 export class AppConfig {
   @Label('Instance Identifier')
   @Description('Unique identifier for this specific node. In a cluster where multiple nodes share the same domain behind a load balancer, this distinguishes which node responded. Defaults to the public domain.')
@@ -617,6 +686,11 @@ export class AppConfig {
   @Type(() => SearchConfig)
   @IsOptional()
   search?: SearchConfig;
+
+  @ValidateNested()
+  @Type(() => EmailConfig)
+  @IsOptional()
+  email?: EmailConfig;
 
   /**
    * Dot-notation keys locked by a '!' prefix in YAML/Env.

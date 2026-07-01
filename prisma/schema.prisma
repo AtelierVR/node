@@ -86,7 +86,7 @@ model User {
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
   sessions      Session[]
-  verifications VerificationFactor[]
+  verifications Verification[]
   tables        UserTable[]
 
   @@map("users")
@@ -145,17 +145,20 @@ model Config {
   @@map("configs")
 }
 
-model VerificationFactor {
+/// Generic verification entry — handles MFA codes (email) and email confirmation tokens.
+///   type="email_code"  → MFA 6-digit code, expires in 10 min, validated on use
+///   type="email_link"  → clickable link token, expires in 24h, validated when user clicks
+model Verification {
   id        Int      @id @default(autoincrement())
   userId    Int      @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  method    String
+  type      String
   code      String
-  expiresAt DateTime @map("expires_at")
+  expires   DateTime
+  validated Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("verification_factors")
+  @@map("verifications")
 }
 
 model ExternalServer {

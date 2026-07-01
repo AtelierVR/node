@@ -6,6 +6,7 @@ import { SessionService } from '../auth/session.service';
 import { AuthUserGuard, OptionalAuthUserGuard } from '../auth/auth.guard';
 import { AdminUserGuard } from '../auth/admin-user.guard';
 import { AuthModule } from '../auth/auth.module';
+import { EmailModule } from '../email/email.module';
 import { StorageModule } from '../storage/storage.module';
 import { RelationsModule } from '../relations/relations.module';
 import { ExternalServersModule } from '../external/external-servers.module';
@@ -20,6 +21,7 @@ import { CacheModule } from '../cache/cache.module';
   imports: [
     forwardRef(() => FediverseModule),
     forwardRef(() => AuthModule),
+    forwardRef(() => EmailModule),
     StorageModule,
     forwardRef(() => RelationsModule),
     ExternalServersModule,

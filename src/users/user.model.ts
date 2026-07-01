@@ -12,6 +12,7 @@ export type UserWithMethods = UserModel & {
   manager: UsersService;
   sanitize(viewer?: NoxIdentifier | null): Promise<ApiUser>;
   sanitizeCurrent(): Promise<ApiCurrentUser>;
+  update(data: Partial<UserModel>): Promise<UserWithMethods>;
   followers(): Promise<number>;
   following(): Promise<number>;
   relationsWith(viewer: NoxIdentifier): Promise<ApiUserRelations>;
@@ -40,6 +41,35 @@ export class User {
     // Ensure prototype methods are available
     Object.setPrototypeOf(obj, User.prototype as any);
     return obj;
+  }
+
+  /**
+   * Apply updates to this user, then invalidate cache and notify connected
+   * clients via WebSocket. Returns the updated UserWithMethods.
+   */
+  async update(this: UserWithMethods, data: Partial<UserModel>): Promise<UserWithMethods> {
+    const manager = this.manager;
+    const updated = await manager.prisma.users.update({
+      where: { id: this.id },
+      data: data as any,
+    });
+
+    // Invalidate cache
+    try {
+      await manager.cache.del(`user:${this.id}`);
+    } catch { /* best-effort */ }
+
+    const wrapped = User.attach(updated, manager);
+
+    // Notify connected clients
+    try {
+      const sanitized = await wrapped.sanitizeCurrent();
+      manager.wsGateway.emitToUser(this.id, 'user:update', sanitized);
+    } catch (err) {
+      manager.logger.warn(`Failed to emit user:update for user ${this.id}: ${(err as Error).message}`);
+    }
+
+    return wrapped;
   }
 
   // Note: `this` will be the underlying model after attach
