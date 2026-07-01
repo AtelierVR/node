@@ -100,6 +100,16 @@ export interface RelayStatusChangeEvent {
     time: number;
 }
 
+/** Inbound instance-settings-changed event from the relay binary. */
+export interface RelayInstanceSettingsChangedEvent {
+    relay_id: number;
+    time: number;
+    /** Relay-internal instance slot (0–254). */
+    internal_id: number;
+    tps: number;
+    threshold: number;
+}
+
 // ── Relay API response types ──────────────────────────────────────────────────
 
 /** A player entry returned by the relay binary's get_players request. */
@@ -114,6 +124,12 @@ export interface RelayPlayer {
     f: number;
     /** User identifier (e.g. "1@example.com"), null if unauthenticated */
     u: string | null;
+    /** Joined at Unix ms */
+    j: number;
+    /** Custom TPS override (0 = use instance default) */
+    ct: number;
+    /** Custom threshold override (0 = use instance default) */
+    ch: number;
 }
 
 export interface ApiRelayRunnerPort {

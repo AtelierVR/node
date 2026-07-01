@@ -20,6 +20,17 @@ export class RelayLogListApiDto {
     items!: RelayLogEntryApiDto[];
 }
 
+export class RelayWorldInfoApiDto {
+    @ApiProperty({ description: 'Master ID of the world', example: 1 })
+    master_id!: number;
+
+    @ApiProperty({ description: 'Server address', example: 'my-server.com' })
+    server!: string;
+
+    @ApiProperty({ description: 'World version', example: 42 })
+    version!: number;
+}
+
 export class RelayInstanceApiDto {
     @ApiProperty({ description: 'Relay-scoped instance identifier', example: 'inst-abc123' })
     id!: string;
@@ -33,11 +44,23 @@ export class RelayInstanceApiDto {
     @ApiProperty({ description: 'Bitmask of instance flags', example: 0 })
     flags!: number;
 
-    @ApiProperty({ description: 'NoxIdentifier of the world running in this instance', example: '1@my-server.com' })
-    world!: string;
+    @ApiProperty({ description: 'World info object', type: () => RelayWorldInfoApiDto })
+    world!: RelayWorldInfoApiDto;
 
     @ApiProperty({ description: 'Maximum player capacity', example: 16 })
     capacity!: number;
+
+    @ApiPropertyOptional({ description: 'Configured target TPS', example: 60 })
+    tps!: number;
+
+    @ApiPropertyOptional({ description: 'Configured transform equality threshold', example: 0.001 })
+    threshold!: number;
+
+    @ApiPropertyOptional({ description: 'Effective TPS after load balancing (may differ from configured TPS under load)', example: 30 })
+    effective_tps!: number;
+
+    @ApiPropertyOptional({ description: 'Effective threshold after load balancing', example: 0.002 })
+    effective_threshold!: number;
 }
 
 export class RelayClientApiDto {
@@ -75,6 +98,12 @@ export class RelayPlayerApiDto {
 
     @ApiProperty({ description: 'Unix millisecond timestamp when the player joined', example: 1746057600000 })
     joined_at!: number;
+
+    @ApiPropertyOptional({ description: 'Custom TPS override for this player (0 = use instance default)', example: 30 })
+    custom_tps!: number;
+
+    @ApiPropertyOptional({ description: 'Custom threshold override for this player (0 = use instance default)', example: 0.002 })
+    custom_threshold!: number;
 }
 
 // ── Runner info ───────────────────────────────────────────────────────────────

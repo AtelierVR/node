@@ -208,6 +208,10 @@ export class RelayController {
         // so track the slot with the highest player count per DB id.
         const slotMap = new Map<number, number>(); // dbId → relay slot (most-active)
         const slotPlayerMap = new Map<number, number>(); // dbId → player count for chosen slot
+        const slotTpsMap = new Map<number, number>(); // dbId → configured TPS
+        const slotThresholdMap = new Map<number, number>(); // dbId → configured threshold
+        const slotEffTpsMap = new Map<number, number>(); // dbId → effective TPS
+        const slotEffThresholdMap = new Map<number, number>(); // dbId → effective threshold
         if (this.relay.isRelayConnected(id)) {
             try {
                 const liveResult = await this.wsGateway.requestInstances(id, 1000, 0);
@@ -222,6 +226,10 @@ export class RelayController {
                             if (!slotMap.has(dbId) || players > (slotPlayerMap.get(dbId) ?? 0)) {
                                 slotMap.set(dbId, slot);
                                 slotPlayerMap.set(dbId, players);
+                                slotTpsMap.set(dbId, dto.t ?? dto.tps ?? 0);
+                                slotThresholdMap.set(dbId, dto.th ?? dto.threshold ?? 0);
+                                slotEffTpsMap.set(dbId, dto.et ?? dto.effective_tps ?? 0);
+                                slotEffThresholdMap.set(dbId, dto.eh ?? dto.effective_threshold ?? 0);
                             }
                         }
                     }
@@ -239,7 +247,11 @@ export class RelayController {
                 world: NoxIdentifier.type(null, i.worldRef).toString(adress),
                 owner: NoxIdentifier.type(null, i.ownerRef).toString(adress),
                 capacity: i.capacity,
-                created_at: i.createdAt.getTime()
+                created_at: i.createdAt.getTime(),
+                tps: slotTpsMap.get(i.id) ?? null,
+                threshold: slotThresholdMap.get(i.id) ?? null,
+                effective_tps: slotEffTpsMap.get(i.id) ?? null,
+                effective_threshold: slotEffThresholdMap.get(i.id) ?? null,
             })),
         };
     }

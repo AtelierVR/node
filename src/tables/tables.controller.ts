@@ -113,6 +113,7 @@ export class TablesController {
                 throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'File hash mismatch');
         }
 
+        console.log(req.headers);
         const mime = (req.headers['content-type'] ?? 'application/octet-stream').split(';')[0].trim();
 
         const { row, existed: _existed } = await this.tables.set(key, req.user.id, body, mime);

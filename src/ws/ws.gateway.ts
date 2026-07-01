@@ -267,6 +267,7 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
             case 'client_authentified':  this.onClientAuthentified(ws, data, frame); break;
             case 'player_join':          this.onPlayerJoin(ws, data, frame); break;
             case 'player_leave':         this.onPlayerLeave(ws, data, frame); break;
+            case 'instance_settings_changed': this.onInstanceSettingsChanged(ws, data, frame); break;
             case 'logs':                 this.onLogsResponse(ws, data, frame); break;
             case 'status':               this.onStatusResponse(ws, data, frame); break;
             case 'get_instances':        this.onInstancesResponse(ws, data, frame); break;
@@ -497,6 +498,11 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
     private onPlayerLeave(ws: WebSocket, data: WsClientData, frame: WsInboundFrame): void {
         if (data.mode !== 'relay' || !data.relayId) return;
         this.relayService.handlePlayerLeave(data.relayId, frame.payload ?? {});
+    }
+
+    private onInstanceSettingsChanged(ws: WebSocket, data: WsClientData, frame: WsInboundFrame): void {
+        if (data.mode !== 'relay' || !data.relayId) return;
+        this.relayService.handleInstanceSettingsChanged(data.relayId, frame.payload ?? {});
     }
 
     /** Handle logs response from relay (resolves pending request). */

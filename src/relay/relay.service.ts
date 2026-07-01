@@ -22,6 +22,7 @@ import {
     RelayClientDisconnectedDto,
     RelayPlayerJoinDto,
     RelayPlayerLeaveDto,
+    RelayInstanceSettingsChangedDto,
 } from './dto/relay-message.dto';
 import type { RelayModel } from '../generated/prisma/models/Relay';
 import type { RelayTokenModel } from '../generated/prisma/models/RelayToken';
@@ -38,6 +39,7 @@ import type {
     RelayClientDisconnectedEvent,
     RelayPlayerJoinEvent,
     RelayPlayerLeaveEvent,
+    RelayInstanceSettingsChangedEvent,
     RelayStatusChangeEvent,
     WsRelaySpecs
 } from './relay.types';
@@ -89,6 +91,7 @@ export class RelayService implements OnModuleInit {
         this.events.registerValidator('relay_client_authentified', (s) => this.isRelayAdmin(s));
         this.events.registerValidator('relay_player_join', (s) => this.isRelayAdmin(s));
         this.events.registerValidator('relay_player_leave', (s) => this.isRelayAdmin(s));
+        this.events.registerValidator('relay_instance_settings_changed', (s) => this.isRelayAdmin(s));
     }
 
     private async isRelayAdmin(socket: Socket): Promise<boolean> {
@@ -627,6 +630,22 @@ export class RelayService implements OnModuleInit {
             },
         };
         this.events.emit<RelayPlayerLeaveEvent>('relay_player_leave', event);
+    }
+
+    handleInstanceSettingsChanged(relayId: number, data: unknown) {
+        const raw = data as Record<string, unknown> | null | undefined;
+        if (!raw || typeof raw.i !== 'number' || typeof raw.t !== 'number' || typeof raw.th !== 'number') {
+            this.logger.warn(`Relay #${relayId} sent invalid instance_settings_changed payload: ${JSON.stringify(data)}`);
+            return;
+        }
+        const event: RelayInstanceSettingsChangedEvent = {
+            relay_id: relayId,
+            time: Date.now(),
+            internal_id: raw.i,
+            tps: raw.t,
+            threshold: raw.th,
+        };
+        this.events.emit<RelayInstanceSettingsChangedEvent>('relay_instance_settings_changed', event);
     }
 
     handleRelayConnected(relayId: number) {

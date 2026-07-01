@@ -1,5 +1,5 @@
-import { IsArray, IsInt, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsArray, IsInt, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { Expose, Type } from 'class-transformer';
 
 /** relay → node: request_instances */
 export class RequestInstancesMessageDto {
@@ -172,4 +172,19 @@ export class RelayPlayerLeaveDto {
 
     @IsString()
     reason!: string;
+}
+
+/** relay → node: instance_settings_changed */
+export class RelayInstanceSettingsChangedDto {
+    @Expose({ name: 'i' })
+    @IsInt()
+    internal_id!: number;
+
+    @Expose({ name: 't' })
+    @IsInt()
+    tps!: number;
+
+    @Expose({ name: 'th' })
+    @IsNumber()
+    threshold!: number;
 }

@@ -1,7 +1,13 @@
-import { IsArray, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // ── Normalized outputs (what the node exposes after mapping) ──────────────────
+
+export interface NormalizedWorldInfo {
+    master_id: number;
+    server: string;
+    version: number;
+}
 
 export interface NormalizedLogEntry {
     timestamp: number;
@@ -15,8 +21,12 @@ export interface NormalizedRelayInstance {
     node_id: number;  // DB/federation id (from n)
     player_count: number;
     flags: number;
-    world: string;
+    world: NormalizedWorldInfo | string;  // string for backwards compat with old relay
     capacity: number;
+    tps: number;                  // configured TPS
+    threshold: number;            // configured threshold
+    effective_tps: number;        // effective TPS (load balancing)
+    effective_threshold: number;  // effective threshold (load balancing)
 }
 
 export interface NormalizedRelayClient {
@@ -35,6 +45,8 @@ export interface NormalizedRelayPlayer {
     flags: number;
     joined_at: number;
     user: string | null;
+    custom_tps: number;
+    custom_threshold: number;
 }
 
 // ── Raw relay response DTOs (abbreviated or full keys from relay binary) ──────
@@ -68,6 +80,21 @@ export class RelayLogsResponseDto {
     logs: RelayLogEntryDto[] = [];
 }
 
+/** World info object embedded in instance data. */
+export class RelayWorldInfoDto {
+    @IsInt()       i?: number;   // master_id (abbrev)
+    @IsString()    s?: string;   // server (address)
+    @IsInt()       v?: number;   // version
+
+    normalize(): NormalizedWorldInfo {
+        return {
+            master_id: this.i ?? 0,
+            server:    this.s ?? '',
+            version:   this.v ?? 0,
+        };
+    }
+}
+
 /** One instance entry from relay `get_instances` ack. */
 export class RelayInstanceItemDto {
     @IsOptional() @IsInt()       i?: number;         // internal_id (abbrev, relay-local slot)
@@ -78,20 +105,39 @@ export class RelayInstanceItemDto {
     @IsOptional() @IsArray()     players?: unknown[];
     @IsOptional() @IsInt()       f?: number;         // flags (abbrev)
     @IsOptional() @IsInt()       flags?: number;
-    @IsOptional() @IsString()    w?: string;         // world (abbrev)
-    @IsOptional() @IsString()    world?: string;
+    @IsOptional() @ValidateNested() @Type(() => RelayWorldInfoDto) w?: RelayWorldInfoDto | string;  // world (abbrev, object or legacy string)
+    @IsOptional() @ValidateNested() @Type(() => RelayWorldInfoDto) world?: RelayWorldInfoDto | string;
     @IsOptional() @IsInt()       c?: number;         // capacity (abbrev)
     @IsOptional() @IsInt()       capacity?: number;
+    @IsOptional() @IsInt()       t?: number;         // configured TPS (abbrev)
+    @IsOptional() @IsInt()       tps?: number;
+    @IsOptional() @IsNumber()    th?: number;        // configured threshold (abbrev)
+    @IsOptional() @IsNumber()    threshold?: number;
+    @IsOptional() @IsInt()       et?: number;        // effective TPS (abbrev)
+    @IsOptional() @IsInt()       effective_tps?: number;
+    @IsOptional() @IsNumber()    eh?: number;        // effective threshold (abbrev)
+    @IsOptional() @IsNumber()    effective_threshold?: number;
 
     normalize(): NormalizedRelayInstance {
         const players = this.p ?? this.players ?? [];
+        const rawWorld = this.w ?? this.world;
+        const world: NormalizedWorldInfo | string =
+            rawWorld instanceof RelayWorldInfoDto
+                ? rawWorld.normalize()
+                : typeof rawWorld === 'string'
+                    ? rawWorld
+                    : '';
         return {
             id:           String(this.i ?? this.internal_id ?? ''),
             node_id:      this.n ?? this.node_id ?? 0,
             player_count: typeof players === 'number' ? players : Array.isArray(players) ? players.length : 0,
             flags:        this.f ?? this.flags   ?? 0,
-            world:        this.w ?? this.world   ?? '',
+            world,
             capacity:     this.c ?? this.capacity ?? 0,
+            tps:          this.t ?? this.tps ?? 0,
+            threshold:    this.th ?? this.threshold ?? 0,
+            effective_tps:        this.et ?? this.effective_tps ?? 0,
+            effective_threshold:  this.eh ?? this.effective_threshold ?? 0,
         };
     }
 
@@ -165,6 +211,10 @@ export class RelayPlayerItemDto {
     @IsOptional() @IsInt()       joined_at?: number;
     @IsOptional() @IsString()    u?: string | null;  // user (abbrev)
     @IsOptional() @IsString()    user?: string | null;
+    @IsOptional() @IsInt()       ct?: number;        // custom_tps (abbrev)
+    @IsOptional() @IsInt()       custom_tps?: number;
+    @IsOptional() @IsNumber()    ch?: number;        // custom_threshold (abbrev)
+    @IsOptional() @IsNumber()    custom_threshold?: number;
 
     normalize(): NormalizedRelayPlayer {
         return {
@@ -174,6 +224,8 @@ export class RelayPlayerItemDto {
             flags:     this.f ?? this.flags     ?? 0,
             joined_at: this.j ?? this.joined_at ?? 0,
             user:      this.u ?? this.user      ?? null,
+            custom_tps:        this.ct ?? this.custom_tps ?? 0,
+            custom_threshold:  this.ch ?? this.custom_threshold ?? 0,
         };
     }
 }
