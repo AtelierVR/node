@@ -1,13 +1,16 @@
-import { Controller, HttpStatus, Post, Delete, Body, Req, Res, Param, UseGuards } from '@nestjs/common';
+import { Controller, HttpStatus, Post, Delete, Body, Req, Res, Param, UseGuards, forwardRef, Inject } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { VerificationService } from './verification.service';
 import { AuthUserGuard, OptionalAuthUserGuard } from './auth.guard';
 import type { OptionalUserAuthenticatedRequest, UserAuthenticatedRequest } from './auth.guard';
-import { RegisterDto, LoginDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, SendVerificationCodeDto } from './dto/auth.dto';
 import type { Request, Response } from 'express';
 import { ApiWrappedResponse, ApiWrappedSuccessResponse, ApiErrorResponse } from '../api/swagger';
 import { ApiSessionDto } from '../users/dto/user-response.dto';
+import { ApiException } from 'src/api/api-exception';
+import { ApiErrorCode } from 'src/api/api-error.factory';
+import { UsersService } from 'src/users/users.service';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -15,6 +18,8 @@ export class AuthController {
     constructor(
         private readonly auth: AuthService,
         private readonly verification: VerificationService,
+        @Inject(forwardRef(() => UsersService))
+        private readonly users: UsersService,
     ) { }
 
     @ApiOperation({ summary: 'Register', description: 'Create a new user account and return a session token.' })
@@ -75,10 +80,13 @@ export class AuthController {
     // ── Auth Methods (email, totp, etc.) ────────────────────────────────
 
     @ApiOperation({ summary: 'Send verification code', description: 'Send a 2FA verification code via the requested method.' })
-    @UseGuards(AuthUserGuard)
     @Post('methods/:method/send')
-    async sendVerificationCode(@Req() req: UserAuthenticatedRequest, @Param('method') method: string) {
-        const success = await this.verification.sendFactorCode(req.user, method);
+    async sendVerificationCode(@Req() req: Request, @Param('method') method: string, @Body() body: SendVerificationCodeDto) {
+        let user = await this.users.findById(body.target);
+        if (!user)
+            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required');
+
+        const success = await this.verification.sendFactorCode(user, method);
         return { success };
     }
 

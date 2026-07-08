@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsInt, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -57,4 +58,12 @@ export class LoginDto {
     @IsOptional()
     @IsString()
     public_key?: string;
+}
+
+export class SendVerificationCodeDto {
+    @ApiProperty({ description: 'Numeric user ID to send the verification code to', example: 1 })
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    target!: number;
 }
