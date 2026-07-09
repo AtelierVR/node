@@ -384,14 +384,14 @@ export class UsersService implements OnModuleInit {
         }
             
         // If sensitive changes require verification
-        if (sensitive && this.verification.isVerificationRequired(model)) {
+        if (sensitive && await this.verification.isVerificationRequired(model)) {
             const wrappedModel = User.attach(model, this);
             if (input.factor_code) {
                 const verifyResult = await this.verification.verifyFactorCode(wrappedModel, input.factor_code);
                 if (!verifyResult.success)
                     throw new ApiException(ApiErrorCode.VALIDATION_ERROR, { field: 'factor_code', message: verifyResult.message }, verifyResult.message);
             } else {
-                const methods = this.verification.getAvailableVerificationMethods(wrappedModel);
+                const methods = await this.verification.getAvailableVerificationMethods(wrappedModel);
                 throw new ApiException(ApiErrorCode.VERIFICATION_REQUIRED, { verification_required: true, methods }, 'Verification required');
             }
         }

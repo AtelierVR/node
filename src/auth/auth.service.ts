@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, forwardRef, Inject } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../database/prisma.service';
 import { hashPassword, verifyPassword } from '../utils/password';
@@ -11,6 +11,7 @@ import { User } from 'src/users/user.model';
 import { AppConfigService } from 'src/config/config.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import { NoxIdentifier } from '../common/identifier';
+import { EmailVerificationService } from '../email/email-verification.service';
 export { RegisterDto, LoginDto } from './dto/auth.dto';
 
 @Injectable()
@@ -22,6 +23,8 @@ export class AuthService {
         private readonly devices: DeviceService,
         private readonly config: AppConfigService,
         private readonly verification: VerificationService,
+        @Inject(forwardRef(() => EmailVerificationService))
+        private readonly emailVerification: EmailVerificationService,
     ) { }
 
     async register(input: RegisterDto, meta?: { ip?: string; userAgent?: string }) {
@@ -90,9 +93,9 @@ export class AuthService {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, { field: 'password', message: 'Invalid password' }, 'Invalid password');
 
         // Handle MFA
-        if (this.verification.isVerificationRequired(user)) {
+        if (await this.verification.isVerificationRequired(user)) {
             if (!input.factor_code) {
-                const methods = this.verification.getAvailableVerificationMethods(user);
+                const methods = await this.verification.getAvailableVerificationMethods(user);
                 throw new ApiException(ApiErrorCode.VERIFICATION_REQUIRED, { verification_required: true, methods }, 'Verification required');
             }
 
@@ -117,6 +120,12 @@ export class AuthService {
             details: { user_id: user.id, session_id: session.id },
             author: NoxIdentifier.type('u', user.identifier()).toString(),
         }).catch(() => { });
+
+        // Security notification: new login (only when email is verified)
+        if (user.email && user.emailVerified)
+            this.emailVerification.sendSecurityNotification(
+                user.email, user.display, 'login', { ip: meta?.ip },
+            );
 
         return { session, user };
     }

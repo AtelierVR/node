@@ -10,14 +10,17 @@ export interface VerificationMethod {
   name: string;
   description: string;
   enabled: boolean;
-  can_send: boolean;
-  send_data?: Record<string, unknown>;
-  /** Rules for the verification code input. */
-  code?: {
-    length: number;
-    /** Character set: 'numeric' (0-9), 'alphanumeric' (0-9 A-Z), 'hex' (0-9 A-F). Default: 'numeric'. */
-    type: 'numeric' | 'alphanumeric' | 'hex';
-  };
+  /** Sending capabilities (null when the method cannot send codes). */
+  details: {
+    sendable: boolean;
+    data: Record<string, unknown>;
+    /** Rules for the verification code input. */
+    code: {
+      length: number;
+      /** Character set: 'numeric' (0-9), 'alphanumeric' (0-9 A-Z), 'hex' (0-9 A-F). Default: 'numeric'. */
+      type: 'numeric' | 'alphanumeric' | 'hex';
+    } | null;
+  } | null;
 }
 
 export interface VerificationFactorResult {
@@ -38,6 +41,42 @@ export interface MethodActionResult {
   message: string;
 }
 
+// ── Method registry ────────────────────────────────────────────────────
+
+interface MethodDefinition {
+  type: string;
+  name: string;
+  description: string;
+  details: {
+    sendable: boolean;
+    data: (user: any) => Record<string, unknown>;
+    code: { length: number; type: 'numeric' | 'alphanumeric' | 'hex' } | null;
+  } | null;
+  /** Whether this method is available (enabled) for the given user. */
+  available: (user: any) => boolean | Promise<boolean>;
+}
+
+const VERIFICATION_METHODS: Record<string, MethodDefinition> = {
+  totp: {
+    type: 'totp',
+    name: 'Authenticator App',
+    description: 'Use an authenticator app like Google Authenticator',
+    details: { sendable: false, data: () => ({}), code: { length: 6, type: 'numeric' } },
+    available: (user) => !!(user.twofaEnabled && user.twofaSecret),
+  },
+  email: {
+    type: 'email',
+    name: 'Email Verification',
+    description: 'Receive a verification code via email',
+    details: {
+      sendable: true,
+      data: (user) => ({ target: user.id }),
+      code: { length: 6, type: 'numeric' },
+    },
+    available: (user) => !!(user.email && user.emailVerified),
+  },
+};
+
 @Injectable()
 export class VerificationService {
   private readonly logger = new Logger(VerificationService.name);
@@ -48,32 +87,34 @@ export class VerificationService {
     private readonly totp: TotpService,
   ) { }
 
-  getAvailableVerificationMethods(user: any): VerificationMethod[] {
-    const methods: VerificationMethod[] = [];
-    methods.push({
-      type: 'totp',
-      name: 'Authenticator App (2FA)',
-      description: 'Use an authenticator app like Google Authenticator',
-      enabled: !!user.twofaEnabled && !!user.twofaSecret,
-      can_send: false,
-      code: { length: 6, type: 'numeric' },
-    });
-
-    methods.push({
-      type: 'email',
-      name: 'Email Verification',
-      description: 'Receive a verification code via email',
-      enabled: !!user.email && !!user.emailVerified,
-      can_send: true,
-      send_data: { target: user.id },
-      code: { length: 6, type: 'numeric' },
-    });
-
-    return methods.filter(m => m.enabled);
+  private methodDisplayName(method: string): string {
+    return VERIFICATION_METHODS[method]?.name ?? method;
   }
 
-  isVerificationRequired(user: any): boolean {
-    return !!user.twofaEnabled || !!user.emailVerified;
+  async getAvailableVerificationMethods(user: any): Promise<VerificationMethod[]> {
+    const results = await Promise.all(
+      Object.values(VERIFICATION_METHODS).map(async (m) => {
+        if (!(await m.available(user))) return null;
+        const method: VerificationMethod = {
+          type: m.type,
+          name: m.name,
+          description: m.description,
+          enabled: true,
+          details: m.details ? {
+            sendable: m.details.sendable,
+            data: m.details.data(user),
+            code: m.details.code,
+          } : null,
+        };
+        return method;
+      }),
+    );
+    return results.filter((m): m is VerificationMethod => m !== null);
+  }
+
+  async isVerificationRequired(user: any): Promise<boolean> {
+    const methods = await this.getAvailableVerificationMethods(user);
+    return methods.length > 0;
   }
 
   // ── Generic method actions ─────────────────────────────────────────────
@@ -98,40 +139,66 @@ export class VerificationService {
   }
 
   async enableMethod(user: UserWithMethods | null, method: string, body: Record<string, any>): Promise<MethodActionResult> {
+    let result: MethodActionResult;
     switch (method) {
       case 'totp':
         if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required');
-        return this.totp.enable(user.id, body.secret, body.token);
+        result = await this.totp.enable(user.id, body.secret, body.token);
+        break;
       case 'email': {
         // Link token verification (public — user clicks link in email)
         if (!body.token || body.token.length <= 10)
           throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'token is required');
 
-          const result = await this.email.verifyEmailLink(body.token);
-          return { enabled: result.success, message: result.message };
+        const emailResult = await this.email.verifyEmailLink(body.token);
+        result = { enabled: emailResult.success, message: emailResult.message };
+        break;
       }
       default:
         throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `Unknown method: ${method}`);
     }
+
+    // Security notification: method enabled (only when email is verified)
+    if (result.enabled && user?.email && (user as any).emailVerified) {
+      this.email.sendSecurityNotification(
+        user.email, user.display, 'method_added',
+        { methodName: this.methodDisplayName(method) },
+      );
+    }
+
+    return result;
   }
 
   async disableMethod(user: UserWithMethods, method: string, factor_code?: string): Promise<MethodActionResult> {
     // Require verification
     if (!factor_code) {
-      const methods = this.getAvailableVerificationMethods(user);
+      const methods = await this.getAvailableVerificationMethods(user);
       if (methods.length > 0)
         throw new ApiException(ApiErrorCode.VERIFICATION_REQUIRED, { verification_required: true, methods }, 'Verification required');
     }
 
+    let result: MethodActionResult;
     switch (method) {
       case 'totp':
-        return this.totp.disable(user.id);
+        result = await this.totp.disable(user.id);
+        break;
       case 'email':
         await user.update({ email: null, emailVerified: false });
-        return { disabled: true, message: 'Email removed successfully' };
+        result = { disabled: true, message: 'Email removed successfully' };
+        break;
       default:
         throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `Unknown method: ${method}`);
     }
+
+    // Security notification: method disabled (only when email is verified)
+    if (result.disabled && user.email && (user as any).emailVerified) {
+      this.email.sendSecurityNotification(
+        user.email, user.display, 'method_removed',
+        { methodName: this.methodDisplayName(method) },
+      );
+    }
+
+    return result;
   }
 
   async sendFactorCode(user: UserWithMethods, method: string): Promise<boolean> {
@@ -150,7 +217,7 @@ export class VerificationService {
   }
 
   async verifyFactorCode(user: UserWithMethods, code: string): Promise<VerificationFactorResult> {
-    const methods = this.getAvailableVerificationMethods(user);
+    const methods = await this.getAvailableVerificationMethods(user);
     if (!methods.length) return { success: false, message: 'No verification methods available' };
 
     // Try email first if available
