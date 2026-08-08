@@ -77,4 +77,45 @@ export class SessionService {
       return false;
     }
   }
+
+  /** List all sessions for a user, with devices included. Optional filters. */
+  async listByUser(
+    userId: number,
+    limit: number,
+    offset: number,
+    filters?: { ip?: string },
+  ) {
+    const where: any = { userId };
+    if (filters?.ip) {
+      where.devices = { some: { ip: { contains: filters.ip } } };
+    }
+    const [sessions, total] = await Promise.all([
+      this.prisma.sessions.findMany({
+        where,
+        include: { devices: { orderBy: { lastSeen: 'desc' } } },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.sessions.count({ where }),
+    ]);
+    return { sessions, total };
+  }
+
+  /** Delete all sessions for a user, optionally keeping one (the current session). */
+  async deleteAllByUser(userId: number, exceptId?: string) {
+    // Clear cache for all deleted sessions
+    const sessions = await this.prisma.sessions.findMany({
+      where: { userId, ...(exceptId ? { id: { not: exceptId } } : {}) },
+      select: { id: true, token: true },
+    });
+    for (const s of sessions)
+      await this.cache.del(`${SESSION_CACHE_PREFIX}${s.token}`);
+
+    const where = exceptId
+      ? { userId, id: { not: exceptId } }
+      : { userId };
+    const result = await this.prisma.sessions.deleteMany({ where });
+    return result.count;
+  }
 }

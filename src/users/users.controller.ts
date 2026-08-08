@@ -2,7 +2,7 @@ import { Controller, Get, HttpStatus, Param, Req, UseGuards, Query, Post, Delete
 import type { Request, Express, Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
 import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiWrappedSuccessResponse, ApiErrorResponse, ApiOptionalBearerAuth, ApiOptionalChallenge } from '../api/swagger';
-import { ApiCurrentUserDto, ApiUserDto, ApiRelationDto } from './dto/user-response.dto';
+import { ApiCurrentUserDto, ApiUserDto, ApiRelationDto, ApiDeviceDto, ApiSessionListItemDto, ApiSessionListResponseDto, ApiDeleteSessionResponseDto } from './dto/user-response.dto';
 import { UserSearchResponseDto } from './dto/user-search-response.dto';
 import { UsersService } from './users.service';
 import { UserWithMethods } from './user.model';
@@ -22,6 +22,9 @@ import { ApiUser } from './users.types';
 import { UserAuthenticatedRequest, AuthUserGuard, OptionalAuthUserGuard, OptionalUserAuthenticatedRequest } from '../auth/auth.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { OptionalServerAsUserAuthenticatedRequest, OptionalServerAsUserGuard } from 'src/auth/server-as-user.guard';
+import { SessionService } from '../auth/session.service';
+import { WsService } from '../ws/ws.service';
+import { Session, type SessionWithMethods } from '../auth/session.model';
 
 @ApiTags('Users')
 @Controller('users')
@@ -31,6 +34,8 @@ export class UsersController {
         private readonly storage: StorageService,
         private readonly relations: RelationsService,
         private readonly externalServers: ExternalServersService,
+        private readonly sessions: SessionService,
+        private readonly ws: WsService,
     ) { }
 
     /**
@@ -657,5 +662,87 @@ export class UsersController {
 
         const viewer = await req.user?.identifier() ?? null;
         return user.sanitize(viewer);
+    }
+
+    // ── Sessions ─────────────────────────────────────────────────────────────────
+
+    /** Create a SessionWithMethods from a raw Prisma session + attach manager deps. */
+    private wrapSession(s: any): SessionWithMethods {
+        return Session.attach(s, { ws: this.ws, sessions: this.sessions });
+    }
+
+    @ApiOperation({ summary: 'Get current session', description: 'Return the session used for this request.' })
+    @ApiWrappedResponse(ApiSessionListItemDto)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiBearerAuth()
+    @UseGuards(AuthUserGuard)
+    @Get('@me/session')
+    async getCurrentSession(@Req() req: Request & UserAuthenticatedRequest) {
+        const session = await this.users.prisma.sessions.findUnique({
+            where: { id: req.session.id },
+            include: { devices: { orderBy: { lastSeen: 'desc' } } },
+        });
+        if (!session) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Session');
+        return this.wrapSession(session).sanitize(req.session.id);
+    }
+
+    @ApiOperation({ summary: 'List current user sessions', description: 'Return the list of all sessions for the authenticated user (paginated). Optionally filter by IP.' })
+    @ApiWrappedResponse(ApiSessionListResponseDto)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiBearerAuth()
+    @UseGuards(AuthUserGuard)
+    @Get('@me/sessions')
+    async listMySessions(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @Query('limit') rawLimit?: string,
+        @Query('offset') rawOffset?: string,
+        @Query('ip') ip?: string,
+    ) {
+        const limit = Math.min(Math.max(parseInt(rawLimit ?? '10', 10) || 10, 1), 100);
+        const offset = Math.max(parseInt(rawOffset ?? '0', 10) || 0, 0);
+
+        const { sessions: sessionList, total } = await this.sessions.listByUser(
+            req.user.id, limit, offset,
+            ip ? { ip } : undefined,
+        );
+
+        const sessions = await Promise.all(
+            sessionList.map(s => this.wrapSession(s).sanitize(req.session.id)),
+        );
+
+        return { sessions, total, limit, offset };
+    }
+
+    @ApiOperation({ summary: 'Delete a specific session', description: 'Delete a session by its ID. If the session is the current one, the client will be logged out.' })
+    @ApiWrappedResponse(ApiDeleteSessionResponseDto)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiBearerAuth()
+    @UseGuards(AuthUserGuard)
+    @Delete('@me/sessions/:id')
+    async deleteMySession(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @Param('id') id: string,
+    ) {
+        // Verify the session belongs to the current user
+        const session = await this.users.prisma.sessions.findUnique({ where: { id } });
+        if (!session || session.userId !== req.user.id)
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Session');
+
+        const isCurrent = session.id === req.session.id;
+        const deleted = await this.sessions.deleteSessionById(id);
+
+        return { success: deleted, logout: isCurrent };
+    }
+
+    @ApiOperation({ summary: 'Delete all sessions (except current)', description: 'Delete all sessions for the authenticated user except the current request session.' })
+    @ApiWrappedResponse(ApiDeleteSessionResponseDto)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiBearerAuth()
+    @UseGuards(AuthUserGuard)
+    @Delete('@me/sessions')
+    async deleteAllMySessions(@Req() req: Request & UserAuthenticatedRequest) {
+        const count = await this.sessions.deleteAllByUser(req.user.id, req.session.id);
+        return { success: true, logout: false };
     }
 }

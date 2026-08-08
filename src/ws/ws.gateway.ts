@@ -791,4 +791,12 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
             ws.send(JSON.stringify(frame));
         }
     }
+
+    // ── Public query methods ──────────────────────────────────────────────
+
+    /** Check if a user has at least one active WebSocket connection. */
+    isUserConnected(userId: number): boolean {
+        const set = this.userSockets.get(userId);
+        return set !== undefined && set.size > 0;
+    }
 }

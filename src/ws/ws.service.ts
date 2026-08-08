@@ -39,4 +39,11 @@ export class WsService {
     registerValidator(name: string, fn: WsRoomValidator): void {
         this.gateway.registerValidator(name, fn);
     }
+
+    /**
+     * Check if a user has at least one active WebSocket connection.
+     */
+    isUserConnected(userId: number): boolean {
+        return this.gateway.isUserConnected(userId);
+    }
 }

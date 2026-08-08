@@ -117,3 +117,59 @@ export class ApiRelationDto {
     @ApiProperty({ description: 'Timestamp when the relation was created (Unix ms)', example: 1680000000000 })
     created_at!: number;
 }
+
+export class ApiDeviceDto {
+    @ApiProperty({ description: 'User-Agent string', example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...' })
+    user_agent!: string;
+
+    @ApiProperty({ description: 'IP address', example: '203.0.113.42' })
+    ip!: string;
+
+    @ApiProperty({ description: 'Last seen timestamp (Unix ms)', example: 1712000000000 })
+    last_seen!: number;
+}
+
+export class ApiSessionListItemDto {
+    @ApiProperty({ description: 'Session unique ID', example: 'abc-def-123' })
+    id!: string;
+
+    @ApiProperty({ description: 'Whether this is the current request session', example: false })
+    current!: boolean;
+
+    @ApiProperty({ description: 'Whether this session has an active WebSocket connection', example: true })
+    active!: boolean;
+
+    @ApiPropertyOptional({ type: 'string', description: 'Ed25519 public key (base64 SPKI DER) if provided during login, or null', example: 'MCowBQYDK2VwAyEA...', nullable: true })
+    public_key!: string | null;
+
+    @ApiProperty({ description: 'Session expiry timestamp (Unix ms)', example: 1712000000000 })
+    expires_at!: number;
+
+    @ApiProperty({ description: 'Session creation timestamp (Unix ms)', example: 1680000000000 })
+    created_at!: number;
+
+    @ApiProperty({ description: 'Devices associated with this session', type: () => [ApiDeviceDto] })
+    devices!: ApiDeviceDto[];
+}
+
+export class ApiSessionListResponseDto {
+    @ApiProperty({ description: 'List of sessions', type: () => [ApiSessionListItemDto] })
+    sessions!: ApiSessionListItemDto[];
+
+    @ApiProperty({ description: 'Total number of sessions for pagination', example: 5 })
+    total!: number;
+
+    @ApiProperty({ description: 'Page size', example: 10 })
+    limit!: number;
+
+    @ApiProperty({ description: 'Page offset', example: 0 })
+    offset!: number;
+}
+
+export class ApiDeleteSessionResponseDto {
+    @ApiProperty({ description: 'Whether the deletion succeeded', example: true })
+    success!: boolean;
+
+    @ApiProperty({ description: 'Whether the deleted session was the current one (client should log out)', example: false })
+    logout!: boolean;
+}
