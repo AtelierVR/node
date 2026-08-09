@@ -27,15 +27,16 @@ export class FediverseService implements OnModuleInit {
      * @returns NodeInfoLinks
      */
     async nodeInfoLinks(): Promise<NodeInfoLinks> {
+        const base = await this.wellKnown.webBaseUrl();
         return {
             links: [
                 {
                     rel: 'http://nodeinfo.diaspora.software/ns/schema/2.1',
-                    href: `${await this.wellKnown.webBaseUrl()}/nodeinfo/2.1`,
+                    href: new URL('nodeinfo/2.1', base).toString(),
                 },
                 {
                     rel: 'nox/1.0',
-                    href: `${await this.wellKnown.webBaseUrl()}/.well-known/nox`,
+                    href: new URL('.well-known/nox', base).toString(),
                 }
             ],
         };

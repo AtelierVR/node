@@ -19,7 +19,6 @@ export class NodeInfoController {
         'Content-Type',
         'application/json; profile="http://nodeinfo.diaspora.software/ns/schema/2.1#"',
     )
-
     async v21(): Promise<NodeInfoDocument> {
         return await this.fediverse.nodeInfoDocument();
     }
