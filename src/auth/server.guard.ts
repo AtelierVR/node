@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, OnModuleDestroy, Logger } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
@@ -36,6 +36,8 @@ const MAX_TOKEN_AGE_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class OptionalServerGuard implements CanActivate, OnModuleDestroy {
+    private readonly logger = new Logger(OptionalServerGuard.name);
+
     constructor(
         private readonly servers: ExternalServersService,
         private readonly wellKnown: WellKnownService,
@@ -89,25 +91,32 @@ export class OptionalServerGuard implements CanActivate, OnModuleDestroy {
 
         // 2. Vérifier la signature du blob chiffré avec la clé publique de l'émetteur
         const senderPubPem = decompressPublicKey(Buffer.from(server.public as Buffer).toString('utf8'));
-        if (!await verify(dataBuffer, sigBuffer, senderPubPem))
+        if (!await verify(dataBuffer, sigBuffer, senderPubPem)) {
+            this.logger.warn(`Challenge signature verification failed for ${keyId}`);
             return true;
+        }
 
         // 3. Déchiffrer avec notre propre clé privée
         let payload: TokenPayload;
         try {
             const { private: privKey } = await this.wellKnown.pairKeys();
             payload = JSON.parse(decrypt(dataBuffer, privKey).toString('utf8')) as TokenPayload;
-        } catch {
+        } catch (err: any) {
+            this.logger.warn(`Challenge decryption failed for ${keyId}: ${err?.message ?? err}`);
             return true;
         }
 
         // 4. Vérifier la fenêtre temporelle
-        if (Math.abs(Date.now() - payload.t) > MAX_TOKEN_AGE_MS)
+        if (Math.abs(Date.now() - payload.t) > MAX_TOKEN_AGE_MS) {
+            this.logger.warn(`Challenge timestamp too old for ${keyId}: ${payload.t}`);
             return true;
+        }
 
         // 5. Vérifier l'unicité du nonce (anti-replay)
-        if (this._nonces.has(payload.n))
+        if (this._nonces.has(payload.n)) {
+            this.logger.warn(`Challenge nonce already used for ${keyId}`);
             return true;
+        }
 
         // Enregistrer le nonce — expire à timestamp + fenêtre
         this._nonces.set(payload.n, payload.t + MAX_TOKEN_AGE_MS);

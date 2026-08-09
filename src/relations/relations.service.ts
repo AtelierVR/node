@@ -1,11 +1,11 @@
-import { Injectable, forwardRef, Inject } from '@nestjs/common';
+import { Injectable, forwardRef, Inject, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { UserRelationType } from 'src/generated/prisma/enums';
 import { WellKnownService } from '../fediverse/well-known.service';
 import { UsersService } from '../users/users.service';
 import { ExternalServersService } from '../external/external-servers.service';
 import { UserWithMethods } from '../users/user.model';
-import { S2SRelationDto } from './relations.types';
+import { S2SRelationDto, S2SRelationResponseDto } from './relations.types';
 import { ApiErrorCode } from '../api/api-error.factory';
 import { ApiException } from '../api/api-exception';
 import { ApiUserRelations } from '../users/users.types';
@@ -16,6 +16,8 @@ import { EventsService } from '../gateway/events.service';
 
 @Injectable()
 export class RelationsService {
+    private readonly logger = new Logger(RelationsService.name);
+
     constructor(
         private readonly prisma: PrismaService,
         public readonly wellKnown: WellKnownService,
@@ -110,16 +112,27 @@ export class RelationsService {
             return rel;
         }
 
-        // Remote target — create local REQUEST first, then sync via S2S
-        const rel = Relation.attach(await this.prisma.userRelations.create({
-            data: { initiatorRef: initiator.identifier().toString(), targetRef: userTarget.toString(), type: UserRelationType.REQUEST },
-        }), this);
-
-        await this._syncS2S(userTarget, {
+        // Remote target — sync to Server B first, only create local REQUEST if accepted
+        const result = await this._syncS2S(userTarget, {
             initiator: initiator.id,
             target: userTarget.numericId!,
             type: 'follow',
         });
+
+        if (!result.ok) 
+            throw new ApiException(
+                ApiErrorCode.EXTERNAL_SERVER_ERROR,
+                null,
+                `Remote server refused the follow: ${result.error}`,
+            );
+
+        const rel = Relation.attach(await this.prisma.userRelations.create({
+            data: { 
+                initiatorRef: initiator.identifier().toString(), 
+                targetRef: userTarget.toString(), 
+                type: UserRelationType.REQUEST 
+            }
+        }), this);
 
         return rel;
     }
@@ -284,14 +297,37 @@ export class RelationsService {
 
     // ── S2S outgoing helpers ──────────────────────────────────────────────────────
 
-    private async _syncS2S(target: NoxIdentifier, dto: S2SRelationDto): Promise<void> {
-        if (!target.server || target.server === NoxIdentifier.LOCALSERVER) return;
-        const server = await this.externalServers.discover(target.server);
-        await server.fetch('/api/relations', {
-            method: 'POST',
-            body: JSON.stringify(dto),
-            headers: { 'Content-Type': 'application/json' },
-        });
+    private async _syncS2S(target: NoxIdentifier, dto: S2SRelationDto): Promise<{ ok: boolean; error?: string }> {
+        if (!target.server || target.server === NoxIdentifier.LOCALSERVER) return { ok: true };
+        try {
+            const server = await this.externalServers.discover(target.server);
+            const res = await server.fetch<S2SRelationResponseDto>('api/relations', {
+                method: 'POST',
+                body: JSON.stringify(dto),
+                headers: { 'Content-Type': 'application/json' },
+                responseClass: S2SRelationResponseDto,
+            });
+            if (res.error) {
+                const msg = `[${res.error.code}] ${res.error.message}`;
+                this.logger.warn(
+                    `S2S ${dto.type} to ${target.server} ` +
+                    `(${dto.initiator}→${dto.target}): ${msg}`,
+                );
+                return { ok: false, error: msg };
+            }
+            this.logger.log(
+                `S2S ${dto.type} to ${target.server} ` +
+                `(${dto.initiator}→${dto.target}): OK`,
+            );
+            return { ok: true };
+        } catch (err: any) {
+            const msg = err?.message ?? String(err);
+            this.logger.error(
+                `S2S ${dto.type} to ${target.server} ` +
+                `(${dto.initiator}→${dto.target}): ${msg}`,
+            );
+            return { ok: false, error: msg };
+        }
     }
 
     private async _notifyS2SResponse(initiator: NoxIdentifier, responderId: number, accept: boolean): Promise<void> {

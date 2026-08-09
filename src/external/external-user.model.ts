@@ -3,6 +3,7 @@ import { ExternalUsersService } from './external-users.service';
 import { NoxIdentifier } from 'src/common/identifier';
 import { ExternalServerWithMethods } from './external-server.model';
 import { ApiUser } from 'src/users/users.types';
+import { ApiUserDto } from '../users/dto/user-response.dto';
 import { UserWithMethods } from 'src/users/user.model';
 
 export type ExternalUserWithMethods = ExternalUserModel & {
@@ -42,7 +43,7 @@ export class ExternalUser {
 
   async fetch(this: ExternalUserWithMethods): Promise<ApiUser> {
     const server = await this.server();
-    const resp = await server.fetch<ApiUser>(`/api/users/${this.id}`);
+    const resp = await server.fetch<ApiUser>(`users/${this.id}`, { responseClass: ApiUserDto });
     if (resp.error || !resp.data)
       throw new Error(`Remote server returned an error for user ${this.id}@${server.address}: ${resp.error?.message ?? 'no data'}`);
     return resp.data;

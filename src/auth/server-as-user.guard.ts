@@ -5,6 +5,7 @@ import { ExternalUsersService } from 'src/external/external-users.service';
 import { ApiErrorCode } from 'src/api/api-error.factory';
 import { ApiException } from 'src/api/api-exception';
 import { ApiUser } from 'src/users/users.types';
+import { ApiUserDto } from '../users/dto/user-response.dto';
 
 export interface OptionalServerAsUserAuthenticatedRequest extends OptionalServerAuthenticatedRequest {
     user: ExternalUserWithMethods | null;
@@ -40,7 +41,7 @@ export class OptionalServerAsUserGuard implements CanActivate {
 
         let user = await this.externalUsers.findByIid(id, req.server.address as string);
         if (!user) {
-            const resp = await req.server.fetch<ApiUser>(`/users/${id}`);
+            const resp = await req.server.fetch<ApiUser>(`/users/${id}`, { responseClass: ApiUserDto });
             if (resp.error || !resp.data) return true;
             user = await this.externalUsers.upsertUser(id, req.server, resp.data.public);
         }

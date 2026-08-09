@@ -82,7 +82,7 @@ export const ERROR_DEFINITIONS: Record<ApiErrorCode, ErrorDef> = {
         message: 'Verification is required to access this resource',
     },
     [ApiErrorCode.EXTERNAL_SERVER_ERROR]: {
-        status: -1,
+        status: HttpStatus.BAD_GATEWAY,
         message: (message) => message || 'An error occurred while communicating with an external server',
     },
 };

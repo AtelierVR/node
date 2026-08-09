@@ -83,7 +83,7 @@ export class ServersController {
         const server = await this.servers.findOrDiscover(address);
         if (!server) throw new NotFoundException(`Server "${address}" not found and could not be discovered.`);
 
-        const result = await server.fetch<InstanceConfigDto>('/configs');
+        const result = await server.fetch<InstanceConfigDto>('/configs', { responseClass: InstanceConfigDto });
         if (!result.data) throw new NotFoundException(`Could not fetch configs from server "${address}".`);
         return result.data;
     }

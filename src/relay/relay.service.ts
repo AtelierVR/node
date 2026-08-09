@@ -10,6 +10,7 @@ import { WellKnownService } from '../fediverse/well-known.service';
 import { ActivityService } from '../activity/activity.service';
 import { NoxIdentifier } from '../common/identifier';
 import { ExternalUsersService } from '../external/external-users.service';
+import { ApiUserDto } from '../users/dto/user-response.dto';
 import { RunnerFactory } from './runners/runner.factory';
 import type { RelayRunnerInfo } from './runners/runner.interface';
 import {
@@ -439,7 +440,7 @@ export class RelayService implements OnModuleInit {
             if (!externalUser) return { result: 'invalid_user', error: 'User not found on remote server' };
 
             const server = await externalUser.server();
-            const resp = await server.fetch<{ display: string }>(`/api/users/${dto.user_id}?fp=${encodeURIComponent(dto.fingerprint)}`);
+            const resp = await server.fetch<{ display: string }>(`/api/users/${dto.user_id}?fp=${encodeURIComponent(dto.fingerprint)}`, { responseClass: ApiUserDto });
             if (resp.error || !resp.data) return { result: 'invalid_user', error: 'Invalid fingerprint' };
 
             return {

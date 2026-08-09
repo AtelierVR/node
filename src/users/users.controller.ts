@@ -640,7 +640,7 @@ export class UsersController {
             const server = await this.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
             const fpParam = fp ? `?fp=${encodeURIComponent(fp)}` : '';
-            const resp = await server.fetch<ApiUser>(`/users/${identifier.toString()}${fpParam}`);
+            const resp = await server.fetch<ApiUser>(`/users/${identifier.toString()}${fpParam}`, { responseClass: ApiUserDto });
             if (resp.error || !resp.data) {
                 this.users.logger.error(`Failed to fetch user ${identifier.toString()} from server ${identifier.server}:`, resp.error?.code, resp.error?.message);
                 throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${id})`);

@@ -2,11 +2,12 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { NoxIdentifier } from '../common/identifier';
 import { WellKnownService } from '../fediverse/well-known.service';
-import { ExternalServerDelegate, ExternalUserDelegate } from 'src/generated/prisma/models';
+import { ExternalUserDelegate } from 'src/generated/prisma/models';
 import { ExternalUser, ExternalUserWithMethods } from './external-user.model';
 import { ExternalServerWithMethods } from './external-server.model';
 import { ExternalServersService } from './external-servers.service';
 import { ApiUser } from '../users/users.types';
+import { ApiUserDto } from '../users/dto/user-response.dto';
 
 @Injectable()
 export class ExternalUsersService implements OnModuleInit {
@@ -59,7 +60,10 @@ export class ExternalUsersService implements OnModuleInit {
         if (!user)
             try {
                 user = await this.discover(identifier);
-            } catch {
+            } catch (err: any) {
+                this.logger.warn(
+                    `Failed to discover external user ${identifier.toString()}: ${err?.message ?? err}`,
+                );
                 return null;
             }
         return user;
@@ -74,7 +78,7 @@ export class ExternalUsersService implements OnModuleInit {
         if (!server)
             throw new Error(`Unable to discover server for "${identifier.server}"`);
 
-        const resp = await server.fetch<ApiUser>(`/api/users/${identifier.id}`);
+        const resp = await server.fetch<ApiUser>(`users/${identifier.id}`, { responseClass: ApiUserDto });
         if (resp.error || !resp.data)
             throw new Error(`Remote server returned an error for user ${identifier.toString()}: ${resp.error?.message ?? 'no data'}`);
 

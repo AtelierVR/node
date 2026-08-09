@@ -1,80 +1,111 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsNumber, IsBoolean, IsArray, IsOptional } from 'class-validator';
 import { ApiAliasDto, ApiLinkResponseDto } from '../../api/dto/shared.dto';
 
 export class ApiUserRelationsDto {
     @ApiPropertyOptional({ type: 'string', description: 'Outgoing relation type from current user to subject, or null', example: 'follow', nullable: true })
+    @IsOptional()
+    @IsString()
     out!: string | null;
 
     @ApiPropertyOptional({ type: 'string', description: 'Incoming relation type from subject to current user, or null', example: null, nullable: true })
+    @IsOptional()
+    @IsString()
     in!: string | null;
 }
 
 export class ApiUserPresenceDto {
     @ApiProperty({ description: 'Presence status — one of: oja, ojf, online, busy, dnd, stream, offline', example: 'online' })
+    @IsString()
     status!: string;
 
     @ApiPropertyOptional({ type: 'string', description: 'Custom presence status text, or null', example: null, nullable: true })
+    @IsOptional()
+    @IsString()
     text!: string | null;
 
     @ApiPropertyOptional({ type: [String], description: 'List of instance iids the user is currently in. null means the viewer has no permission to see this field.', example: [], nullable: true })
+    @IsOptional()
     locations!: string[] | null;
 }
 
 export class ApiUserDto {
     @ApiProperty({ description: 'Internal numeric user ID', example: 1 })
+    @IsNumber()
     id!: number;
 
     @ApiProperty({ description: 'Unique username (lowercase)', example: 'johndoe' })
+    @IsString()
     username!: string;
 
     @ApiProperty({ description: 'Public display name', example: 'John Doe' })
+    @IsString()
     display!: string;
 
     @ApiPropertyOptional({ type: 'string', description: 'User biography, or null', example: 'Full-stack developer', nullable: true })
+    @IsOptional()
+    @IsString()
     bio!: string | null;
 
     @ApiPropertyOptional({ type: 'string', description: 'Pronouns, or null', example: 'he/him', nullable: true })
+    @IsOptional()
+    @IsString()
     pronoun!: string | null;
 
     @ApiProperty({ description: 'Server hostname this user belongs to', example: 'my-server.com' })
+    @IsString()
     server!: string;
 
     @ApiProperty({ description: 'User-defined tags', type: [String], example: [] })
+    @IsArray()
     tags!: string[];
 
     @ApiPropertyOptional({ type: 'string', description: 'URL to profile thumbnail, or null', example: 'https://cdn.my-server.com/thumb.png', nullable: true })
+    @IsOptional()
+    @IsString()
     thumbnail!: string | null;
 
     @ApiPropertyOptional({ type: 'string', description: 'URL to profile banner, or null', example: null, nullable: true })
+    @IsOptional()
+    @IsString()
     banner!: string | null;
 
     @ApiProperty({ description: 'External links', type: () => [ApiLinkResponseDto] })
+    @IsArray()
     links!: ApiLinkResponseDto[];
 
     @ApiPropertyOptional({ description: 'Relationship to the requesting user, or null if not applicable', type: () => ApiUserRelationsDto, nullable: true })
+    @IsOptional()
     relations!: ApiUserRelationsDto | null;
 
     @ApiProperty({ description: 'Ed25519 public key (base64 SPKI DER)', example: 'MCow...==' })
+    @IsString()
     public!: string;
 
     @ApiProperty({ description: 'Number of followers', example: 42 })
+    @IsNumber()
     followers!: number;
 
     @ApiProperty({ description: 'Number of users this user follows', example: 17 })
+    @IsNumber()
     following!: number;
 
     @ApiProperty({ description: 'Current presence status', type: () => ApiUserPresenceDto })
     presence!: ApiUserPresenceDto;
 
     @ApiProperty({ description: 'Aliases (NoxIdentifier extras)', type: () => [ApiAliasDto] })
+    @IsArray()
     alias!: ApiAliasDto[];
 }
 
 export class ApiCurrentUserDto extends ApiUserDto {
     @ApiPropertyOptional({ type: 'string', description: 'Email address, or null', example: 'john@example.com', nullable: true })
+    @IsOptional()
+    @IsString()
     email!: string | null;
 
     @ApiProperty({ description: 'Whether the email has been verified', example: false })
+    @IsBoolean()
     email_verified!: boolean;
 
     @ApiProperty({ description: 'Account creation timestamp (Unix ms)', example: 1680000000000 })

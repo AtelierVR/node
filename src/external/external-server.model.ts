@@ -7,7 +7,8 @@ import { discoverWellKnown } from './discover-well-known';
 import { randomBytes } from 'node:crypto';
 import { sign, encrypt, decompressPublicKey } from 'src/utils/crypto';
 import { plainToInstance } from 'class-transformer';
-import { validateSync } from 'class-validator';
+import type { ClassConstructor } from 'class-transformer';
+import { validateSync, type ValidationError } from 'class-validator';
 import { ApiResponseEnvelopeDto } from 'src/api/dto/api-response.dto';
 
 import { UserWithMethods } from 'src/users/user.model';
@@ -16,6 +17,8 @@ export interface ApiRequestInit extends RequestInit {
     resolve?: boolean; // If true, resolve the apiUrl.
     /** When set, adds X-Nox-As-User header so the remote server can apply ServerAsUserGuard. */
     user?: UserWithMethods;
+    /** Optional class-validator DTO to validate `data` against the protocol schema. */
+    responseClass?: ClassConstructor<any>;
 }
 
 export type ExternalServerWithMethods = ExternalServerModel & {
@@ -99,12 +102,12 @@ export class ExternalServer {
             const extraHeaders: Record<string, string> = {};
             if (options?.user) extraHeaders['X-Nox-As'] = String(options.user.id);
             response = await fetch(url, {
+                ...options,
                 headers: {
                     ...options?.headers,
                     ...(await this.headers()),
                     ...extraHeaders,
                 },
-                ...options,
             });
 
             await this.touchLastSeen();
@@ -139,6 +142,42 @@ export class ExternalServer {
                     request: path,
                 };
             }
+
+            // Schema integrity checks
+            const hasError = !!(raw as any).error;
+            const hasData = (raw as any).data !== undefined && (raw as any).data !== null;
+            if (hasError && hasData) 
+                console.warn(
+                    `[ExternalServer] Response from ${url} has both error and data — ` +
+                    `error: [${(raw as any).error?.code}] ${(raw as any).error?.message}`,
+                );
+            if (!hasError && !hasData)
+                console.warn(
+                    `[ExternalServer] Response from ${url} has neither error nor data — ` +
+                    `raw keys: ${Object.keys(raw as object).join(', ')}`,
+                );
+            if (!hasError && (raw as any).request === undefined)
+                console.warn(
+                    `[ExternalServer] Response from ${url} is missing 'request' echo field`,
+                );
+            // Validate data against the expected protocol schema if provided
+            if (options?.responseClass && hasData && !hasError) {
+                const dataInstance = plainToInstance(options.responseClass, (raw as any).data);
+                const dataErrors = validateSync(dataInstance, {
+                    whitelist: false,
+                    forbidNonWhitelisted: false,
+                    skipMissingProperties: true,
+                    stopAtFirstError: false,
+                });
+                if (dataErrors.length > 0) {
+                    const fields = collectValidationFields(dataErrors);
+                    console.warn(
+                        `[ExternalServer] Response data from ${url} failed schema validation: ` +
+                        `invalid fields: [${fields}]`,
+                    );
+                }
+            }
+
             json = raw as ApiResponse<T>;
         } catch (e) {
             console.error(`Failed to parse JSON response from ${url}:`, e);
@@ -193,4 +232,19 @@ export class ExternalServer {
             Authorization: `Challenge ${part1}.${part2}.${part3}`,
         };
     }
+}
+
+/** Recursively collect dotted field paths from ValidationError tree. */
+function collectValidationFields(errors: ValidationError[]): string {
+    const parts: string[] = [];
+    for (const e of errors) {
+        if (e.constraints && Object.keys(e.constraints).length > 0)
+            parts.push(e.property);
+        if (e.children?.length)
+            for (const child of collectValidationFields(e.children).split(', ')) {
+                if (child) parts.push(`${e.property}.${child}`);
+                else parts.push(e.property);
+            }
+    }
+    return parts.join(', ');
 }
