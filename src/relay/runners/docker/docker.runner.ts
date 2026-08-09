@@ -53,22 +53,19 @@ export class DockerRunner implements IRelayRunner {
         return all[0] ?? null;
     }
 
-    /** Find a free UDP port from containers currently using ports. */
+    /** Find a free UDP port by checking all Docker containers (not just Nox-labelled ones). */
     private async findFreePort(min: number, max: number): Promise<number | null> {
         const used = new Set<number>();
-        const containers = await this.docker.listContainers({
-            all: true,
-            filters: {
-                label: [
-                    `${RELAY_ID}`,
-                    `${GROUP_LABEL}=${await this.group()}`
-                ]
-            },
-        });
+
+        // Check all containers (not just Nox-labelled) — port 23000 could be held by
+        // a non-Nox process, a zombie container without labels, or a previous relay
+        // whose labels were already stripped.
+        const containers = await this.docker.listContainers({ all: true });
 
         for (const c of containers)
             for (const p of c.Ports ?? [])
-                if (p.PublicPort) used.add(p.PublicPort);
+                if (p.PublicPort && p.PublicPort >= min && p.PublicPort <= max)
+                    used.add(p.PublicPort);
 
         for (let port = min; port <= max; port++)
             if (!used.has(port))
@@ -89,19 +86,10 @@ export class DockerRunner implements IRelayRunner {
             const image = await this.config.getOptional<string>('relay.docker_image') ?? 'nox-relay:latest';
             const network = await this.config.getOptional<string>('relay.docker_network') ?? 'bridge';
             const dockerAddress = await this.config.getOptional<string>('relay.docker_address') ?? '127.0.0.1';
-            const minPort = Number(await this.config.getOptional<number>('relay.min_port') ?? 23000);
+            let minPort = Number(await this.config.getOptional<number>('relay.min_port') ?? 23000);
             const maxPort = Number(await this.config.getOptional<number>('relay.max_port') ?? 24000);
 
-            const port = await this.findFreePort(minPort, maxPort);
-            if (port === null)
-                throw new Error('No free UDP port available in the configured range');
-
-            const suffix = randomBytes(4).toString('hex');
-            const containerName = `relay_${cfg.relayId}_${suffix}`;
-
-            this.logger.log(`Starting relay #${cfg.relayId} on port ${port} (image: ${image})`);
-
-            // Pull the image unless auto-pull is disabled.
+            // Pull the image once before attempting any container creation.
             const autoPull = (await this.config.getOptional<boolean>('relay.docker_auto_pull')) ?? true;
             if (autoPull) {
                 await new Promise<void>((resolve, reject) => {
@@ -115,39 +103,97 @@ export class DockerRunner implements IRelayRunner {
                 });
             }
 
-            const container = await this.docker.createContainer({
-                Image: image,
-                name: containerName,
-                Labels: {
-                    [RELAY_ID]: String(cfg.relayId),
-                    [GROUP_LABEL]: await this.group(),
-                    ...(cfg.label ? {
-                        [RELAY_LABEL]: cfg.label
-                    } : {}),
-                    'com.docker.compose.project': 'nox',
-                    'com.docker.compose.service': containerName,
-                },
-                Env: [
-                    `NOX_TOKEN=${cfg.token}`,
-                    `NOX_PORT=${port}`,
-                    `NOX_NODE_GATEWAY=${cfg.nodeGateway}`,
-                    `NOX_USE_ADDRESS=${dockerAddress}:${port}`,
-                    `NOX_MAX_INSTANCES=${cfg.maxLink}`,
-                ],
-                ExposedPorts: {
-                    [`${port}/udp`]: {}
-                },
-                HostConfig: {
-                    PortBindings: {
-                        [`${port}/udp`]: [{ HostPort: String(port) }],
-                    },
-                    RestartPolicy: { Name: 'unless-stopped' },
-                    NetworkMode: network,
-                },
-            });
+            // Try ports in the configured range.  findFreePort scans all Docker containers,
+            // but a port may still be held by a non-Docker process.  If container.start()
+            // fails with "port is already allocated", we remove the dead container and try
+            // the next candidate.
+            let lastError: Error | null = null;
+            const triedPorts = new Set<number>();
 
-            await container.start();
-            return container.id;
+            for (let attempt = 0; attempt < maxPort - minPort + 1; attempt++) {
+                const port = await this.findFreePort(minPort, maxPort);
+                if (port === null)
+                    throw new Error('No free UDP port available in the configured range');
+
+                // If we already tried this port and it failed, skip it.
+                if (triedPorts.has(port)) {
+                    // Mark it as used so findFreePort skips it next iteration.
+                    // We do this by temporarily tracking it in triedPorts; findFreePort
+                    // won't see it, so we bump minPort past it for subsequent attempts.
+                    minPort = port + 1;
+                    continue;
+                }
+                triedPorts.add(port);
+
+                const suffix = randomBytes(4).toString('hex');
+                const containerName = `relay_${cfg.relayId}_${suffix}`;
+
+                this.logger.log(`Starting relay #${cfg.relayId} on port ${port} (image: ${image})`);
+
+                let container: Docker.Container;
+                try {
+                    container = await this.docker.createContainer({
+                        Image: image,
+                        name: containerName,
+                        Labels: {
+                            [RELAY_ID]: String(cfg.relayId),
+                            [GROUP_LABEL]: await this.group(),
+                            ...(cfg.label ? {
+                                [RELAY_LABEL]: cfg.label
+                            } : {}),
+                            'com.docker.compose.project': 'nox',
+                            'com.docker.compose.service': containerName,
+                        },
+                        Env: [
+                            `NOX_TOKEN=${cfg.token}`,
+                            `NOX_PORT=${port}`,
+                            `NOX_NODE_GATEWAY=${cfg.nodeGateway}`,
+                            `NOX_USE_ADDRESS=${dockerAddress}:${port}`,
+                            `NOX_MAX_INSTANCES=${cfg.maxLink}`,
+                        ],
+                        ExposedPorts: {
+                            [`${port}/udp`]: {}
+                        },
+                        HostConfig: {
+                            PortBindings: {
+                                [`${port}/udp`]: [{ HostPort: String(port) }],
+                            },
+                            RestartPolicy: { Name: 'unless-stopped' },
+                            NetworkMode: network,
+                        },
+                    });
+
+                    await container.start();
+                    return container.id;
+                } catch (err: any) {
+                    lastError = err;
+                    const msg: string = err?.message ?? String(err);
+
+                    // If the port is already allocated, clean up the failed container and
+                    // try the next port in the range.
+                    if (msg.includes('port is already allocated') || msg.includes('port has already been allocated')) {
+                        this.logger.warn(
+                            `Port ${port} is already allocated on the host, trying next port (attempt ${attempt + 1})`,
+                        );
+                        // Remove the container we just created (it's dead anyway).
+                        if (container!) {
+                            await container.remove({ force: true }).catch(() => {});
+                        }
+                        // Advance minPort past this port so findFreePort skips it.
+                        minPort = port + 1;
+                        continue;
+                    }
+
+                    // Some other error — clean up and throw immediately.
+                    if (container!) {
+                        await container.remove({ force: true }).catch(() => {});
+                    }
+                    throw err;
+                }
+            }
+
+            // Exhausted all ports.
+            throw lastError ?? new Error('No free UDP port available in the configured range');
         } finally {
             this.creating = false;
         }
