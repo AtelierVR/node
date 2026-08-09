@@ -71,7 +71,7 @@ export class OptionalServerGuard implements CanActivate, OnModuleDestroy {
 
         const parts = auth.slice(10).trim().split('.');
         if (parts.length !== 3)
-            return true;
+            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Challenge token: invalid format (expected keyId.data.sig)');
 
         let keyId: string;
         let dataBuffer: Buffer;
@@ -81,19 +81,19 @@ export class OptionalServerGuard implements CanActivate, OnModuleDestroy {
             dataBuffer = Buffer.from(parts[1], 'base64url');
             sigBuffer = Buffer.from(parts[2], 'base64url');
         } catch {
-            return true;
+            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Challenge token: malformed base64url encoding');
         }
 
         // 1. Résoudre le serveur appelant — tente une découverte si inconnu
         let server = await this.servers.findOrDiscover(keyId);
         if (!server)
-            return true;
+            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, `Challenge token: unknown server "${keyId}"`);
 
         // 2. Vérifier la signature du blob chiffré avec la clé publique de l'émetteur
         const senderPubPem = decompressPublicKey(Buffer.from(server.public as Buffer).toString('utf8'));
         if (!await verify(dataBuffer, sigBuffer, senderPubPem)) {
             this.logger.warn(`Challenge signature verification failed for ${keyId}`);
-            return true;
+            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, `Challenge token: signature verification failed for "${keyId}"`);
         }
 
         // 3. Déchiffrer avec notre propre clé privée
@@ -103,19 +103,19 @@ export class OptionalServerGuard implements CanActivate, OnModuleDestroy {
             payload = JSON.parse(decrypt(dataBuffer, privKey).toString('utf8')) as TokenPayload;
         } catch (err: any) {
             this.logger.warn(`Challenge decryption failed for ${keyId}: ${err?.message ?? err}`);
-            return true;
+            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, `Challenge token: decryption failed for "${keyId}"`);
         }
 
         // 4. Vérifier la fenêtre temporelle
         if (Math.abs(Date.now() - payload.t) > MAX_TOKEN_AGE_MS) {
             this.logger.warn(`Challenge timestamp too old for ${keyId}: ${payload.t}`);
-            return true;
+            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, `Challenge token: expired or timestamp too far in the future for "${keyId}"`);
         }
 
         // 5. Vérifier l'unicité du nonce (anti-replay)
         if (this._nonces.has(payload.n)) {
             this.logger.warn(`Challenge nonce already used for ${keyId}`);
-            return true;
+            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, `Challenge token: replay detected for "${keyId}" (nonce already used)`);
         }
 
         // Enregistrer le nonce — expire à timestamp + fenêtre

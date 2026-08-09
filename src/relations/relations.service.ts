@@ -130,7 +130,7 @@ export class RelationsService {
             data: { 
                 initiatorRef: initiator.identifier().toString(), 
                 targetRef: userTarget.toString(), 
-                type: UserRelationType.REQUEST 
+                type: UserRelationType.FOLLOW
             }
         }), this);
 
@@ -195,6 +195,8 @@ export class RelationsService {
         if (!request || request.type !== UserRelationType.REQUEST)
             throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Follow request');
 
+        const respondDomain = await this.wellKnown.address();
+
         await this.prisma.userRelations.delete({
             where: {
                 initiatorRef_targetRef: {
@@ -203,8 +205,6 @@ export class RelationsService {
                 }
             },
         });
-
-        const respondDomain = await this.wellKnown.address();
 
         if (!accept) {
             const initiatorUser = await this.users.findByIdentifier(initiator);
@@ -239,12 +239,12 @@ export class RelationsService {
     async s2sSync(address: string, dto: S2SRelationDto): Promise<void> {
         const domain = await this.wellKnown.address();
         const initiator = new NoxIdentifier(null, String(dto.initiator), address);
-        const target = new NoxIdentifier(null, String(dto.target));
 
         switch (dto.type) {
             case 'follow': {
                 const targetUser = await this.users.findById(dto.target);
                 if (!targetUser) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Target user');
+                const target = targetUser.identifier();
                 const requiresRequest = targetUser.isManualFollowApproval();
                 const existing = await this.findRelation(initiator, target);
                 if (existing) return; // idempotent
@@ -258,6 +258,9 @@ export class RelationsService {
                 break;
             }
             case 'unfollow': {
+                const targetUser = await this.users.findById(dto.target);
+                if (!targetUser) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Target user');
+                const target = targetUser.identifier();
                 await this.prisma.userRelations.deleteMany({
                     where: {
                         initiatorRef: initiator.toString(),

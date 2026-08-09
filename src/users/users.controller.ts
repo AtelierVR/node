@@ -22,6 +22,7 @@ import { ApiUser } from './users.types';
 import { UserAuthenticatedRequest, AuthUserGuard, OptionalAuthUserGuard, OptionalUserAuthenticatedRequest } from '../auth/auth.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { OptionalServerAsUserAuthenticatedRequest, OptionalServerAsUserGuard } from 'src/auth/server-as-user.guard';
+import { OptionalAuthOrServerAsUserGuard } from 'src/auth/auth-or-server-as-user.guard';
 import { SessionService } from '../auth/session.service';
 import { WsService } from '../ws/ws.service';
 import { Session, type SessionWithMethods } from '../auth/session.model';
@@ -622,15 +623,17 @@ export class UsersController {
     @ApiOptionalBearerAuth()
     @ApiOptionalChallenge()
     @ApiSecurity('nox-as')
-    @UseGuards(OptionalAuthUserGuard)
-    @UseGuards(OptionalServerAsUserGuard)
+    @UseGuards(OptionalAuthOrServerAsUserGuard)
     @Get(':id')
     async getUser(
         @Param('id') id: string,
         @Query('fp') fp: string | undefined,
-        @Req() req: Request & (OptionalUserAuthenticatedRequest | OptionalServerAsUserAuthenticatedRequest),
+        @Req() req: OptionalUserAuthenticatedRequest & OptionalServerAsUserAuthenticatedRequest,
     ): Promise<ApiUser> {
         const identifier = NoxIdentifier.parse(id);
+        console.log('h', req.headers);
+        console.log('u', req.user);
+        console.log('s', (req as any).server);
 
         if (!identifier.isLocal(await this.users.domain())) {
             const user = req.user as OptionalUserAuthenticatedRequest['user'];
@@ -640,7 +643,7 @@ export class UsersController {
             const server = await this.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
             const fpParam = fp ? `?fp=${encodeURIComponent(fp)}` : '';
-            const resp = await server.fetch<ApiUser>(`/users/${identifier.toString()}${fpParam}`, { responseClass: ApiUserDto });
+            const resp = await server.fetch<ApiUser>(`/users/${identifier.toString()}${fpParam}`, { responseClass: ApiUserDto, user: user });
             if (resp.error || !resp.data) {
                 this.users.logger.error(`Failed to fetch user ${identifier.toString()} from server ${identifier.server}:`, resp.error?.code, resp.error?.message);
                 throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${id})`);

@@ -37,12 +37,14 @@ export class OptionalServerAsUserGuard implements CanActivate {
         if (!rawId) return true;
 
         const id = Number(rawId);
-        if (!Number.isInteger(id) || id <= 0) return true;
+        if (!Number.isInteger(id) || id <= 0)
+            throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `X-Nox-As: invalid user ID "${rawId}"`);
 
         let user = await this.externalUsers.findByIid(id, req.server.address as string);
         if (!user) {
             const resp = await req.server.fetch<ApiUser>(`/users/${id}`, { responseClass: ApiUserDto });
-            if (resp.error || !resp.data) return true;
+            if (resp.error || !resp.data)
+                throw new ApiException(ApiErrorCode.NOT_FOUND, null, `X-Nox-As: user ${id} not found on server "${req.server.address}"`);
             user = await this.externalUsers.upsertUser(id, req.server, resp.data.public);
         }
 
