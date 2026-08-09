@@ -1,0 +1,12 @@
+{
+  "subject": "{{subject}} - {{serverName}}",
+  "render": {
+    "parent": null,
+    "value": "render.html"
+  },
+  "alt": {
+    "parent": null,
+    "type": "file",
+    "value": "alt.txt"
+  }
+}

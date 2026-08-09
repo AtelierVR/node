@@ -1,0 +1,11 @@
+{
+  "subject": "Your verification code",
+  "render": {
+    "parent": "shared",
+    "value": "render.html"
+  },
+  "alt": {
+    "type": "file",
+    "value": "alt.txt"
+  }
+}

@@ -1,0 +1,99 @@
+<style>
+.code-container {
+  background: #f4f4f5;
+  border: 2px solid #171717;
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+  margin: 24px 0;
+}
+@media (prefers-color-scheme: dark) {
+  .code-container {
+    background: #18181b;
+    border-color: #ededed;
+  }
+}
+.code-label {
+  font-family: "Funnel Display", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #71717a;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+@media (prefers-color-scheme: dark) {
+  .code-label {
+    color: #a1a1aa;
+  }
+}
+.verification-code {
+  font-family: "Funnel Display", "Inter", monospace;
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #171717;
+  margin-bottom: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  .verification-code {
+    color: #ededed;
+  }
+}
+.code-helper {
+  font-size: 12px;
+  color: #71717a;
+  font-weight: 500;
+}
+@media (prefers-color-scheme: dark) {
+  .code-helper {
+    color: #a1a1aa;
+  }
+}
+.warning-text {
+  font-weight: 500;
+}
+@media (max-width: 600px) {
+  .verification-code {
+    font-size: 28px;
+    letter-spacing: 2px;
+  }
+  .code-container {
+    padding: 20px;
+  }
+}
+</style>
+
+<div class="greeting">
+    Hello {{display}},
+</div>
+<p class="text">
+    You are trying to sign in to your account. To complete your
+    login securely, please enter the verification code below:
+</p>
+<div class="code-container">
+    <div class="code-label">
+        Your verification code
+    </div>
+    <div class="verification-code">
+        {{verificationCode}}
+    </div>
+    <div class="code-helper">
+        Enter this code in your browser
+    </div>
+</div>
+<div class="warning">
+    <div class="warning-title">
+        Important security information
+    </div>
+    <div class="warning-text">
+        This code will expire in {{expiresIn}} for your
+        security. Do not share this code with anyone. If you
+        didn't request this verification code, please ignore
+        this email.
+    </div>
+</div>
+<p class="text">
+    If you continue to experience issues or have concerns about
+    your account security, please contact our support team.
+</p>

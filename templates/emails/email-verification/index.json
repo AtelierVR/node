@@ -1,0 +1,11 @@
+{
+  "subject": "Verify your email address",
+  "render": {
+    "parent": "shared",
+    "value": "render.html"
+  },
+  "alt": {
+    "type": "file",
+    "value": "alt.txt"
+  }
+}

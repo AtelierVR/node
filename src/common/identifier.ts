@@ -44,6 +44,11 @@ export class NoxIdentifier {
    * Tolerant: unknown type prefixes are kept as part of the id.
    */
   static parse(raw: string): NoxIdentifier {
+    // Decode URL-encoded characters (e.g. %40 → @). The browser's fetch()
+    // encodes reserved characters in URL paths, so the backend receives
+    // e.g. "hactazia%40noxvr.org" instead of "hactazia@noxvr.org".
+    try { raw = decodeURIComponent(raw); } catch { /* already decoded or malformed */ }
+
     // 1. Extract @server suffix (last @ token that looks like a hostname)
     let server: string | undefined;
     const atIdx = raw.lastIndexOf('@');

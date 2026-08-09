@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{subject}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  color: #171717;
+  background-color: #ffffff;
+  margin: 0;
+  padding: 0;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    color: #ededed;
+    background-color: #000;
+  }
+}
+.email-container {
+  max-width: 600px;
+  margin: 0 auto;
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+}
+@media (prefers-color-scheme: dark) {
+  .email-container {
+    background: #000;
+    border-color: #27272a;
+  }
+}
+.header {
+  background: #ffffff;
+  padding: 32px;
+  border-bottom: 1px solid #e4e4e7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (prefers-color-scheme: dark) {
+  .header {
+    background: #000;
+    border-color: #27272a;
+  }
+}
+.header-icon {
+  display: block;
+  margin: 0 12px 0 0;
+  width: 64px;
+  height: 64px;
+}
+.header-icon-light {
+  display: block;
+}
+.header-icon-dark {
+  display: none;
+}
+@media (prefers-color-scheme: dark) {
+  .header-icon-light {
+    display: none;
+  }
+  .header-icon-dark {
+    display: block;
+  }
+}
+.header-text {
+  text-align: left;
+}
+.logo {
+  font-family: "Funnel Display", system-ui, sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: #171717;
+}
+@media (prefers-color-scheme: dark) {
+  .logo {
+    color: #ededed;
+  }
+}
+.tagline {
+  font-size: 14px;
+  color: #71717a;
+  font-weight: 500;
+}
+@media (prefers-color-scheme: dark) {
+  .tagline {
+    color: #a1a1aa;
+  }
+}
+.content {
+  padding: 32px;
+  background: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  .content {
+    background: #000;
+  }
+}
+.greeting {
+  font-family: "Funnel Display", system-ui, sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  color: #171717;
+  margin-bottom: 16px;
+}
+@media (prefers-color-scheme: dark) {
+  .greeting {
+    color: #ededed;
+  }
+}
+.text {
+  font-size: 16px;
+  color: #52525b;
+  margin-bottom: 16px;
+  line-height: 1.7;
+}
+@media (prefers-color-scheme: dark) {
+  .text {
+    color: #a1a1aa;
+  }
+}
+.warning {
+  background: #fef3c7;
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 24px 0;
+}
+@media (prefers-color-scheme: dark) {
+  .warning {
+    background: #451a03;
+    border-color: #92400e;
+  }
+}
+.warning-title {
+  font-family: "Funnel Display", system-ui, sans-serif;
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  .warning-title {
+    color: #fbbf24;
+  }
+}
+.warning-text {
+  color: #92400e;
+  font-size: 14px;
+  line-height: 1.6;
+}
+@media (prefers-color-scheme: dark) {
+  .warning-text {
+    color: #fbbf24;
+  }
+}
+.footer {
+  background: #f4f4f5;
+  padding: 24px;
+  text-align: center;
+  border-top: 1px solid #e4e4e7;
+}
+@media (prefers-color-scheme: dark) {
+  .footer {
+    background: #18181b;
+    border-color: #27272a;
+  }
+}
+.footer-text {
+  font-size: 14px;
+  color: #71717a;
+  line-height: 1.6;
+}
+@media (prefers-color-scheme: dark) {
+  .footer-text {
+    color: #a1a1aa;
+  }
+}
+.divider {
+  height: 1px;
+  background: #e4e4e7;
+  margin: 24px 0;
+}
+@media (prefers-color-scheme: dark) {
+  .divider {
+    background: #27272a;
+  }
+}
+@media (max-width: 600px) {
+  .email-container {
+    margin: 0 16px;
+    border-radius: 8px;
+  }
+  .header,
+  .content,
+  .footer {
+    padding: 24px;
+  }
+}
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+      <div class="header">
+        <div class="header-icon">
+          <img class="header-icon-light" src="https://nox.hactazia.fr/api/icon.light.png?size=64" alt="{{serverName}}" width="64" height="64">
+          <img class="header-icon-dark" src="https://nox.hactazia.fr/api/icon.png?size=64" alt="{{serverName}}" width="64" height="64">
+        </div>
+        <div class="header-text">
+          <div class="logo">
+            {{serverName}}
+          </div>
+          <div class="tagline">
+            {{subject}}
+          </div>
+        </div>
+      </div>
+      <div class="content">
+        {{render}}
+      </div>
+      <div class="footer">
+        <p class="footer-text">
+          This email was sent from {{serverUrl}}
+          <br>
+          © {{serverTeam}} - Nox Ecosystem
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

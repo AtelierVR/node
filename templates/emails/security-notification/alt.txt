@@ -1,0 +1,12 @@
+{{greeting}}
+
+{{message}}
+
+⚠ {{warningTitle}}
+{{warningBody}}
+
+{{detailLabel}}: {{detailValue}}
+
+{{footerNote}}
+
+— {{serverName}}

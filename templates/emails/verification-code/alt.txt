@@ -1,0 +1,9 @@
+Hello {{display}},
+
+You are trying to sign in to your account. To complete your login securely, please enter the verification code below:
+
+Verification Code: {{verificationCode}}
+
+Important security information: This code will expire in {{expiresIn}} for your security. Do not share this code with anyone. If you didn't request this verification code, please ignore this email.
+
+If you continue to experience issues or have concerns about your account security, please contact our support team.

@@ -1,0 +1,103 @@
+<style>
+.user-card {
+  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 24px 0;
+}
+@media (prefers-color-scheme: dark) {
+  .user-card {
+    background: #18181b;
+    border-color: #27272a;
+  }
+}
+.user-label {
+  font-family: "Funnel Display", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #71717a;
+  margin-bottom: 4px;
+}
+@media (prefers-color-scheme: dark) {
+  .user-label {
+    color: #a1a1aa;
+  }
+}
+.user-value {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #171717;
+}
+@media (prefers-color-scheme: dark) {
+  .user-value {
+    color: #ededed;
+  }
+}
+.button-container {
+  text-align: center;
+  margin: 32px 0;
+}
+.button {
+  display: inline-block;
+  background: #171717;
+  color: #ffffff;
+  padding: 12px 24px;
+  text-decoration: none;
+  border-radius: 6px;
+  font-family: "Funnel Display", system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 16px;
+  transition: background-color 0.2s ease;
+}
+.button,
+.button:link,
+.button:visited,
+.button:hover {
+  color: #ffffff !important;
+  text-decoration: none;
+}
+@media (prefers-color-scheme: dark) {
+  .button,
+  .button:link,
+  .button:visited,
+  .button:hover {
+    color: #000 !important;
+  }
+}
+.warning-text {
+  font-weight: 500;
+}
+.link-fallback {
+  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  border-radius: 6px;
+  padding: 16px;
+  margin: 24px 0;
+  word-break: break-all;
+  font-size: 14px;
+  color: #52525b;
+  font-family: monospace;
+}
+@media (prefers-color-scheme: dark) {
+  .link-fallback {
+    background: #18181b;
+    border-color: #27272a;
+    color: #a1a1aa;
+  }
+}
+</style>
+
+<div class="greeting">
+    Hello {{display}},
+</div>
+<p class="text">
+    Welcome to {{serverName}}! To complete your account setup
+    and ensure security, please verify your email address.
+</p>
+<div class="button-container">
+    <a href="{{verificationUrl}}" class="button">
+        Verify email address
+    </a>
+</div>

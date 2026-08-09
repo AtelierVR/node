@@ -1,0 +1,6 @@
+{{subject}}
+
+{{render}}
+
+This email was sent from {{serverUrl}}
+© {{serverName}} - Nox Ecosystem
