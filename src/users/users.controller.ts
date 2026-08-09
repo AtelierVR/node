@@ -2,7 +2,7 @@ import { Controller, Get, HttpStatus, Param, Req, UseGuards, Query, Post, Delete
 import type { Request, Express, Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
 import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiWrappedSuccessResponse, ApiErrorResponse, ApiOptionalBearerAuth, ApiOptionalChallenge } from '../api/swagger';
-import { ApiCurrentUserDto, ApiUserDto, ApiRelationDto, ApiDeviceDto, ApiSessionListItemDto, ApiSessionListResponseDto, ApiDeleteSessionResponseDto } from './dto/user-response.dto';
+import { ApiCurrentUserDto, ApiUserDto, ApiRelationDto, ApiRelationListResponseDto, ApiDeviceDto, ApiSessionListItemDto, ApiSessionListResponseDto, ApiDeleteSessionResponseDto } from './dto/user-response.dto';
 import { UserSearchResponseDto } from './dto/user-search-response.dto';
 import { UsersService } from './users.service';
 import { UserWithMethods } from './user.model';
@@ -461,16 +461,38 @@ export class UsersController {
         };
     }
 
-    @ApiOperation({ summary: 'Get user following', description: "Return the list of users that a given user follows (hidden if user set hide_following)." })
+    @ApiOperation({ summary: 'Get user following', description: "Return the list of users that a given user follows (hidden if user set hide_following). Fetches from remote server if the ID is not local." })
     @ApiWrappedArrayResponse(ApiRelationDto)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiOptionalBearerAuth()
+    @UseGuards(OptionalAuthUserGuard)
     @Get(':id/following')
     async getFollowing(
         @Param('id') id: string,
+        @Req() req: Request & OptionalUserAuthenticatedRequest,
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
     ) {
         const identifier = NoxIdentifier.parse(id);
+
+        if (!identifier.isLocal(await this.users.domain())) {
+            const user = req.user;
+            if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+            if (!user.isAdmin() && !user.tags.includes('sys:can_external_fetch'))
+                throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
+            const server = await this.externalServers.findOrDiscover(identifier.server!);
+            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
+            const params = new URLSearchParams();
+            if (rawLimit) params.set('limit', rawLimit);
+            if (rawOffset) params.set('offset', rawOffset);
+            const qs = params.toString();
+            const resp = await server.fetch<ApiRelationListResponseDto>(`/users/${identifier.toString()}/following${qs ? '?' + qs : ''}`, { responseClass: ApiRelationListResponseDto, user });
+            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.EXTERNAL_SERVER_ERROR, null, `Server (${identifier.server})`);
+            return resp.data;
+        }
+
         const user = await this.users.findByIdentifier(identifier);
         if (!user)
             throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);
@@ -492,16 +514,38 @@ export class UsersController {
         };
     }
 
-    @ApiOperation({ summary: 'Get user followers', description: "Return the list of users who follow a given user (hidden if user set hide_followers)." })
+    @ApiOperation({ summary: 'Get user followers', description: "Return the list of users who follow a given user (hidden if user set hide_followers). Fetches from remote server if the ID is not local." })
     @ApiWrappedArrayResponse(ApiRelationDto)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
+    @ApiOptionalBearerAuth()
+    @UseGuards(OptionalAuthUserGuard)
     @Get(':id/followers')
     async getFollowers(
         @Param('id') id: string,
+        @Req() req: Request & OptionalUserAuthenticatedRequest,
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
     ) {
         const identifier = NoxIdentifier.parse(id);
+
+        if (!identifier.isLocal(await this.users.domain())) {
+            const user = req.user;
+            if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+            if (!user.isAdmin() && !user.tags.includes('sys:can_external_fetch'))
+                throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
+            const server = await this.externalServers.findOrDiscover(identifier.server!);
+            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
+            const params = new URLSearchParams();
+            if (rawLimit) params.set('limit', rawLimit);
+            if (rawOffset) params.set('offset', rawOffset);
+            const qs = params.toString();
+            const resp = await server.fetch<ApiRelationListResponseDto>(`/users/${identifier.toString()}/followers${qs ? '?' + qs : ''}`, { responseClass: ApiRelationListResponseDto, user });
+            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.EXTERNAL_SERVER_ERROR, null, `Server (${identifier.server})`);
+            return resp.data;
+        }
+
         const user = await this.users.findByIdentifier(identifier);
         if (!user)
             throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);

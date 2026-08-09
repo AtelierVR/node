@@ -142,11 +142,24 @@ export class ApiRelationDto {
     @ApiProperty({ description: 'Relation type (follow, request, block)', example: 'follow' })
     type!: string;
 
-    @ApiProperty({ description: 'Target user NoxIdentifier', example: '1@my-server.com' })
+    @ApiProperty({ description: 'Initiator user NoxIdentifier', example: '1@my-server.com' })
+    initiator!: string;
+
+    @ApiProperty({ description: 'Target user NoxIdentifier', example: '2@my-server.com' })
     target!: string;
 
     @ApiProperty({ description: 'Timestamp when the relation was created (Unix ms)', example: 1680000000000 })
     created_at!: number;
+}
+
+export class ApiRelationListResponseDto {
+    @ApiProperty({ description: 'Total number of relations for pagination', example: 42 })
+    @IsNumber()
+    total!: number;
+
+    @ApiProperty({ description: 'List of relations', type: () => [ApiRelationDto] })
+    @IsArray()
+    items!: ApiRelationDto[];
 }
 
 export class ApiDeviceDto {
