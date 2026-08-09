@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/logo.png" width="320" alt="NoxVR" />
+  <img src=".github/header.png" width="640" alt="NoxVR" />
   <h1>Node</h1>
   <p>Backend API server for the NoxVR federated social VR platform.</p>
 
