@@ -39,7 +39,7 @@ COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY config.yaml ./config.yaml
 COPY --chown=node:node tools/ ./tools/
 COPY --chown=node:node public/ ./public/
-COPY --chown=node:node assets/ ./assets/
+RUN mkdir -p /app/assets && chown node:node /app/assets
 RUN mkdir -p /app/configs && chown -R node:node /app/configs
 USER node
 EXPOSE 8080
