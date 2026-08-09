@@ -27,8 +27,7 @@ export class TotpService {
     /** Verify a TOTP token against a secret. Returns true if valid. */
     verify(secret: string, token: string): boolean {
         try {
-            const result = verifySync({ secret, token });
-            return result !== null;
+            return verifySync({ secret, token }).valid;
         } catch {
             return false;
         }
