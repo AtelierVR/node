@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -24,9 +24,11 @@ export class CreateInstanceDto {
     @ApiPropertyOptional({ description: 'Human-readable instance title', example: 'Chill Hangout' })
     @IsOptional()
     @IsString()
+    @IsNotEmpty()
     title?: string;
 
     @ApiPropertyOptional({ type: 'string', example: 'A relaxed instance for socializing', nullable: true })
+    @MaxLength(4096)
     @IsOptional()
     @IsString()
     description?: string;
@@ -37,12 +39,14 @@ export class CreateInstanceDto {
     @IsString({ each: true })
     tags?: string[];
 
-    @ApiPropertyOptional({ type: 'string', description: 'ISO 3166-1 alpha-2 region code (lowercase), e.g. "fr"', example: 'fr' })
+    @ApiPropertyOptional({ type: 'string', description: 'ISO 3166-1 alpha-2 region code (lowercase)', example: 'fr' })
+    @Matches(/^[a-z]{2}$/, { message: 'Region must be a 2-letter lowercase ISO 3166-1 alpha-2 code' })
     @IsOptional()
     @IsString()
     region?: string;
 
     @ApiPropertyOptional({ type: 'string', description: 'Thumbnail URL, or null', example: null, nullable: true })
+    @Matches(/^https?:\/\/[a-zA-Z0-9_.-]+(:[0-9]{1,5})?(\/.*)?$/, { message: 'Invalid URL' })
     @IsOptional()
     @IsString()
     thumbnail?: string;
@@ -63,7 +67,8 @@ export class CreateInstanceDto {
     @IsBoolean()
     use_password?: boolean;
 
-    @ApiPropertyOptional({ type: 'string', description: 'Join password, or null', example: null, nullable: true })
+    @ApiPropertyOptional({ type: 'string', description: 'Join password (min 3 characters), or null', example: null, nullable: true })
+    @MinLength(3)
     @IsOptional()
     @IsString()
     password?: string;

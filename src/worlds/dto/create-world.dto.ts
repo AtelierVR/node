@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -23,6 +23,7 @@ export class CreateWorldDto {
     title?: string;
 
     @ApiPropertyOptional({ type: 'string', description: 'World description, or null', example: 'A beautiful virtual space', nullable: true })
+    @MaxLength(4096)
     @IsOptional()
     @IsString()
     description?: string | null;

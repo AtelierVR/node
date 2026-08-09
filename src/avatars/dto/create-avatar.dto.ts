@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -23,6 +23,7 @@ export class CreateAvatarDto {
     title?: string;
 
     @ApiPropertyOptional({ type: 'string', example: 'A detailed avatar description', nullable: true })
+    @MaxLength(4096)
     @IsOptional()
     @IsString()
     description?: string | null;
