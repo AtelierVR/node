@@ -138,6 +138,16 @@ export class PrismaService implements OnModuleInit {
         return this._client.activityEvent;
     }
 
+    /** Raw SQL access (passthrough to PrismaClient.$queryRawUnsafe). */
+    $queryRawUnsafe(query: string, ...values: any[]) {
+        return (this._client as any).$queryRawUnsafe(query, ...values);
+    }
+
+    /** Typed raw SQL access (passthrough to PrismaClient.$queryRaw). */
+    $queryRaw<T = any>(query: TemplateStringsArray | string, ...values: any[]): Promise<T> {
+        return (this._client as any).$queryRaw(query, ...values);
+    }
+
     get instances() {
         return this._client.instance;
     }

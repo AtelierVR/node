@@ -80,7 +80,7 @@ export class RelationsService {
             userTarget = await externalTarget.identifier();
         }
 
-        if (initiator.identifier() === userTarget)
+        if (initiator.identifier().equals(userTarget, false))
             throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Cannot follow yourself');
 
         const existing = await this.findRelation(initiator.identifier(), userTarget);
@@ -372,53 +372,90 @@ export class RelationsService {
 
     async getFriendsCount(user: UserWithMethods): Promise<number> {
         const meRef = user.identifier().toString();
-        const following = await this.prisma.userRelations.findMany({
-            where: { initiatorRef: meRef, type: UserRelationType.FOLLOW },
-            select: { targetRef: true },
-        });
-        if (following.length === 0) return 0;
-        return this.prisma.userRelations.count({
-            where: {
-                initiatorRef: { in: following.map(f => f.targetRef) },
-                targetRef: meRef,
-                type: UserRelationType.FOLLOW,
-            },
-        });
+        // Self-join: find mutual follows in a single query.
+        // r1 = my outgoing follows, r2 = their follow back to me.
+        const result: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT COUNT(*)::int AS count
+             FROM user_relations r1
+             JOIN user_relations r2
+               ON r1.target_ref = r2.initiator_ref
+              AND r2.target_ref = r1.initiator_ref
+              AND r2.type = $2::user_relation_type
+             WHERE r1.initiator_ref = $1
+               AND r1.type = $2::user_relation_type`,
+            meRef,
+            UserRelationType.FOLLOW,
+        );
+        return (result[0] as any).count ?? 0;
     }
 
     async getFriends(
         user: UserWithMethods,
         limit: number,
         offset: number,
-    ): Promise<{ total: number; refs: string[] }> {
+    ): Promise<{ total: number; items: Array<{
+        out: RelationWithMethods;
+        in: RelationWithMethods;
+    }> }> {
         const meRef = user.identifier().toString();
-        const following = await this.prisma.userRelations.findMany({
-            where: { initiatorRef: meRef, type: UserRelationType.FOLLOW },
-            select: { targetRef: true },
-        });
-        const followingRefs = following.map(f => f.targetRef);
-        if (followingRefs.length === 0) return { total: 0, refs: [] };
+        // Self-join: find mutual follows in a single query.
+        // r1 = my outgoing follow (out), r2 = their follow back to me (in).
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT r1.id AS out_id, r1.type AS out_type, r1.initiator_ref AS out_initiator,
+                    r1.target_ref AS out_target, r1.created_at AS out_created_at,
+                    r1.updated_at AS out_updated_at,
+                    r2.id AS in_id, r2.type AS in_type, r2.initiator_ref AS in_initiator,
+                    r2.target_ref AS in_target, r2.created_at AS in_created_at,
+                    r2.updated_at AS in_updated_at
+             FROM user_relations r1
+             JOIN user_relations r2
+               ON r1.target_ref = r2.initiator_ref
+              AND r2.target_ref = r1.initiator_ref
+              AND r2.type = $4::user_relation_type
+             WHERE r1.initiator_ref = $1
+               AND r1.type = $4::user_relation_type
+             ORDER BY r2.created_at DESC
+             LIMIT $2 OFFSET $3`,
+            meRef,
+            limit,
+            offset,
+            UserRelationType.FOLLOW,
+        );
 
-        const mutual = await this.prisma.userRelations.findMany({
-            where: {
-                initiatorRef: { in: followingRefs },
-                targetRef: meRef,
-                type: UserRelationType.FOLLOW,
-            },
-            select: { initiatorRef: true },
-            orderBy: { createdAt: 'desc' },
-            skip: offset,
-            take: limit,
-        });
+        // Count the same join (no LIMIT/OFFSET)
+        const countResult: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT COUNT(*)::int AS count
+             FROM user_relations r1
+             JOIN user_relations r2
+               ON r1.target_ref = r2.initiator_ref
+              AND r2.target_ref = r1.initiator_ref
+              AND r2.type = $2::user_relation_type
+             WHERE r1.initiator_ref = $1
+               AND r1.type = $2::user_relation_type`,
+            meRef,
+            UserRelationType.FOLLOW,
+        );
 
-        const total = await this.prisma.userRelations.count({
-            where: {
-                initiatorRef: { in: followingRefs },
-                targetRef: meRef,
-                type: UserRelationType.FOLLOW,
-            },
-        });
-
-        return { total, refs: mutual.map(r => r.initiatorRef) };
+        return {
+            total: (countResult[0] as any).count ?? 0,
+            items: rows.map((r: any) => ({
+                out: Relation.attach({
+                    id: r.out_id,
+                    type: r.out_type,
+                    initiatorRef: r.out_initiator,
+                    targetRef: r.out_target,
+                    createdAt: r.out_created_at,
+                    updatedAt: r.out_updated_at,
+                }, this),
+                in: Relation.attach({
+                    id: r.in_id,
+                    type: r.in_type,
+                    initiatorRef: r.in_initiator,
+                    targetRef: r.in_target,
+                    createdAt: r.in_created_at,
+                    updatedAt: r.in_updated_at,
+                }, this),
+            })),
+        };
     }
 }

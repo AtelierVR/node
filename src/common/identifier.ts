@@ -116,4 +116,18 @@ export class NoxIdentifier {
       s += `@${fallbackServer}`;
     return s;
   }
+
+  /** Returns true when two identifiers represent the same target. Set checkQuery to false to ignore query parameters. */
+  equals(other: NoxIdentifier, checkQuery: boolean = true): boolean {
+    return this.type === other.type
+      && this.id === other.id
+      && (this.server ?? NoxIdentifier.LOCALSERVER) === (other.server ?? NoxIdentifier.LOCALSERVER)
+      && (!checkQuery || this._queryEquals(other));
+  }
+
+  private _queryEquals(other: NoxIdentifier): boolean {
+    const keys = Object.keys(this.query);
+    if (keys.length !== Object.keys(other.query).length) return false;
+    return keys.every(k => this.query[k] === other.query[k]);
+  }
 }
