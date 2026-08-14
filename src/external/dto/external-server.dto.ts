@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { NoxWellKnownDto } from '../../fediverse/dto/nox-well-known.dto';
 
-export class ExternalServerListItemDto {
+export class ExternalServerBaseDto {
     @ApiProperty({ description: 'Domain address of the external server', example: 'example.com' })
     address!: string;
 
@@ -13,16 +13,9 @@ export class ExternalServerListItemDto {
 
     @ApiProperty({ description: 'Unix timestamp (ms) of first discovery', example: 1680000000000 })
     created_at!: number;
-
-    @ApiPropertyOptional({ type: () => NoxWellKnownDto, description: 'Cached well-known document, or null if unreachable', nullable: true })
-    wellknown!: NoxWellKnownDto | null;
 }
 
-export class ExternalServerDetailDto extends ExternalServerListItemDto {
-    @ApiPropertyOptional({
-        type: () => NoxWellKnownDto,
-        nullable: true,
-        description: 'Live well-known document for this server, or null if unreachable.',
-    })
+export class ExternalServerListItemDto extends ExternalServerBaseDto {
+    @ApiPropertyOptional({ type: () => NoxWellKnownDto, description: 'Well-known document, or null if unreachable', nullable: true })
     well_known!: NoxWellKnownDto | null;
 }

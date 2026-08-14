@@ -1,5 +1,6 @@
 import { ExternalServerModel } from 'src/generated/prisma/models';
 import { ExternalServersService } from './external-servers.service';
+import { ExternalServerListItemDto } from './dto/external-server.dto';
 import { NoxWellKnown } from 'src/fediverse/fediverse.types';
 import { ApiResponse } from 'src/api/api.types';
 import { ApiErrorCode, ApiErrorFactory } from 'src/api/api-error.factory';
@@ -25,6 +26,7 @@ export type ExternalServerWithMethods = ExternalServerModel & {
     manager: ExternalServersService;
     headers(): Promise<Record<string, string>>;
     wellKnown(): Promise<ServerWellKnown>;
+    sanitize(): Promise<ExternalServerListItemDto>;
     fetch<T = any>(path: string, options?: ApiRequestInit): Promise<ApiResponse<T>>;
     touchLastSeen(): Promise<void>;
 };
@@ -73,6 +75,21 @@ export class ExternalServer {
         await this.manager.cache.set(cacheKey, entry, ttl);
 
         return entry;
+    }
+
+    async sanitize(this: ExternalServerWithMethods): Promise<ExternalServerListItemDto> {
+        let wellKnown: NoxWellKnown | null = null;
+        try {
+            wellKnown = (await this.wellKnown()).data;
+        } catch { /* unreachable — return null well-known */ }
+
+        return {
+            address: this.address,
+            rank: this.rank,
+            last_seen: this.lastSeen.getTime(),
+            created_at: this.createdAt.getTime(),
+            well_known: wellKnown as any, // NoxWellKnown is compatible with NoxWellKnownDto at runtime
+        };
     }
 
     async fetch<T = any>(this: ExternalServerWithMethods, path: string, options?: ApiRequestInit): Promise<ApiResponse<T>> {

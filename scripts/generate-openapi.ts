@@ -13,6 +13,9 @@ console.log('Generating OpenAPI specification...');
 // connect to a database or run migrations during spec generation.
 const prismaStub: Partial<PrismaService> = {
     ready: Promise.resolve(),
+    configs: {
+        findFirst: () => Promise.resolve(null),
+    } as any,
 };
 
 (async function generate() {

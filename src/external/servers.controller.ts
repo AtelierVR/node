@@ -2,9 +2,7 @@ import { Controller, Get, HttpStatus, NotFoundException, Param, Query, Redirect 
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiErrorResponse } from '../api/swagger';
 import { ExternalServersService } from './external-servers.service';
-import { ExternalServerDetailDto, ExternalServerListItemDto } from './dto/external-server.dto';
-import { ExternalServerWithMethods } from './external-server.model';
-import { NoxWellKnown } from '../fediverse/fediverse.types';
+import { ExternalServerListItemDto } from './dto/external-server.dto';
 import { InstanceConfigDto } from '../server/dto/server-api-response.dto';
 
 const MAX_LIMIT = 20;
@@ -27,33 +25,17 @@ export class ServersController {
         const offset = Math.max(0, Number(rawOffset) || 0);
 
         const all = await this.servers.findAllPaginated(limit, offset);
-
-        // Best-effort pre-populate well-known cache (Redis-backed, shared across processes).
-        await Promise.allSettled(
-            all.map(s => s.wellKnown().catch(() => null)),
-        );
-
-        return Promise.all(all.map(toListItem));
+        return Promise.all(all.map(s => s.sanitize()));
     }
 
     @ApiOperation({ summary: 'Get server details', description: 'Return details and live well-known document for a server. Discovers the server if not yet known.' })
-    @ApiWrappedResponse(ExternalServerDetailDto)
+    @ApiWrappedResponse(ExternalServerListItemDto)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @Get(':address')
-    async getServer(@Param('address') address: string): Promise<ExternalServerDetailDto> {
+    async getServer(@Param('address') address: string): Promise<ExternalServerListItemDto> {
         const server = await this.servers.findOrDiscover(address);
         if (!server) throw new NotFoundException(`Server "${address}" not found and could not be discovered.`);
-
-        let wellKnown: NoxWellKnown | null = null;
-        try {
-            const cached = await server.wellKnown();
-            wellKnown = cached.data;
-        } catch {
-            // unreachable — return null well-known
-        }
-
-        const base = await toListItem(server);
-        return { ...base, well_known: wellKnown } as ExternalServerDetailDto;
+        return server.sanitize();
     }
 
     @ApiOperation({ summary: 'Redirect to server icon', description: 'Redirects to the icon URL declared in the well-known document. Returns 404 if no icon is set or the server is unreachable.' })
@@ -87,20 +69,4 @@ export class ServersController {
         if (!result.data) throw new NotFoundException(`Could not fetch configs from server "${address}".`);
         return result.data;
     }
-}
-
-async function toListItem(server: ExternalServerWithMethods): Promise<ExternalServerListItemDto> {
-    let wellknown: NoxWellKnown | null = null;
-    try {
-        const cached = await server.manager.cache.get<{ data: NoxWellKnown }>(`wk:${server.address}`);
-        if (cached?.data) wellknown = cached.data;
-    } catch { /* best-effort */ }
-
-    return {
-        address: server.address,
-        rank: server.rank,
-        last_seen: server.lastSeen.getTime(),
-        created_at: server.createdAt.getTime(),
-        wellknown: wellknown as any, // NoxWellKnown is compatible with NoxWellKnownDto at runtime
-    };
 }

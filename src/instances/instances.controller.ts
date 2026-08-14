@@ -51,6 +51,20 @@ export class InstancesController {
         return { limit, offset };
     }
 
+    /**
+     * Normalize a NoxIdentifier string to its canonical local form
+     * (e.g. "42@hactazia.fr" → "42@::") so it matches how identifiers are
+     * stored in the DB (see `ownerRef` and the Prisma schema comment "1@::").
+     * Remote identifiers keep their server suffix.
+     */
+    private async normalizeRef(raw: string): Promise<string> {
+        const domain = await this.instances.domain();
+        let identifier = NoxIdentifier.type(null, NoxIdentifier.parse(raw));
+        if (identifier.isLocal(domain))
+            identifier = new NoxIdentifier(null, identifier.id, undefined, identifier.query);
+        return identifier.toString();
+    }
+
     // ── Search ────────────────────────────────────────────────────────────────────
 
     @ApiOperation({ summary: 'Search instances', description: 'Paginated search for running instances, optionally filtered by world or owner.' })
@@ -88,26 +102,10 @@ export class InstancesController {
         }
 
         const { limit, offset } = this.parsePaging(rawLimit, rawOffset);
-        
-        // Normalize world identifier (convert local domain to ::)
-        let normalizedWorld: string | undefined;
-        if (world) {
-            const domain = await this.instances.domain();
-            let worldIdentifier = NoxIdentifier.type(null, NoxIdentifier.parse(world));
-            if (worldIdentifier.isLocal(domain)) 
-                worldIdentifier = new NoxIdentifier(null, worldIdentifier.id, undefined, worldIdentifier.query);
-            normalizedWorld = worldIdentifier.toString();
-        }
-        
-        // Normalize owner identifier (convert local domain to ::)
-        let normalizedOwner: string | undefined;
-        if (owner) {
-            const domain = await this.instances.domain();
-            let ownerIdentifier = NoxIdentifier.type(null, NoxIdentifier.parse(owner));
-            if (ownerIdentifier.isLocal(domain)) 
-                ownerIdentifier = new NoxIdentifier(null, ownerIdentifier.id, undefined, ownerIdentifier.query);
-            normalizedOwner = ownerIdentifier.toString();
-        }
+
+        // Normalize identifiers (convert local domain to ::)
+        const normalizedWorld = world ? await this.normalizeRef(world) : undefined;
+        const normalizedOwner = owner ? await this.normalizeRef(owner) : undefined;
         
         const { items, total } = await this.instances.search({ 
             query, 
@@ -157,13 +155,13 @@ export class InstancesController {
             title:         body.title          ?? null,
             description:   body.description    ?? null,
             capacity:      body.capacity,
-            worldRef:      NoxIdentifier.type(null, NoxIdentifier.parse(body.world)).toString(),
+            worldRef:      await this.normalizeRef(body.world),
             ownerRef:      req.user.identifier().toString(),
             tags:          body.tags           ?? [],
             thumbnail:     body.thumbnail      ?? null,
             region:        body.region         ?? null,
             useWhitelist:  body.use_whitelist  ?? false,
-            whitelistRefs: (body.whitelist_refs ?? []).map(ref => NoxIdentifier.type(null, NoxIdentifier.parse(ref)).toString()),
+            whitelistRefs: await Promise.all((body.whitelist_refs ?? []).map(ref => this.normalizeRef(ref))),
             usePassword:   body.use_password   ?? false,
             password:      body.password       ?? null,
         });
@@ -198,7 +196,7 @@ export class InstancesController {
             ...(body.tags           !== undefined && { tags:          body.tags }),
             ...(body.thumbnail      !== undefined && { thumbnail:     body.thumbnail }),
             ...(body.use_whitelist  !== undefined && { useWhitelist:  body.use_whitelist }),
-            ...(body.whitelist_refs !== undefined && { whitelistRefs: body.whitelist_refs.map(ref => NoxIdentifier.type(null, NoxIdentifier.parse(ref)).toString()) }),
+            ...(body.whitelist_refs !== undefined && { whitelistRefs: await Promise.all(body.whitelist_refs.map(ref => this.normalizeRef(ref))) }),
             ...(body.use_password   !== undefined && { usePassword:   body.use_password }),
             ...(body.password       !== undefined && { password:      body.password }),
         });
