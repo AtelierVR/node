@@ -33,6 +33,7 @@ export interface NormalizedRelayClient {
     id: number;
     address: string;
     platform: string;
+    from: string;
     engine: string;
     user: string | null;
     connected_at: number;
@@ -162,6 +163,8 @@ export class RelayInstancesResponseDto {
 export class RelayClientItemDto {
     @IsOptional() @IsInt()       i?: number;         // id (abbrev)
     @IsOptional() @IsInt()       id?: number;
+    @IsOptional() @IsString()    f?: string;  
+    @IsOptional() @IsString()    from?: string;  
     @IsOptional() @IsString()    a?: string;         // address (abbrev)
     @IsOptional() @IsString()    address?: string;
     @IsOptional() @IsString()    p?: string;         // platform (abbrev)
@@ -177,6 +180,7 @@ export class RelayClientItemDto {
         return {
             id:           this.i ?? this.id       ?? 0,
             address:      this.a ?? this.address  ?? '',
+            from:         this.f ?? this.from     ?? '',
             platform:     this.p ?? this.platform ?? '',
             engine:       this.e ?? this.engine   ?? '',
             user:         this.u ?? this.user     ?? null,
