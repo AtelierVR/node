@@ -19,8 +19,8 @@ export const IMAGE_PRESETS = {
  * Falls back to the smallest allowed width if the request is smaller than all entries.
  */
 export function closestAllowedWidth(requested: number): number {
-    const sorted = [...ALLOWED_WIDTHS].sort((a, b) => b - a); // descending
-    return sorted.find(w => w <= requested) ?? sorted[sorted.length - 1];
+    const sorted = [...ALLOWED_WIDTHS].sort((a, b) => a - b); // croissant
+    return sorted.find(w => w >= requested) ?? sorted[sorted.length - 1];
 }
 
 /**

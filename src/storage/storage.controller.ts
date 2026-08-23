@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query, Res, Headers, NotFoundException } from '@nestjs/common';
 import type { Response } from 'express';
 import { createReadStream, existsSync } from 'fs';
+import { stat } from 'fs/promises';
 import { join } from 'path';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { StorageService } from './storage.service';
@@ -65,6 +66,10 @@ export class StorageController {
         if (!wantsResize) {
             res.setHeader('Content-Type', negotiatedType);
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            try {
+                const info = await stat(fullPath);
+                res.setHeader('Content-Length', info.size);
+            } catch { /* not fatal */ }
             createReadStream(fullPath).pipe(res);
             return;
         }
