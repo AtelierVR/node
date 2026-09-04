@@ -6,7 +6,8 @@ import { ApiErrorCode, ERROR_DEFINITIONS } from './api-error.factory';
 import { ROOT_ONLY_PATHS } from './api.constants';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-
+import { resolveSafe } from 'src/utils/path';
+import { join } from 'node:path';
 
 @Catch()
 export class ApiExceptionFilter extends BaseExceptionFilter {
@@ -46,10 +47,14 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
 
         // Fallback: serve static files from public/ for unmatched GET routes
         if (exception instanceof NotFoundException && request.method === 'GET') {
-            const prefixStrip = this.globalPrefix ? new RegExp(`^\\/${this.globalPrefix}\\/?`) : /^\//;
+            const prefixStrip = this.globalPrefix 
+                ? new RegExp(`^\\/${this.globalPrefix}\\/?`) 
+                : /^\//;
             const relativePath = request.path.replace(prefixStrip, '');
-            const staticFile = path.join(process.cwd(), 'public', relativePath);
+            const staticFile = resolveSafe(join(process.cwd(), 'public'), relativePath);
             try {
+                if (!staticFile)
+                    throw new HttpException("What are you trying ?", HttpStatus.FORBIDDEN);
                 const stat = fs.statSync(staticFile);
                 if (stat.isFile()) 
                     return response.sendFile(staticFile);
