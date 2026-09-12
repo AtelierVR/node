@@ -40,7 +40,7 @@ export interface SessionSanitized {
     id: string;
     current: boolean;
     active: boolean;
-    public_key: string | null;
+    fingerprint: string | null;
     expires_at: number;
     created_at: number;
     devices: DeviceSanitized[];
@@ -78,9 +78,7 @@ export class Session {
             id: session.id,
             current: isCurrent,
             active: isCurrent || this.manager.ws.isUserConnected(session.userId),
-            public_key: session.publicKey
-                ? Buffer.from(session.publicKey).toString('base64')
-                : null,
+            fingerprint: session.fingerprint ?? null,
             expires_at: session.expires instanceof Date
                 ? session.expires.getTime()
                 : new Date(session.expires).getTime(),

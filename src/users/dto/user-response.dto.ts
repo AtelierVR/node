@@ -183,8 +183,8 @@ export class ApiSessionListItemDto {
     @ApiProperty({ description: 'Whether this session has an active WebSocket connection', example: true })
     active!: boolean;
 
-    @ApiPropertyOptional({ type: 'string', description: 'Ed25519 public key (base64 SPKI DER) if provided during login, or null', example: 'MCowBQYDK2VwAyEA...', nullable: true })
-    public_key!: string | null;
+    @ApiPropertyOptional({ type: 'string', description: 'Device fingerprint (SHA-256 hex of the Ed25519 public key) if provided during login, or null', example: 'a1b2c3d4e5f6...', nullable: true })
+    fingerprint!: string | null;
 
     @ApiProperty({ description: 'Session expiry timestamp (Unix ms)', example: 1712000000000 })
     expires_at!: number;
