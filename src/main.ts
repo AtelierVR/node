@@ -8,6 +8,7 @@ import { AppConfigService } from './config/config.service';
 import { ApiExceptionFilter } from './api/api-exception.filter';
 import { ROOT_ONLY_PATHS } from './api/api.constants';
 import { ExternalServersService } from './external/external-servers.service';
+import { requestLogger } from './request-logger.middleware';
 
 async function bootstrap() {
   let logger = new NestLogger();
@@ -15,6 +16,9 @@ async function bootstrap() {
 
   // Parse cookies for authentication middleware and controllers
   app.use(cookieParser());
+
+  // Add request logger middleware
+  app.use((req, res, next) => requestLogger(req, res, next));
 
   // CORS must be enabled before app.init() so its middleware is registered
   // ahead of all route handlers in the Express stack.

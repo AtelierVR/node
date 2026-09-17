@@ -34,13 +34,14 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
 
         const request = ctx.getRequest();
         const response: Response = ctx.getResponse();
+        const { method, originalUrl, ip } = request;
 
         if (!this.isApiRoute(request.path)) {
             const status = exception instanceof HttpException
                 ? exception.getStatus()
                 : HttpStatus.INTERNAL_SERVER_ERROR;
             const message = exception instanceof Error ? exception.message : String(exception);
-            this.logger.error(`${status} - ${message}`, exception instanceof Error ? exception.stack : undefined);
+            this.logger.error(`${status} - ${message} | ${method} ${originalUrl} from ${ip}`, exception instanceof Error ? exception.stack : undefined);
             response.status(status).send(`${status} - ${message}`);
             return;
         }
@@ -48,9 +49,9 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
         // Fallback: serve static files from public/ for unmatched GET routes
         if (exception instanceof NotFoundException && request.method === 'GET') {
             const prefixStrip = this.globalPrefix 
-                ? new RegExp(`^\\/${this.globalPrefix}\\/?`) 
+                ? new RegExp(`^\\\\/${this.globalPrefix}(?:\\\\/(.*))?$`) 
                 : /^\//;
-            const relativePath = request.path.replace(prefixStrip, '');
+            const relativePath = request.path.replace(prefixStrip, '$1') || request.path;
             const staticFile = resolveSafe(join(process.cwd(), 'public'), relativePath);
             try {
                 if (!staticFile)
@@ -67,7 +68,7 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
         let def = ERROR_DEFINITIONS[api.code]
             || ERROR_DEFINITIONS[ApiErrorCode.INTERNAL_SERVER_ERROR];
 
-        this.logger.error(`${def.status} - ${api.message} [${api.code}]`, exception.stack);
+        this.logger.error(`${def.status} - ${api.message} [${api.code}] | ${method} ${originalUrl} from ${ip}`, exception.stack);
         response.status(def.status).json({
             data: exception instanceof ApiException ? api.data : null,
             error: {

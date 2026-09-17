@@ -58,14 +58,15 @@ export class EmailService {
 
         this.transporter = createTransport({ host, port, secure, auth: { user, pass } });
 
-        try {
-            await this.transporter.verify();
-            this.initialized = true;
-            this.logger.log(`Email transporter ready (${host}:${port})`);
-        } catch (err) {
+        // Initialize immediately - don't wait for verification to avoid blocking startup
+        this.initialized = true;
+        this.logger.log(`Email transporter initialized (${host}:${port}) - verification in background`);
+
+        // Verify transporter in background (non-blocking)
+        this.transporter.verify().catch(err => {
             this.logger.error(`Email transporter verification failed: ${(err as Error).message}`);
             this.transporter = null;
-        }
+        });
     }
 
     isAvailable(): boolean {
