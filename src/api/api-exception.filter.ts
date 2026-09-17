@@ -49,7 +49,7 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
         // Fallback: serve static files from public/ for unmatched GET routes
         if (exception instanceof NotFoundException && request.method === 'GET') {
             const prefixStrip = this.globalPrefix 
-                ? new RegExp(`^\\\\/${this.globalPrefix}(?:\\\\/(.*))?$`) 
+                ? new RegExp(`^/${this.globalPrefix}(?:/(.*))?$`) 
                 : /^\//;
             const relativePath = request.path.replace(prefixStrip, '$1') || request.path;
             const staticFile = resolveSafe(join(process.cwd(), 'public'), relativePath);
