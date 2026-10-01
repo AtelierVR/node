@@ -55,11 +55,16 @@ export interface ApiUser {
 
 export interface ApiCurrentUser extends ApiUser {
     email: string | null;
-    email_verified: boolean;
     home: string | null;
     avatar: string | null;
     relations: null;
-    twofa_enabled: boolean;
+    /**
+     * Authentication methods and their status, keyed by method name:
+     *   email   → "verified" | "unverified" | "disabled"  (disabled = no email set)
+     *   totp    → "enabled"  | "disabled"
+     *   passkey → "enabled"  | "disabled"
+     */
+    methods: Record<string, string>;
 }
 
 /** Maps DB enum → API status string */

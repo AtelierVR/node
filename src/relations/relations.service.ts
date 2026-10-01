@@ -113,7 +113,7 @@ export class RelationsService {
         }
 
         // Remote target — sync to Server B first, only create local REQUEST if accepted
-        const result = await this._syncS2S(userTarget, {
+        const result = await this._syncS2S(userTarget.server, {
             initiator: initiator.id,
             target: userTarget.numericId!,
             type: 'follow',
@@ -176,7 +176,7 @@ export class RelationsService {
         // Sync unfollow to remote server if target is remote
         const domain = await this.wellKnown.address();
         if (!userTarget.isLocal(domain) && userTarget.numericId !== null)
-            await this._syncS2S(userTarget, {
+            await this._syncS2S(userTarget.server, {
                 initiator: initiator.id,
                 target: userTarget.numericId,
                 type: 'unfollow',
@@ -234,6 +234,78 @@ export class RelationsService {
         return Relation.attach(follow, this);
     }
 
+    /**
+     * Drop every relation involving `userId` (both directions) and notify the
+     * affected local users so their follow/friend lists update live.
+     *
+     * Relations are stored by NoxIdentifier string refs (no FK), so nothing
+     * cascades when an account is deleted — this must be called explicitly.
+     * The remote servers that still hold these relations are notified too (best-effort).
+     */
+    async purgeUserRelations(userId: number): Promise<void> {
+        // Local users are stored as exactly `<id>@::` (NoxIdentifier.LOCALSERVER) —
+        // an exact match, so we never touch a remote user sharing the same numeric id.
+        const localRef = `${userId}@${NoxIdentifier.LOCALSERVER}`;
+        const rows = await this.purgeRefRelations(localRef);
+        if (!rows.length) return;
+
+        // Best-effort: mirror the removal on the remote servers. Each remote peer is told
+        // both directions — our user no longer follows it, and it no longer follows us.
+        const domain = await this.wellKnown.address();
+        const peers = new Map<string, Set<number>>();
+
+        for (const row of rows) {
+            // The counterpart of a relation is whichever side is not the local user.
+            const counterpartRef = row.initiatorRef === localRef ? row.targetRef : row.initiatorRef;
+            const counterpart = NoxIdentifier.parse(counterpartRef);
+            if (counterpart.isLocal(domain) || !counterpart.server || counterpart.numericId === null) continue;
+
+            const ids = peers.get(counterpart.server) ?? new Set<number>();
+            ids.add(counterpart.numericId);
+            peers.set(counterpart.server, ids);
+        }
+
+        for (const [server, ids] of peers)
+            for (const remoteId of ids) {
+                await this._syncS2S(server, { initiator: userId, target: remoteId, type: 'unfollow' });
+                await this._syncS2S(server, { initiator: userId, target: remoteId, type: 'unfollow_reverse' });
+            }
+    }
+
+    /**
+     * Delete every relation referencing `ref` (exact match, both directions) and
+     * notify the affected **local** users so their follow/friend lists update live.
+     * Returns the deleted rows so callers can fan out to remote servers.
+     */
+    private async purgeRefRelations(ref: string): Promise<{ initiatorRef: string; targetRef: string }[]> {
+        const rows = await this.prisma.userRelations.findMany({
+            where: { OR: [{ initiatorRef: ref }, { targetRef: ref }] },
+            select: { initiatorRef: true, targetRef: true },
+        });
+        if (!rows.length) return [];
+
+        await this.prisma.userRelations.deleteMany({
+            where: { OR: [{ initiatorRef: ref }, { targetRef: ref }] },
+        });
+
+        const domain = await this.wellKnown.address();
+        const self = NoxIdentifier.parse(ref).toString(domain);
+
+        const notified = new Set<number>();
+        for (const row of rows) {
+            for (const otherRef of [row.initiatorRef, row.targetRef]) {
+                if (otherRef === ref) continue;
+                const other = NoxIdentifier.parse(otherRef);
+                const otherId = other.numericId;
+                if (otherId === null || !other.isLocal(domain) || notified.has(otherId)) continue;
+                notified.add(otherId);
+                this.events.emitToUser(otherId, 'user:relation', { user: self, out: null, in: null });
+            }
+        }
+
+        return rows;
+    }
+
     // ── S2S incoming ─────────────────────────────────────────────────────────────
 
     async s2sSync(address: string, dto: S2SRelationDto): Promise<void> {
@@ -248,12 +320,20 @@ export class RelationsService {
                 const requiresRequest = targetUser.isManualFollowApproval();
                 const existing = await this.findRelation(initiator, target);
                 if (existing) return; // idempotent
-                await this.prisma.userRelations.create({
+                const created = await this.prisma.userRelations.create({
                     data: {
                         initiatorRef: initiator.toString(),
                         targetRef: target.toString(),
                         type: requiresRequest ? UserRelationType.REQUEST : UserRelationType.FOLLOW,
                     },
+                });
+                // Mirror the local `follow` notification on the target's clients.
+                const reverseRel = await this.findRelation(target, initiator);
+                const reverseType = reverseRel ? RELATION_TYPES[reverseRel.type] : null;
+                this.events.emitToUser(targetUser.id, 'user:relation', {
+                    user: initiator.toString(domain),
+                    out: reverseType,
+                    in: RELATION_TYPES[created.type],
                 });
                 break;
             }
@@ -261,19 +341,28 @@ export class RelationsService {
                 const targetUser = await this.users.findById(dto.target);
                 if (!targetUser) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Target user');
                 const target = targetUser.identifier();
-                await this.prisma.userRelations.deleteMany({
+                const { count } = await this.prisma.userRelations.deleteMany({
                     where: {
                         initiatorRef: initiator.toString(),
                         targetRef: target.toString()
                     },
                 });
+                if (count > 0) {
+                    const reverseRel = await this.findRelation(target, initiator);
+                    const reverseType = reverseRel ? RELATION_TYPES[reverseRel.type] : null;
+                    this.events.emitToUser(targetUser.id, 'user:relation', {
+                        user: initiator.toString(domain),
+                        out: reverseType,
+                        in: null,
+                    });
+                }
                 break;
             }
             case 'follow_accept': {
                 // Remote accepted our follow request → upgrade REQUEST → FOLLOW
                 const localInitiator = new NoxIdentifier(null, String(dto.target));
                 const remoteTarget = new NoxIdentifier(null, String(dto.initiator), address);
-                await this.prisma.userRelations.updateMany({
+                const { count } = await this.prisma.userRelations.updateMany({
                     where: {
                         initiatorRef: localInitiator.toString(),
                         targetRef: remoteTarget.toString(),
@@ -281,18 +370,59 @@ export class RelationsService {
                     },
                     data: { type: UserRelationType.FOLLOW },
                 });
+                if (count > 0) {
+                    const reverseRel = await this.findRelation(remoteTarget, localInitiator);
+                    const reverseType = reverseRel ? RELATION_TYPES[reverseRel.type] : null;
+                    this.events.emitToUser(dto.target, 'user:relation', {
+                        user: remoteTarget.toString(domain),
+                        out: 'follow',
+                        in: reverseType,
+                    });
+                }
                 break;
             }
             case 'follow_refuse': {
                 const localInitiator = new NoxIdentifier(null, String(dto.target));
                 const remoteTarget = new NoxIdentifier(null, String(dto.initiator), address);
-                await this.prisma.userRelations.deleteMany({
+                const { count } = await this.prisma.userRelations.deleteMany({
                     where: {
                         initiatorRef: localInitiator.toString(),
                         targetRef: remoteTarget.toString(),
                         type: UserRelationType.REQUEST
                     },
                 });
+                if (count > 0) {
+                    const reverseRel = await this.findRelation(remoteTarget, localInitiator);
+                    const reverseType = reverseRel ? RELATION_TYPES[reverseRel.type] : null;
+                    this.events.emitToUser(dto.target, 'user:relation', {
+                        user: remoteTarget.toString(domain),
+                        out: null,
+                        in: reverseType,
+                    });
+                }
+                break;
+            }
+            case 'unfollow_reverse': {
+                // Mirror of `unfollow`: the receiver's user no longer follows the sender's
+                // user `<initiator>@<address>` (e.g. because that account was deleted).
+                const targetUser = await this.users.findById(dto.target);
+                if (!targetUser) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Target user');
+                const target = targetUser.identifier();
+                const { count } = await this.prisma.userRelations.deleteMany({
+                    where: {
+                        initiatorRef: target.toString(),
+                        targetRef: initiator.toString(),
+                    },
+                });
+                if (count > 0) {
+                    const reverseRel = await this.findRelation(initiator, target);
+                    const reverseType = reverseRel ? RELATION_TYPES[reverseRel.type] : null;
+                    this.events.emitToUser(targetUser.id, 'user:relation', {
+                        user: initiator.toString(domain),
+                        out: null,
+                        in: reverseType,
+                    });
+                }
                 break;
             }
         }
@@ -300,10 +430,10 @@ export class RelationsService {
 
     // ── S2S outgoing helpers ──────────────────────────────────────────────────────
 
-    private async _syncS2S(target: NoxIdentifier, dto: S2SRelationDto): Promise<{ ok: boolean; error?: string }> {
-        if (!target.server || target.server === NoxIdentifier.LOCALSERVER) return { ok: true };
+    private async _syncS2S(address: string | undefined, dto: S2SRelationDto): Promise<{ ok: boolean; error?: string }> {
+        if (!address || address === NoxIdentifier.LOCALSERVER) return { ok: true };
         try {
-            const server = await this.externalServers.discover(target.server);
+            const server = await this.externalServers.discover(address);
             const res = await server.fetch<S2SRelationResponseDto>('api/relations', {
                 method: 'POST',
                 body: JSON.stringify(dto),
@@ -313,20 +443,20 @@ export class RelationsService {
             if (res.error) {
                 const msg = `[${res.error.code}] ${res.error.message}`;
                 this.logger.warn(
-                    `S2S ${dto.type} to ${target.server} ` +
+                    `S2S ${dto.type} to ${address} ` +
                     `(${dto.initiator}→${dto.target}): ${msg}`,
                 );
                 return { ok: false, error: msg };
             }
             this.logger.log(
-                `S2S ${dto.type} to ${target.server} ` +
+                `S2S ${dto.type} to ${address} ` +
                 `(${dto.initiator}→${dto.target}): OK`,
             );
             return { ok: true };
         } catch (err: any) {
             const msg = err?.message ?? String(err);
             this.logger.error(
-                `S2S ${dto.type} to ${target.server} ` +
+                `S2S ${dto.type} to ${address} ` +
                 `(${dto.initiator}→${dto.target}): ${msg}`,
             );
             return { ok: false, error: msg };
@@ -341,7 +471,7 @@ export class RelationsService {
             target: initiator.numericId,
             type: accept ? 'follow_accept' : 'follow_refuse',
         };
-        await this._syncS2S(initiator, dto);
+        await this._syncS2S(initiator.server, dto);
     }
 
     async getFollowing(

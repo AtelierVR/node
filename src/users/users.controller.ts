@@ -21,6 +21,7 @@ import { ApiException } from 'src/api/api-exception';
 import { ApiUser } from './users.types';
 import { UserAuthenticatedRequest, AuthUserGuard, OptionalAuthUserGuard, OptionalUserAuthenticatedRequest } from '../auth/auth.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { DeleteUserDto } from './dto/delete-user.dto';
 import { OptionalServerAsUserAuthenticatedRequest, OptionalServerAsUserGuard } from 'src/auth/server-as-user.guard';
 import { OptionalAuthOrServerAsUserGuard } from 'src/auth/auth-or-server-as-user.guard';
 import { SessionService } from '../auth/session.service';
@@ -70,6 +71,20 @@ export class UsersController {
     async updateCurrent(@Req() req: Request & UserAuthenticatedRequest, @Body() body: UpdateUserDto) {
         const updated = await this.users.updateUser(req.user.id, body);
         return await updated.sanitizeCurrent();
+    }
+
+    @ApiOperation({ summary: 'Delete current user', description: 'Permanently delete the authenticated account and all its data. Requires verification (factor_code).' })
+    @ApiWrappedSuccessResponse(HttpStatus.OK)
+    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN, 'The main administrator account cannot be deleted.')
+    @ApiErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, 'Verification required or invalid factor code.')
+    @ApiBearerAuth()
+    @UseGuards(AuthUserGuard)
+    @Delete('@me')
+    async deleteCurrent(@Req() req: Request & UserAuthenticatedRequest, @Body() body: DeleteUserDto, @Res({ passthrough: true }) res: Response) {
+        await this.users.deleteUser(req.user.id, body.factor_code);
+        res.clearCookie('_uid');
+        return { success: true };
     }
 
     @ApiOperation({ summary: 'Upload profile thumbnail', description: 'Upload an image (multipart/form-data, field: file) as the current user thumbnail.' })

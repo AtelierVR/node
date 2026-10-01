@@ -19,7 +19,7 @@ export class RelationsController {
 
     // ── S2S ──────────────────────────────────────────────────────────────────────
 
-    @ApiOperation({ summary: 'S2S relation sync', description: 'Server-to-server endpoint: notify a remote server of a relation change (follow/unfollow/block).' })
+    @ApiOperation({ summary: 'S2S relation sync', description: 'Server-to-server endpoint: notify a remote server of a relation change. `follow` / `unfollow` / `follow_accept` / `follow_refuse` act on the sender\'s user; `unfollow_reverse` removes the receiver\'s user → sender\'s user relation (used when an account is deleted).' })
     @ApiWrappedSuccessResponse()
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiSecurity('nox-challenge')

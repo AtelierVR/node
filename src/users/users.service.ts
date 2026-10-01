@@ -432,4 +432,51 @@ export class UsersService implements OnModuleInit {
 
         return wrapped;
     }
+
+    /**
+     * Permanently delete a user account and everything attached to it.
+     *
+     * Irreversible, so a `factor_code` is required: the caller must first answer the
+     * `VERIFICATION_REQUIRED` handshake (unless the account has no method at all).
+     * Related rows (sessions, verifications, passkeys, user tables, devices) are
+     * removed by DB cascades; relations (string refs) and stored profile images are
+     * cleaned up here.
+     */
+    async deleteUser(userId: number, factorCode?: string): Promise<void> {
+        const model = await this.users.findFirst({ where: { id: userId } });
+        if (!model) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');
+
+        if (userId === await this.mainAdminId())
+            throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'The main administrator account cannot be deleted');
+
+        // Require a fresh verification when the account has any method available.
+        const wrapped = User.attach(model, this);
+        if (await this.verification.isVerificationRequired(wrapped)) {
+            if (factorCode) {
+                const verifyResult = await this.verification.verifyFactorCode(wrapped, factorCode);
+                if (!verifyResult.success)
+                    throw new ApiException(ApiErrorCode.VALIDATION_ERROR, { field: 'factor_code', message: verifyResult.message }, verifyResult.message);
+            } else {
+                const methods = await this.verification.getAvailableVerificationMethods(wrapped);
+                throw new ApiException(ApiErrorCode.VERIFICATION_REQUIRED, { verification_required: true, methods }, 'Verification required');
+            }
+        }
+
+        // Relations are stored by NoxIdentifier string refs (no FK) — drop both
+        // directions and notify the affected users so their lists update live.
+        await this.relations.purgeUserRelations(userId);
+
+        // Best-effort: remove stored profile images.
+        for (const ref of [model.thumbnail, model.banner]) {
+            if (!ref) continue;
+            try { await this.storage.delete(ref); } 
+            catch { /* ignore */ }
+        }
+
+        // Sessions, verifications, passkeys, user tables and devices cascade with the user.
+        await this.users.delete({ where: { id: userId } });
+
+        try { await this.cache.del(`${USER_CACHE_PREFIX}${userId}`); } 
+        catch { /* best-effort */ }
+    }
 }

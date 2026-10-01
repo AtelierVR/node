@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNumber, IsBoolean, IsArray, IsOptional } from 'class-validator';
+import { IsString, IsNumber, IsArray, IsOptional } from 'class-validator';
 import { ApiAliasDto, ApiLinkResponseDto } from '../../api/dto/shared.dto';
 
 export class ApiUserRelationsDto {
@@ -104,9 +104,13 @@ export class ApiCurrentUserDto extends ApiUserDto {
     @IsString()
     email!: string | null;
 
-    @ApiProperty({ description: 'Whether the email has been verified', example: false })
-    @IsBoolean()
-    email_verified!: boolean;
+    @ApiProperty({
+        description: 'Authentication methods and their status (email: verified|unverified|disabled, totp: enabled|disabled, passkey: enabled|disabled)',
+        example: { email: 'verified', totp: 'disabled', passkey: 'enabled' },
+        type: 'object',
+        additionalProperties: { type: 'string' },
+    })
+    methods!: Record<string, string>;
 
     @ApiProperty({ description: 'Account creation timestamp (Unix ms)', example: 1680000000000 })
     created_at!: number;
@@ -116,9 +120,6 @@ export class ApiCurrentUserDto extends ApiUserDto {
 
     @ApiPropertyOptional({ type: 'string', description: 'Active avatar identifier, or null', example: null, nullable: true })
     avatar!: string | null;
-
-    @ApiProperty({ description: 'Whether 2FA (TOTP) is enabled', example: false })
-    twofa_enabled!: boolean;
 }
 
 export class ApiSessionDto {

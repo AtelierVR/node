@@ -13,7 +13,7 @@ export interface ApiRelation {
 export interface S2SRelationDto {
     initiator: number;
     target: number;
-    type: 'follow' | 'unfollow' | 'follow_accept' | 'follow_refuse';
+    type: 'follow' | 'unfollow' | 'unfollow_reverse' | 'follow_accept' | 'follow_refuse';
 }
 
 /** Expected data shape for S2S /api/relations responses. */

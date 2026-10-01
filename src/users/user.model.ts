@@ -157,14 +157,22 @@ export class User {
   async sanitizeCurrent(this: UserWithMethods): Promise<ApiCurrentUser> {
     const user = this as UserModel;
     var base = await this.sanitize(this.identifier());
+    const hasPasskey = (await this.manager.prisma.passkeys.count({ where: { userId: user.id } })) > 0;
     return {
       ...base,
       email: user.email ?? null,
-      email_verified: user.emailVerified,
       home: user.homeRef && NoxIdentifier.parse(user.homeRef).toString(base.server),
       avatar: user.avatarRef && NoxIdentifier.parse(user.avatarRef).toString(base.server),
       relations: null,
-      twofa_enabled: user.twofaEnabled,
+      methods: {
+        email: !user.email
+          ? 'disabled'
+          : user.emailVerified
+            ? 'verified'
+            : 'unverified',
+        totp: user.twofaEnabled ? 'enabled' : 'disabled',
+        passkey: hasPasskey ? 'enabled' : 'disabled',
+      },
     };
   }
 
