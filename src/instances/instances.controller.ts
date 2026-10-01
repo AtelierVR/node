@@ -65,6 +65,15 @@ export class InstancesController {
         return identifier.toString();
     }
 
+    /**
+     * Resolve a route `:id` parameter to a numeric instance id.
+     * Accepts `42`, `42@host` and typed identifiers (`i:42@host`) — the type
+     * prefix is ignored, routes are already typed by resource.
+     */
+    private numericId(raw: string): number | null {
+        return NoxIdentifier.parse(raw).numericId;
+    }
+
     // ── Search ────────────────────────────────────────────────────────────────────
 
     @ApiOperation({ summary: 'Search instances', description: 'Paginated search for running instances, optionally filtered by world or owner.' })
@@ -126,11 +135,11 @@ export class InstancesController {
     @UseGuards(OptionalAuthUserGuard)
     @Get(':id')
     async getOne(@Param('id') idOrName: string) {
-        let instance = idOrName.startsWith('#')
-            ? await this.instances.findByName(idOrName.slice(1))
-            : /^\d+$/.test(idOrName)
-                ? await this.instances.findById(parseInt(idOrName, 10))
-                : await this.instances.findByName(idOrName);
+        const raw = idOrName.startsWith('#') ? idOrName.slice(1) : idOrName;
+        const identifier = NoxIdentifier.parse(raw);
+        const instance = identifier.numericId !== null
+            ? await this.instances.findById(identifier.numericId)
+            : await this.instances.findByName(identifier.id);
 
         if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${idOrName})`);
         return this.instances.serialize(instance);
@@ -180,8 +189,8 @@ export class InstancesController {
     @UseGuards(AuthUserGuard)
     @Patch(':id')
     async update(@Req() req: Request & UserAuthenticatedRequest, @Param('id') rawId: string, @Body() body: UpdateInstanceDto) {
-        const id = parseInt(rawId, 10);
-        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
+        const id = this.numericId(rawId);
+        if (id === null) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
 
         const instance = await this.instances.findById(id);
         if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
@@ -217,8 +226,8 @@ export class InstancesController {
         @Query('size') size?: string,
         @Query('unoptimized') unoptimized?: string,
     ) {
-        const id = parseInt(rawId, 10);
-        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
+        const id = this.numericId(rawId);
+        if (id === null) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
         const instance = await this.instances.findById(id);
         if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
         if (!instance.thumbnail) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
@@ -245,8 +254,8 @@ export class InstancesController {
         @Query('size') size?: string,
         @Query('unoptimized') unoptimized?: string,
     ) {
-        const id = parseInt(rawId, 10);
-        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
+        const id = this.numericId(rawId);
+        if (id === null) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
         const instance = await this.instances.findById(id);
         if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
         if (!this.instances.canManage(req.user, instance))
@@ -278,8 +287,8 @@ export class InstancesController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @Delete(':id')
     async remove(@Req() req: Request & UserAuthenticatedRequest, @Param('id') rawId: string) {
-        const id = parseInt(rawId, 10);
-        if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
+        const id = this.numericId(rawId);
+        if (id === null) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
 
         const instance = await this.instances.findById(id);
         if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
