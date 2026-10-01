@@ -1,9 +1,11 @@
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsHttpUrl, IsNoxIdentifier, IsNoxTag } from '../../common/validation';
 
 export class UpdateInstanceDto {
     @ApiPropertyOptional({ description: 'New display title', example: 'Updated Title' })
+    @MaxLength(64)
     @IsOptional()
     @IsString()
     @IsNotEmpty()
@@ -23,14 +25,15 @@ export class UpdateInstanceDto {
     @Type(() => Number)
     capacity?: number;
 
-    @ApiPropertyOptional({ type: [String], description: 'Updated tags list', example: ['social'] })
+    @ApiPropertyOptional({ type: [String], description: 'Updated tags list', example: ['usr:social'] })
+    @ArrayMaxSize(20)
+    @IsNoxTag({ each: true, namespaces: ['usr'] })
     @IsOptional()
     @IsArray()
-    @IsString({ each: true })
     tags?: string[];
 
     @ApiPropertyOptional({ type: 'string', description: 'Thumbnail URL, or null to clear', example: null, nullable: true })
-    @Matches(/^https?:\/\/[a-zA-Z0-9_.-]+(:[0-9]{1,5})?(\/.*)?$/, { message: 'Invalid URL' })
+    @IsHttpUrl()
     @IsOptional()
     @IsString()
     thumbnail?: string;
@@ -41,10 +44,12 @@ export class UpdateInstanceDto {
     use_whitelist?: boolean;
 
     @ApiPropertyOptional({ type: [String], description: 'NoxIdentifier list of allowed users', example: [] })
+    @ArrayMaxSize(200)
+    @IsNoxIdentifier({ each: true })
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
-    whitelist_refs?: string[];
+    whitelist?: string[];
 
     @ApiPropertyOptional({ description: 'Whether a password is required to join', example: false })
     @IsOptional()
@@ -53,6 +58,7 @@ export class UpdateInstanceDto {
 
     @ApiPropertyOptional({ type: 'string', description: 'Join password (min 3 characters), or null to clear', example: null, nullable: true })
     @MinLength(3)
+    @MaxLength(128)
     @IsOptional()
     @IsString()
     password?: string;

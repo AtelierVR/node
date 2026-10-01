@@ -12,6 +12,8 @@ import { CONFIG_REGISTRY, getLabel, getDescription, getIsRisky } from '../config
 import { ConfigService } from '@nestjs/config';
 import { ConfigPatchItemDto } from './dto/patch-configs.dto';
 import { ALLOWED_WIDTHS } from '../storage/image-resize.constants';
+import { ApiException } from '../api/api-exception';
+import { ApiErrorCode } from '../api/api-error.factory';
 
 @ApiTags('Server')
 @Controller()
@@ -111,6 +113,9 @@ export class ServerController {
     @Req() req: Request & UserAuthenticatedRequest,
     @Body(new ParseArrayPipe({ items: ConfigPatchItemDto })) items: ConfigPatchItemDto[],
   ) {
+    if (items.length > 100)
+      throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Too many config patches (max 100)');
+
     const validKeys = new Set(Array.from(CONFIG_REGISTRY.keys()));
     const results: { key: string; ok: boolean; error?: string }[] = [];
 

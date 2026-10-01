@@ -1,6 +1,24 @@
-import { IsNotEmpty, IsOptional, IsString, IsInt, Min, Matches, MinLength, MaxLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, IsInt, Min, Matches, MinLength, MaxLength, Validate, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsVerificationCode, IsHttpUrl, IsPublicKey } from '../../common/validation';
+
+/**
+ * Login identifiers may be a numeric user ID, a username or an email address.
+ * A single value constraint keeps the runtime type intact (AuthService switches
+ * on `typeof identifier`) while still rejecting objects/arrays/oversized input.
+ */
+@ValidatorConstraint({ name: 'loginIdentifier', async: false })
+class LoginIdentifierConstraint implements ValidatorConstraintInterface {
+    validate(value: unknown): boolean {
+        if (typeof value === 'number') return Number.isInteger(value) && value >= 1 && value <= 2147483647;
+        if (typeof value === 'string') return value.length >= 1 && value.length <= 254;
+        return false;
+    }
+    defaultMessage(): string {
+        return 'identifier must be a user ID (positive integer), username or email (max 254 chars)';
+    }
+}
 
 export class RegisterDto {
     @ApiProperty({ description: 'Unique username (lowercase letters, numbers, dots, hyphens, underscores)', example: 'johndoe' })
@@ -18,7 +36,6 @@ export class RegisterDto {
     display?: string;
 
     @ApiProperty({ description: 'Account password (6-128 characters)', example: 'secret123' })
-    @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
     @MinLength(6)
     @MaxLength(128)
     @IsString()
@@ -26,25 +43,26 @@ export class RegisterDto {
     password!: string;
 
     @ApiPropertyOptional({ description: 'Email address for notifications and account recovery', example: 'john@example.com' })
-    @Matches(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, { message: 'Invalid email address' })
+    @MaxLength(254)
+    @IsEmail()
     @IsOptional()
     @IsString()
     email?: string;
 
     @ApiPropertyOptional({ type: 'string', description: 'URL of a pre-existing thumbnail image, or null', example: null, nullable: true })
-    @Matches(/^https?:\/\/[a-zA-Z0-9_.-]+(:[0-9]{1,5})?(\/.*)?$/, { message: 'Invalid URL' })
+    @IsHttpUrl()
     @IsOptional()
     @IsString()
     thumbnail?: string;
 
     @ApiPropertyOptional({ type: 'string', description: 'URL of a pre-existing banner image, or null', example: null, nullable: true })
-    @Matches(/^https?:\/\/[a-zA-Z0-9_.-]+(:[0-9]{1,5})?(\/.*)?$/, { message: 'Invalid URL' })
+    @IsHttpUrl()
     @IsOptional()
     @IsString()
     banner?: string;
 
     @ApiPropertyOptional({ type: 'string', example: null, nullable: true, description: 'Ed25519 public key (base64 SPKI DER)' })
-    @Matches(/^([A-Za-z0-9+/=\n]+)$/, { message: 'Invalid public key' })
+    @IsPublicKey({ type: 'ed25519' })
     @IsOptional()
     @IsString()
     public_key?: string;
@@ -52,7 +70,7 @@ export class RegisterDto {
 
 export class LoginDto {
     @ApiProperty({ example: 'johndoe', description: 'Username, email or numeric user ID', oneOf: [{ type: 'string' }, { type: 'integer' }] })
-    @IsNotEmpty()
+    @Validate(LoginIdentifierConstraint)
     identifier!: string | number;
 
     @ApiProperty({ description: 'Account password (6-128 characters)', example: 'secret123' })
@@ -62,14 +80,14 @@ export class LoginDto {
     @IsNotEmpty()
     password!: string;
 
-    @ApiPropertyOptional({ example: null, nullable: true, description: 'TOTP code for 2FA (6 digits)' })
-    @Matches(/^[0-9]{6}$/, { message: 'TOTP code must be exactly 6 digits' })
+    @ApiPropertyOptional({ example: null, nullable: true, description: 'Verification code for MFA (6 characters)' })
+    @IsVerificationCode()
     @IsOptional()
     @IsString()
     factor_code?: string;
 
     @ApiPropertyOptional({ example: null, nullable: true, description: 'Ed25519 public key (base64 SPKI DER)' })
-    @Matches(/^([A-Za-z0-9+/=\n]+)$/, { message: 'Invalid public key' })
+    @IsPublicKey({ type: 'ed25519' })
     @IsOptional()
     @IsString()
     public_key?: string;
@@ -81,4 +99,37 @@ export class SendVerificationCodeDto {
     @IsInt()
     @Min(1)
     target!: number;
+}
+
+/**
+ * Body payload accepted by the generic `/auth/methods/:method/{setup,enable,disable}`
+ * endpoints. Which field is required depends on the target method, so all fields
+ * are optional but strictly validated (type, format and length) when present.
+ */
+export class AuthMethodPayloadDto {
+    @ApiPropertyOptional({ description: 'Email address (email method setup)', example: 'john@example.com' })
+    @MaxLength(254)
+    @IsEmail()
+    @IsOptional()
+    @IsString()
+    email?: string;
+
+    @ApiPropertyOptional({ description: 'TOTP secret (base32) returned by the setup step (totp method enable)', example: 'JBSWY3DPEHPK3PXP' })
+    @MaxLength(128)
+    @IsOptional()
+    @IsString()
+    secret?: string;
+
+    @ApiPropertyOptional({ description: 'One-time code: TOTP code (totp method) or email link token (email method)', example: '123456' })
+    @MinLength(6)
+    @MaxLength(256)
+    @IsOptional()
+    @IsString()
+    token?: string;
+
+    @ApiPropertyOptional({ description: 'Verification code (6 characters) required to disable a method', example: '123456' })
+    @IsVerificationCode()
+    @IsOptional()
+    @IsString()
+    factor_code?: string;
 }

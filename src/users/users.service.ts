@@ -202,6 +202,15 @@ export class UsersService implements OnModuleInit {
         return User.attach(model, this);
     }
 
+    /** Look up a user by their (unique) email address. Case-insensitive. */
+    async findByEmail(email: string): Promise<UserWithMethods | null> {
+        const model = await this.users.findFirst({
+            where: { email: { equals: email.trim(), mode: 'insensitive' } },
+        });
+        if (!model) return null;
+        return User.attach(model, this);
+    }
+
     /**
      * Resolves a user from a parsed NoxIdentifier.
      * Returns null for remote identifiers (not yet federated).

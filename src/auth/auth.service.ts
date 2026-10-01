@@ -80,10 +80,12 @@ export class AuthService {
     }
 
     async login(input: LoginDto, meta?: { ip?: string; userAgent?: string }) {
-        // Find user by username or id
-        let user = typeof input.identifier === 'string'
-            ? await this.users.findByUsername(input.identifier)
-            : await this.users.findById(input.identifier);
+        // Find user by username, email or numeric id
+        const identifier = input.identifier;
+        let user = typeof identifier === 'string'
+            ? (await this.users.findByUsername(identifier)
+                ?? (identifier.includes('@') ? await this.users.findByEmail(identifier) : null))
+            : await this.users.findById(identifier);
 
         if (!user)
             throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');

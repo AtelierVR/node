@@ -1,8 +1,7 @@
-import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateNested, Matches, MinLength, MaxLength } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateNested, Matches, MinLength, MaxLength, ArrayMaxSize } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-const URL_PATTERN = /^https?:\/\/[a-zA-Z0-9_.-]+(:[0-9]{1,5})?(\/.*)?$/;
+import { IsNoxIdentifier as IsIdentifier, IsNoxTag as IsTag, IsHttpUrl, IsVerificationCode } from '../../common/validation';
 
 export class ApiLinkDto {
     @ApiProperty({ description: 'Link display label', example: 'GitHub' })
@@ -14,7 +13,7 @@ export class ApiLinkDto {
     label!: string;
 
     @ApiProperty({ description: 'Link URL', example: 'https://github.com/johndoe' })
-    @Matches(URL_PATTERN, { message: 'Invalid URL' })
+    @IsHttpUrl()
     @IsString()
     value!: string;
 }
@@ -35,8 +34,8 @@ export class UpdateUserDto {
     @IsString()
     display?: string;
 
-    @ApiPropertyOptional({ type: 'string', description: 'Biography text, or null to clear', example: 'Full-stack developer', nullable: true })
-    @MaxLength(512)
+    @ApiPropertyOptional({ type: 'string', description: 'Biography text (max 4096 characters), or null to clear', example: 'Full-stack developer', nullable: true })
+    @MaxLength(4096)
     @IsOptional()
     @IsString()
     bio?: string | null;
@@ -68,39 +67,40 @@ export class UpdateUserDto {
     password?: string;
 
     @ApiPropertyOptional({ type: () => [ApiLinkDto], description: 'External links list, or null to clear', nullable: true })
+    @ArrayMaxSize(20)
     @IsOptional()
     @IsArray()
     @ValidateNested({ each: true })
     @Type(() => ApiLinkDto)
     links?: ApiLinkDto[] | null;
 
-    @ApiPropertyOptional({ type: [String], description: 'Tags list (usr:* format), or null to clear', example: ['usr:developer', 'usr:gamer'], nullable: true })
-    @Matches(/^usr:[a-zA-Z0-9_]+$/, { each: true, message: 'Tags must be usr: format (e.g. usr:developer)' })
-    @MinLength(5, { each: true })
-    @MaxLength(64, { each: true })
+    @ApiPropertyOptional({ type: [String], description: 'Tags list (usr:* snake_case:snake_case format), or null to clear', example: ['usr:developer', 'usr:gamer'], nullable: true })
+    @ArrayMaxSize(50)
+    @IsTag({ each: true, namespaces: ['usr'] })
     @IsOptional()
     @IsArray()
-    @IsString({ each: true })
     tags?: string[] | null;
 
     @ApiPropertyOptional({ type: 'string', description: 'Thumbnail URL, or null to clear', example: null, nullable: true })
-    @Matches(URL_PATTERN, { message: 'Invalid URL' })
+    @IsHttpUrl()
     @IsOptional()
     @IsString()
     thumbnail?: string | null;
 
     @ApiPropertyOptional({ type: 'string', description: 'Banner URL, or null to clear', example: null, nullable: true })
-    @Matches(URL_PATTERN, { message: 'Invalid URL' })
+    @IsHttpUrl()
     @IsOptional()
     @IsString()
     banner?: string | null;
 
     @ApiPropertyOptional({ type: 'string', example: null, nullable: true, description: 'Home world identifier' })
+    @IsIdentifier()
     @IsOptional()
     @IsString()
     home?: string | null;
 
     @ApiPropertyOptional({ type: 'string', example: null, nullable: true, description: 'Active avatar identifier' })
+    @IsIdentifier()
     @IsOptional()
     @IsString()
     avatar?: string | null;
@@ -117,8 +117,8 @@ export class UpdateUserDto {
     @IsString()
     presence_status?: string | null;
 
-    @ApiPropertyOptional({ description: 'TOTP 2FA code (6 digits), required for sensitive operations', example: '123456' })
-    @Matches(/^[0-9]{6}$/, { message: 'TOTP code must be exactly 6 digits' })
+    @ApiPropertyOptional({ description: 'Verification code (6 characters), required for sensitive operations', example: '123456' })
+    @IsVerificationCode()
     @IsOptional()
     @IsString()
     factor_code?: string;

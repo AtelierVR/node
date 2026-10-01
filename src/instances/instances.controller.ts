@@ -161,7 +161,7 @@ export class InstancesController {
             thumbnail:     body.thumbnail      ?? null,
             region:        body.region         ?? null,
             useWhitelist:  body.use_whitelist  ?? false,
-            whitelistRefs: await Promise.all((body.whitelist_refs ?? []).map(ref => this.normalizeRef(ref))),
+            whitelistRefs: await Promise.all((body.whitelist ?? []).map(ref => this.normalizeRef(ref))),
             usePassword:   body.use_password   ?? false,
             password:      body.password       ?? null,
         });
@@ -196,7 +196,7 @@ export class InstancesController {
             ...(body.tags           !== undefined && { tags:          body.tags }),
             ...(body.thumbnail      !== undefined && { thumbnail:     body.thumbnail }),
             ...(body.use_whitelist  !== undefined && { useWhitelist:  body.use_whitelist }),
-            ...(body.whitelist_refs !== undefined && { whitelistRefs: await Promise.all(body.whitelist_refs.map(ref => this.normalizeRef(ref))) }),
+            ...(body.whitelist      !== undefined && { whitelistRefs: await Promise.all(body.whitelist.map(ref => this.normalizeRef(ref))) }),
             ...(body.use_password   !== undefined && { usePassword:   body.use_password }),
             ...(body.password       !== undefined && { password:      body.password }),
         });

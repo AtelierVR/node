@@ -1,15 +1,17 @@
-import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsHttpUrl, IsNoxIdentifier, IsNoxName, IsNoxTag } from '../../common/validation';
 
 export class UpdateWorldDto {
-    @ApiPropertyOptional({ type: 'string', description: 'Short unique name [a-z0-9-_.]{3,8}, or null to clear', example: 'myworld2', nullable: true })
+    @ApiPropertyOptional({ type: 'string', description: 'Short unique name (snake_case, 3-8 chars), or null to clear', example: 'my_world', nullable: true })
     @IsOptional()
+    @IsNoxName()
     @IsString()
-    @Matches(/^[a-z0-9\-_.]{3,8}$/, { message: 'name must be 3-8 characters: lowercase letters, digits, hyphens, underscores, or dots' })
     name?: string | null;
 
     @ApiPropertyOptional({ description: 'New world display name', example: 'My Updated World' })
+    @MaxLength(64)
     @IsOptional()
     @IsString()
     @IsNotEmpty()
@@ -30,28 +32,32 @@ export class UpdateWorldDto {
     capacity?: number;
 
     @ApiPropertyOptional({ type: 'string', description: 'Thumbnail URL, or null to clear', example: null, nullable: true })
-    @Matches(/^https?:\/\/[a-zA-Z0-9_.-]+(:[0-9]{1,5})?(\/.*)?$/, { message: 'Invalid URL' })
+    @IsHttpUrl()
     @IsOptional()
     @IsString()
     thumbnail?: string | null;
 
     @ApiPropertyOptional({ type: [String], description: 'NoxIdentifier list of contributors', example: [] })
+    @ArrayMaxSize(50)
+    @IsNoxIdentifier({ each: true })
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
     contributors?: string[];
 
-    @ApiPropertyOptional({ type: 'number', example: 2, nullable: true, description: 'Set recommended release version. null = auto (latest).' })
+    @ApiPropertyOptional({ type: 'number', example: 2, nullable: true, description: 'Set recommended release version (ushort, 0–65535). null = auto (latest).' })
     @IsOptional()
     @IsInt()
     @Min(0)
+    @Max(65535)
     @Type(() => Number)
     release?: number | null;
 
     @ApiPropertyOptional({ type: [String], description: 'User-defined tags (only usr:* tags are accepted)', example: ['usr:pvp'] })
+    @ArrayMaxSize(20)
+    @IsNoxTag({ each: true, namespaces: ['usr'] })
     @IsOptional()
     @IsArray()
-    @IsString({ each: true })
     tags?: string[];
 }
 

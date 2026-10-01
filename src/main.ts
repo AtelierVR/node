@@ -56,7 +56,22 @@ async function bootstrap() {
     });
 
   app.useGlobalFilters(new ApiExceptionFilter(prefix, ROOT_ONLY_PATHS));
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(new ValidationPipe({
+    // Strip unknown properties ...
+    whitelist: true,
+    // ... and reject requests that contain them instead of silently ignoring them.
+    // This prevents attackers from probing/fuzzing for hidden fields.
+    forbidNonWhitelisted: true,
+    // Reject payloads whose shape does not match any validated DTO at all.
+    forbidUnknownValues: true,
+    // Transform plain objects into DTO instances (needed for @Type()/@Transform()).
+    transform: true,
+    // Do NOT let class-transformer coerce types implicitly — only explicit @Type()
+    // is allowed. Prevents "1" being accepted where a boolean/number is expected.
+    transformOptions: { enableImplicitConversion: false },
+    // Never echo the (untrusted) target object or submitted values back in errors.
+    validationError: { target: false, value: false },
+  }));
 
   // onModuleInit hooks (including PrismaService DB connect + migrate) are triggered
   // by init(), not by NestFactory.create(). Call it explicitly so the database is

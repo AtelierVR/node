@@ -4,7 +4,7 @@ import { AuthService } from './auth.service';
 import { VerificationService } from './verification.service';
 import { AuthUserGuard, OptionalAuthUserGuard } from './auth.guard';
 import type { OptionalUserAuthenticatedRequest, UserAuthenticatedRequest } from './auth.guard';
-import { RegisterDto, LoginDto, SendVerificationCodeDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, SendVerificationCodeDto, AuthMethodPayloadDto } from './dto/auth.dto';
 import type { Request, Response } from 'express';
 import { ApiWrappedResponse, ApiWrappedSuccessResponse, ApiErrorResponse } from '../api/swagger';
 import { ApiSessionDto } from '../users/dto/user-response.dto';
@@ -93,21 +93,21 @@ export class AuthController {
     @ApiOperation({ summary: 'Setup auth method', description: 'Initialize setup for an auth method (e.g. TOTP, email).' })
     @UseGuards(AuthUserGuard)
     @Post('methods/:method/setup')
-    async setupMethod(@Req() req: UserAuthenticatedRequest, @Param('method') method: string, @Body() body: any) {
+    async setupMethod(@Req() req: UserAuthenticatedRequest, @Param('method') method: string, @Body() body: AuthMethodPayloadDto) {
         return this.verification.setupMethod(req.user, method, body);
     }
 
     @ApiOperation({ summary: 'Enable auth method', description: 'Verify and enable an auth method. Uses optional auth — public for link tokens (e.g. email), authenticated for code-based flows.' })
     @UseGuards(OptionalAuthUserGuard)
     @Post('methods/:method/enable')
-    async enableMethod(@Req() req: OptionalUserAuthenticatedRequest, @Param('method') method: string, @Body() body: any) {
+    async enableMethod(@Req() req: OptionalUserAuthenticatedRequest, @Param('method') method: string, @Body() body: AuthMethodPayloadDto) {
         return this.verification.enableMethod(req.user, method, body);
     }
 
     @ApiOperation({ summary: 'Disable auth method', description: 'Remove an auth method. Requires verification (factor_code).' })
     @UseGuards(AuthUserGuard)
     @Post('methods/:method/disable')
-    async disableMethod(@Req() req: UserAuthenticatedRequest, @Param('method') method: string, @Body() body: any) {
+    async disableMethod(@Req() req: UserAuthenticatedRequest, @Param('method') method: string, @Body() body: AuthMethodPayloadDto) {
         return this.verification.disableMethod(req.user, method, body?.factor_code);
     }
 }

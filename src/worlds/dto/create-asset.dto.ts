@@ -1,6 +1,7 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsHttpUrl } from '../../common/validation';
 
 export class CreateAssetDto {
     @ApiProperty({ example: 1, description: 'Asset version number' })
@@ -10,18 +11,22 @@ export class CreateAssetDto {
     version!: number;
 
     @ApiProperty({ example: 'unity', description: 'Game engine identifier (e.g. unity, godot)' })
+    @MaxLength(32)
+    @Matches(/^[a-z0-9_-]+$/i, { message: 'engine must be alphanumeric' })
     @IsString()
     @IsNotEmpty()
     engine!: string;
 
     @ApiProperty({ example: 'windows', description: 'Target platform (e.g. windows, android, linux)' })
+    @MaxLength(32)
+    @Matches(/^[a-z0-9_-]+$/i, { message: 'platform must be alphanumeric' })
     @IsString()
     @IsNotEmpty()
     platform!: string;
 
     @ApiPropertyOptional({ example: 'https://example.com/world.zip', description: 'External URL — mutually exclusive with file upload' })
     @IsOptional()
-    @IsUrl()
+    @IsHttpUrl()
     url?: string;
 }
 

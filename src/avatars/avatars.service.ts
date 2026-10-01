@@ -261,8 +261,8 @@ export class AvatarsService {
 
         if (dto.release !== undefined) {
             if (dto.release !== null && dto.release !== undefined) {
-                if (!Number.isInteger(dto.release) || dto.release < 0)
-                    throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'release must be a non-negative integer');
+                if (!Number.isInteger(dto.release) || dto.release < 0 || dto.release > 65535)
+                    throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'release must be an integer between 0 and 65535 (ushort)');
             }
             updates.release = dto.release ?? null;
         }

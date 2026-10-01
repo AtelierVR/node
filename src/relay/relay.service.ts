@@ -24,6 +24,7 @@ import {
     RelayPlayerJoinDto,
     RelayPlayerLeaveDto,
     RelayInstanceSettingsChangedDto,
+    RelaySpecsMessageDto,
 } from './dto/relay-message.dto';
 import type { RelayModel } from '../generated/prisma/models/Relay';
 import type { RelayTokenModel } from '../generated/prisma/models/RelayToken';
@@ -42,7 +43,6 @@ import type {
     RelayPlayerLeaveEvent,
     RelayInstanceSettingsChangedEvent,
     RelayStatusChangeEvent,
-    WsRelaySpecs
 } from './relay.types';
 import { WsGateway } from '../ws/ws.gateway';
 
@@ -525,13 +525,19 @@ export class RelayService implements OnModuleInit {
         this.events.emit<RelayLogEntry>('relay_logs', entry);
     }
 
-    handleRelaySpecs(relayId: number, raw: WsRelaySpecs | null) {
+    handleRelaySpecs(relayId: number, raw: unknown) {
+        const dto = plainToInstance(RelaySpecsMessageDto, raw ?? {});
+        const errors = validateSync(dto, { whitelist: true });
+        if (errors.length > 0) {
+            this.logger.warn(`Relay #${relayId} sent invalid specs payload`);
+            return;
+        }
         this.events.emit('relay_specs_update', {
             relay_id: relayId, time: Date.now(), details: {
-                processor: { used: raw?.c?.u ?? 0, cores: raw?.c?.c ?? 1 },
-                memory: { used: raw?.m?.u ?? 0, total: raw?.m?.t ?? 1 },
-                upload: { used: raw?.u?.u ?? 0, bandwidth: raw?.u?.b ?? 0, packets: raw?.u?.p ?? 0 },
-                download: { used: raw?.d?.u ?? 0, bandwidth: raw?.d?.b ?? 0, packets: raw?.d?.p ?? 0 },
+                processor: { used: dto.c?.u ?? 0, cores: dto.c?.c ?? 1 },
+                memory: { used: dto.m?.u ?? 0, total: dto.m?.t ?? 1 },
+                upload: { used: dto.u?.u ?? 0, bandwidth: dto.u?.b ?? 0, packets: dto.u?.p ?? 0 },
+                download: { used: dto.d?.u ?? 0, bandwidth: dto.d?.b ?? 0, packets: dto.d?.p ?? 0 },
             }
         });
     }

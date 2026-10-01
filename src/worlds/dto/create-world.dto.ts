@@ -1,6 +1,7 @@
-import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNoxIdentifier, IsNoxName } from '../../common/validation';
 
 export class CreateWorldDto {
     @ApiPropertyOptional({ description: 'Custom numeric world ID. If omitted, one is auto-assigned.', example: 42 })
@@ -10,13 +11,14 @@ export class CreateWorldDto {
     @Type(() => Number)
     id?: number;
 
-    @ApiPropertyOptional({ description: 'Short unique name [a-z0-9-_.]{3,8}. Left null if omitted.', example: 'myworld' })
+    @ApiPropertyOptional({ description: 'Short unique name (snake_case, 3-8 chars). Left null if omitted.', example: 'my_world' })
     @IsOptional()
+    @IsNoxName()
     @IsString()
-    @Matches(/^[a-z0-9\-_.]{3,8}$/, { message: 'name must be 3-8 characters: lowercase letters, digits, hyphens, underscores, or dots' })
     name?: string;
 
     @ApiPropertyOptional({ description: 'World display name (defaults to "<display>\'s World" if omitted)', example: 'My World' })
+    @MaxLength(64)
     @IsOptional()
     @IsString()
     @IsNotEmpty()
@@ -37,6 +39,8 @@ export class CreateWorldDto {
     capacity?: number;
 
     @ApiPropertyOptional({ type: [String], example: [], description: 'NoxIdentifier list of contributors' })
+    @ArrayMaxSize(50)
+    @IsNoxIdentifier({ each: true })
     @IsOptional()
     @IsArray()
     @IsString({ each: true })

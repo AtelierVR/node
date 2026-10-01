@@ -1,9 +1,11 @@
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsHttpUrl, IsNoxIdentifier, IsNoxName, IsNoxTag } from '../../common/validation';
 
 export class CreateInstanceDto {
     @ApiProperty({ example: '1@my-server.com', description: 'World identifier (NoxIdentifier format)' })
+    @IsNoxIdentifier()
     @IsString()
     @IsNotEmpty()
     world!: string;
@@ -15,13 +17,14 @@ export class CreateInstanceDto {
     @Type(() => Number)
     capacity!: number;
 
-    @ApiPropertyOptional({ example: 'my-instance', description: 'Short unique slug name [a-z0-9-_.]{3,8}. Left null if omitted.' })
+    @ApiPropertyOptional({ example: 'my-instance', description: 'Short unique slug name (snake_case, 3-8 chars). Left null if omitted.' })
     @IsOptional()
+    @IsNoxName()
     @IsString()
-    @Matches(/^[a-z0-9\-_.]{3,8}$/, { message: 'name must be 3-8 characters: lowercase letters, digits, hyphens, underscores, or dots' })
     name?: string;
 
     @ApiPropertyOptional({ description: 'Human-readable instance title', example: 'Chill Hangout' })
+    @MaxLength(64)
     @IsOptional()
     @IsString()
     @IsNotEmpty()
@@ -33,10 +36,11 @@ export class CreateInstanceDto {
     @IsString()
     description?: string;
 
-    @ApiPropertyOptional({ type: [String], example: ['social', 'chill'] })
+    @ApiPropertyOptional({ type: [String], example: ['usr:social', 'usr:chill'] })
+    @ArrayMaxSize(20)
+    @IsNoxTag({ each: true, namespaces: ['usr'] })
     @IsOptional()
     @IsArray()
-    @IsString({ each: true })
     tags?: string[];
 
     @ApiPropertyOptional({ type: 'string', description: 'ISO 3166-1 alpha-2 region code (lowercase)', example: 'fr' })
@@ -46,7 +50,7 @@ export class CreateInstanceDto {
     region?: string;
 
     @ApiPropertyOptional({ type: 'string', description: 'Thumbnail URL, or null', example: null, nullable: true })
-    @Matches(/^https?:\/\/[a-zA-Z0-9_.-]+(:[0-9]{1,5})?(\/.*)?$/, { message: 'Invalid URL' })
+    @IsHttpUrl()
     @IsOptional()
     @IsString()
     thumbnail?: string;
@@ -57,10 +61,12 @@ export class CreateInstanceDto {
     use_whitelist?: boolean;
 
     @ApiPropertyOptional({ type: [String], description: 'NoxIdentifier list of allowed users', example: [] })
+    @ArrayMaxSize(200)
+    @IsNoxIdentifier({ each: true })
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
-    whitelist_refs?: string[];
+    whitelist?: string[];
 
     @ApiPropertyOptional({ description: 'Whether a password is required to join', example: false })
     @IsOptional()
@@ -69,6 +75,7 @@ export class CreateInstanceDto {
 
     @ApiPropertyOptional({ type: 'string', description: 'Join password (min 3 characters), or null', example: null, nullable: true })
     @MinLength(3)
+    @MaxLength(128)
     @IsOptional()
     @IsString()
     password?: string;
