@@ -4,6 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import { WellKnownService } from '../fediverse/well-known.service';
 import { StorageService } from '../storage/storage.service';
 import { NoxIdentifier } from '../common/identifier';
+import { Tags } from '../common/tags';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
 import { ApiInstanceConnectionDto } from './dto/instance-response.dto';
@@ -90,11 +91,11 @@ export class InstancesService {
     // ── Permissions ──────────────────────────────────────────────────────────────
 
     canCreate(user: UserWithMethods): boolean {
-        return user.isAdmin() || user.tags.includes('sys:can_instance_create');
+        return user.isAdmin() || Tags.has(user.tags, Tags.MODERATION, 'can_instance_create');
     }
 
     canUploadFile(user: UserWithMethods): boolean {
-        return user.isAdmin() || user.tags.includes('sys:can_file_upload');
+        return user.isAdmin() || Tags.has(user.tags, Tags.MODERATION, 'can_file_upload');
     }
 
     canManage(user: UserWithMethods, instance: Instance): boolean {
@@ -296,9 +297,9 @@ export class InstancesService {
 
         const tags = [
             ...instance.tags,
-            ...(instance.capacity === 0 ? ['sys:unlimited'] : []),
-            ...(instance.useWhitelist ? ['sys:whitelist'] : []),
-            ...(instance.password && instance.usePassword ? ['sys:password'] : []),
+            ...(instance.capacity === 0 ? [Tags.build(Tags.SYSTEM, 'unlimited')] : []),
+            ...(instance.useWhitelist ? [Tags.build(Tags.SYSTEM, 'whitelist')] : []),
+            ...(instance.password && instance.usePassword ? [Tags.build(Tags.SYSTEM, 'password')] : []),
         ];
 
         return {

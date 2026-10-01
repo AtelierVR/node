@@ -5,6 +5,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import type { ApiLinkDto } from './dto/update-user.dto';
 import { PrismaService } from '../database/prisma.service';
 import { NoxIdentifier } from '../common/identifier';
+import { Tags } from '../common/tags';
 import { ApiLink } from './users.types';
 import { WellKnownService } from '../fediverse/well-known.service';
 import { UserDelegate } from 'src/generated/prisma/models';
@@ -81,7 +82,7 @@ export class UsersService implements OnModuleInit {
      *                ADMIN_DISPLAY (default 'Admin'), ADMIN_PASSWORD (default '')
      * - Upsert by id, not username.
      * - Create: writes all fields including a fresh Ed25519 cert.
-     * - Update: ONLY merges the sys:admin tag — does NOT overwrite
+     * - Update: ONLY merges the admin tag (default `sys:admin`) — does NOT overwrite
      *           display name, password, or username.
      * - The cert is only ever written at creation time.
      */
@@ -92,15 +93,15 @@ export class UsersService implements OnModuleInit {
             const display = await this.config.get<string>('admin.display') ?? 'Admin';
             const password = await this.config.get<string>('admin.password') ?? '';
 
-            // Read existing tags so sys:admin is merged, not replaced.
+            // Read existing tags so the admin tag is merged, not replaced.
             const existing = await this.users.findFirst({
                 where: { id: id },
                 select: { tags: true } as Record<string, boolean>,
             });
             const existingTags: string[] = (existing as unknown as { tags?: string[] })?.tags ?? [];
-            const mergedTags = existingTags.includes('sys:admin')
+            const mergedTags = Tags.has(existingTags, Tags.MODERATION, 'admin')
                 ? existingTags
-                : [...existingTags, 'sys:admin'];
+                : [...existingTags, Tags.build(Tags.SYSTEM, 'admin')];
 
             // Fresh cert — only used in the create branch.
             const kp = await this.generateKeyPair();
@@ -118,7 +119,7 @@ export class UsersService implements OnModuleInit {
                     emailVerified: false,
                     password: passwordHash,
                     rank: 100,
-                    tags: ['sys:admin'],
+                    tags: [Tags.build(Tags.SYSTEM, 'admin')],
                     thumbnail: null,
                     banner: null,
                     links: [],
@@ -309,12 +310,9 @@ export class UsersService implements OnModuleInit {
         // Tags: keep only usr:* tags provided, merge non-usr from existing
         if (input.tags !== undefined) {
             const newUsrTags = Array.isArray(input.tags)
-                ? input.tags.reduce((acc: string[], tag: string) => {
-                    if (!acc.includes(tag)) acc.push(tag);
-                    return acc;
-                }, [] as string[]).filter(t => t.startsWith('usr:') && t.split(':')[1]?.length > 0)
+                ? Tags.withPrefix([...new Set(input.tags)], Tags.USER)
                 : [];
-            const nonUsr = (model.tags || []).filter(t => !t.startsWith('usr:'));
+            const nonUsr = Tags.withoutPrefix(model.tags, Tags.USER);
             updates.tags = [...newUsrTags, ...nonUsr];
         }
 

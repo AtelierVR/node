@@ -85,7 +85,7 @@ export class InstancesController {
         if (s && s !== await this.instances.domain()) {
             if (!req.user)
                 throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
-            if (!req.user.isAdmin() && !req.user.tags.includes('sys:can_external_fetch'))
+            if (!req.user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(s);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${s})`);

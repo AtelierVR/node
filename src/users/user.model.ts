@@ -1,6 +1,7 @@
 import { UserModel } from 'src/generated/prisma/models/User';
 import { UsersService } from './users.service';
 import { NoxIdentifier } from '../common/identifier';
+import { Tags } from '../common/tags';
 import { ApiUser as ApiUser, ApiCurrentUser, ApiUserRelations, PRESENCE_TO_API, PRESENCE_VISIBILITY } from './users.types';
 import { ensureImageSize, IMAGE_PRESETS } from '../storage/image-resize.constants';
 import type { WebFingerDocument } from '../fediverse/fediverse.types';
@@ -21,6 +22,7 @@ export type UserWithMethods = UserModel & {
   isManualFollowApproval(): boolean;
   isDiscoverable(): boolean;
   isAdmin(): boolean;
+  canExternalFetch(): boolean;
   identifier(): NoxIdentifier;
   isLocal(): this is UserWithMethods;
   buildWebFinger(): Promise<WebFingerDocument>;
@@ -167,23 +169,28 @@ export class User {
   }
 
   isAdmin(this: UserWithMethods): boolean {
-    return (this.tags ?? []).includes('sys:admin');
+    return Tags.has(this.tags, Tags.MODERATION, 'admin');
+  }
+
+  /** True when the user may trigger an external (remote server) fetch. */
+  canExternalFetch(this: UserWithMethods): boolean {
+    return this.isAdmin() || Tags.has(this.tags, Tags.MODERATION, 'can_external_fetch');
   }
 
   isHideFollowers(this: UserWithMethods): boolean {
-    return (this.tags ?? []).includes('usr:hide_followers');
+    return Tags.has(this.tags, Tags.ALL, 'hide_followers');
   }
 
   isHideFollowing(this: UserWithMethods): boolean {
-    return (this.tags ?? []).includes('usr:hide_following');
+    return Tags.has(this.tags, Tags.ALL, 'hide_following');
   }
 
   isManualFollowApproval(this: UserWithMethods): boolean {
-    return (this.tags ?? []).includes('manual_follow');
+    return Tags.has(this.tags, Tags.ALL, 'manual_follow');
   }
 
   isDiscoverable(this: UserWithMethods): boolean {
-    return !(this.tags ?? []).includes('usr:no_discover');
+    return !Tags.has(this.tags, Tags.ALL, 'no_discover');
   }
 
   async followers(this: UserWithMethods): Promise<number> {

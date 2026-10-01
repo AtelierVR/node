@@ -368,6 +368,14 @@ export class InstanceConfig {
   @IsOptional()
   @IsString()
   defaultRegion: string | null;
+
+  @Label('Instance Idle Timeout (ms)')
+  @Description('Auto-delete a non-persistent instance once it has had no player inside for this long, in milliseconds. Set to 0 to disable auto-cleanup.')
+  @Default(15 * 60 * 1000)
+  @ConfigVar({ key: 'instance.idleTimeout', env: 'INSTANCE_IDLE_TIMEOUT' })
+  @IsInt()
+  @Min(0)
+  idleTimeout: number;
 }
 
 export class AdminConfig {

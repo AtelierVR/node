@@ -2,6 +2,7 @@ import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateNested, Matches, Min
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNoxIdentifier as IsIdentifier, IsNoxTag as IsTag, IsHttpUrl, IsVerificationCode } from '../../common/validation';
+import { Tags } from '../../common/tags';
 
 export class ApiLinkDto {
     @ApiProperty({ description: 'Link display label', example: 'GitHub' })
@@ -76,7 +77,7 @@ export class UpdateUserDto {
 
     @ApiPropertyOptional({ type: [String], description: 'Tags list (usr:* snake_case:snake_case format), or null to clear', example: ['usr:developer', 'usr:gamer'], nullable: true })
     @ArrayMaxSize(50)
-    @IsTag({ each: true, namespaces: ['usr'] })
+    @IsTag({ each: true, namespaces: [Tags.USER] })
     @IsOptional()
     @IsArray()
     tags?: string[] | null;

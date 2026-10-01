@@ -167,7 +167,7 @@ export class UsersController {
         if (s) {
             if (!req.user)
                 throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
-            if (!req.user.isAdmin() && !req.user.tags.includes('sys:can_external_fetch'))
+            if (!req.user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(s);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${s})`);
@@ -263,7 +263,7 @@ export class UsersController {
         const identifier = NoxIdentifier.parse(id);
         if (!identifier.isLocal(await this.users.domain())) {
             if (!req.user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
-            if (!req.user.isAdmin() && !req.user.tags.includes('sys:can_external_fetch'))
+            if (!req.user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
@@ -321,7 +321,7 @@ export class UsersController {
         const identifier = NoxIdentifier.parse(id);
         if (!identifier.isLocal(await this.users.domain())) {
             if (!req.user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
-            if (!req.user.isAdmin() && !req.user.tags.includes('sys:can_external_fetch'))
+            if (!req.user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
@@ -427,7 +427,7 @@ export class UsersController {
         if (!identifier.isLocal(await this.users.domain())) {
             const user = req.user;
             if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
-            if (!user.isAdmin() && !user.tags.includes('sys:can_external_fetch'))
+            if (!user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
@@ -480,7 +480,7 @@ export class UsersController {
         if (!identifier.isLocal(await this.users.domain())) {
             const user = req.user;
             if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
-            if (!user.isAdmin() && !user.tags.includes('sys:can_external_fetch'))
+            if (!user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
@@ -629,7 +629,7 @@ export class UsersController {
         if (!identifier.isLocal(await this.users.domain())) {
             const user = req.user as OptionalUserAuthenticatedRequest['user'];
             if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
-            if (!user.isAdmin() && !user.tags.includes('sys:can_external_fetch'))
+            if (!user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(identifier.server!);
             if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);

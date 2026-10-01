@@ -1,7 +1,8 @@
 import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsHttpUrl, IsNoxIdentifier, IsNoxName, IsNoxTag } from '../../common/validation';
+import { IsNoxIdentifier, IsNoxName, IsNoxTag, IsHttpUrl } from '../../common/validation';
+import { Tags } from '../../common/tags';
 
 export class CreateInstanceDto {
     @ApiProperty({ example: '1@my-server.com', description: 'World identifier (NoxIdentifier format)' })
@@ -38,7 +39,7 @@ export class CreateInstanceDto {
 
     @ApiPropertyOptional({ type: [String], example: ['usr:social', 'usr:chill'] })
     @ArrayMaxSize(20)
-    @IsNoxTag({ each: true, namespaces: ['usr'] })
+    @IsNoxTag({ each: true, namespaces: [Tags.USER] })
     @IsOptional()
     @IsArray()
     tags?: string[];

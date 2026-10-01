@@ -6,6 +6,7 @@ import { WellKnownService } from '../fediverse/well-known.service';
 import { StorageService } from '../storage/storage.service';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
+import { Tags } from '../common/tags';
 import { Avatar, AvatarWithMethods } from './avatar.model';
 import { AvatarAsset, AvatarAssetWithMethods } from './avatar-asset.model';
 import { SUPPORTED_ENGINES, SUPPORTED_PLATFORMS } from './avatars.types';
@@ -62,15 +63,15 @@ export class AvatarsService {
     // ── Permissions ──────────────────────────────────────────────────────────────
 
     canCreateAvatar(user: UserWithMethods): boolean {
-        return user.isAdmin() || user.tags.includes('sys:can_avatar_create');
+        return user.isAdmin() || Tags.has(user.tags, Tags.MODERATION, 'can_avatar_create');
     }
 
     canUploadFile(user: UserWithMethods): boolean {
-        return user.isAdmin() || user.tags.includes('sys:can_file_upload');
+        return user.isAdmin() || Tags.has(user.tags, Tags.MODERATION, 'can_file_upload');
     }
 
     canExternalFetch(user: UserWithMethods): boolean {
-        return user.isAdmin() || user.tags.includes('sys:can_external_fetch');
+        return user.canExternalFetch();
     }
 
     // ── Lookup ───────────────────────────────────────────────────────────────────

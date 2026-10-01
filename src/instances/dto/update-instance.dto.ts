@@ -2,6 +2,7 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsStri
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsHttpUrl, IsNoxIdentifier, IsNoxTag } from '../../common/validation';
+import { Tags } from '../../common/tags';
 
 export class UpdateInstanceDto {
     @ApiPropertyOptional({ description: 'New display title', example: 'Updated Title' })
@@ -27,7 +28,7 @@ export class UpdateInstanceDto {
 
     @ApiPropertyOptional({ type: [String], description: 'Updated tags list', example: ['usr:social'] })
     @ArrayMaxSize(20)
-    @IsNoxTag({ each: true, namespaces: ['usr'] })
+    @IsNoxTag({ each: true, namespaces: [Tags.USER] })
     @IsOptional()
     @IsArray()
     tags?: string[];

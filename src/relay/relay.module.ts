@@ -4,6 +4,7 @@ import { RelayGateway } from './relay.gateway';
 import { RelayController } from './relay.controller';
 import { RelayAutoManager } from './relay-auto-manager.service';
 import { InstanceDistributorService } from './instance-distributor.service';
+import { InstanceReaperService } from './instance-reaper.service';
 import { GatewayModule } from '../gateway/gateway.module';
 import { FediverseModule } from '../fediverse/fediverse.module';
 import { AppConfigModule } from '../config/config.module';
@@ -29,7 +30,7 @@ import { ExternalUsersModule } from '../external/external-users.module';
     ],
     controllers: [RelayController],
     providers: [
-        RelayService, RelayGateway, RelayAutoManager, InstanceDistributorService,
+        RelayService, RelayGateway, RelayAutoManager, InstanceDistributorService, InstanceReaperService,
         DockerRunner, ExternalRunner,
         {
             provide: RELAY_RUNNERS,

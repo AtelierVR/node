@@ -2,6 +2,7 @@ import { ArrayMaxSize, IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Max, Ma
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsHttpUrl, IsNoxIdentifier, IsNoxName, IsNoxTag } from '../../common/validation';
+import { Tags } from '../../common/tags';
 
 export class UpdateWorldDto {
     @ApiPropertyOptional({ type: 'string', description: 'Short unique name (snake_case, 3-8 chars), or null to clear', example: 'my_world', nullable: true })
@@ -55,7 +56,7 @@ export class UpdateWorldDto {
 
     @ApiPropertyOptional({ type: [String], description: 'User-defined tags (only usr:* tags are accepted)', example: ['usr:pvp'] })
     @ArrayMaxSize(20)
-    @IsNoxTag({ each: true, namespaces: ['usr'] })
+    @IsNoxTag({ each: true, namespaces: [Tags.USER] })
     @IsOptional()
     @IsArray()
     tags?: string[];

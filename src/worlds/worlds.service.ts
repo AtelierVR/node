@@ -5,6 +5,7 @@ import { StorageService } from '../storage/storage.service';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
 import { NoxIdentifier } from '../common/identifier';
+import { Tags } from '../common/tags';
 import { WorldDelegate } from 'src/generated/prisma/models/World';
 import { WorldAssetDelegate } from 'src/generated/prisma/models/WorldAsset';
 import { World, WorldWithMethods } from './world.model';
@@ -70,15 +71,15 @@ export class WorldsService {
     // ── Permissions ──────────────────────────────────────────────────────────────
 
     canCreateWorld(user: UserWithMethods | ExternalUserWithMethods): boolean {
-        return user.isAdmin() || user.tags.includes('sys:can_world_create');
+        return user.isAdmin() || Tags.has(user.tags, Tags.MODERATION, 'can_world_create');
     }
 
     canUploadFile(user: UserWithMethods): boolean {
-        return user.isAdmin() || user.tags.includes('sys:can_file_upload');
+        return user.isAdmin() || Tags.has(user.tags, Tags.MODERATION, 'can_file_upload');
     }
 
     canExternalFetch(user: UserWithMethods): boolean {
-        return user.isAdmin() || user.tags.includes('sys:can_external_fetch');
+        return user.canExternalFetch();
     }
 
     // ── Lookup ───────────────────────────────────────────────────────────────────
@@ -292,12 +293,9 @@ export class WorldsService {
         // Tags: keep only usr:* tags provided, merge non-usr from existing
         if (dto.tags !== undefined) {
             const newUsrTags = Array.isArray(dto.tags)
-                ? dto.tags.reduce((acc: string[], tag: string) => {
-                    if (!acc.includes(tag)) acc.push(tag);
-                    return acc;
-                }, [] as string[]).filter(t => t.startsWith('usr:') && t.split(':')[1]?.length > 0)
+                ? Tags.withPrefix([...new Set(dto.tags)], Tags.USER)
                 : [];
-            const nonUsr = ((model as any).tags || []).filter((t: string) => !t.startsWith('usr:'));
+            const nonUsr = Tags.withoutPrefix((model as any).tags, Tags.USER);
             updates.tags = [...newUsrTags, ...nonUsr];
         }
 
