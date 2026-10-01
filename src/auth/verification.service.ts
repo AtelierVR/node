@@ -1,9 +1,33 @@
 import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
+import { randomInt } from 'node:crypto';
 import { EmailVerificationService } from '../email/email-verification.service';
 import { TotpService } from './totp.service';
+import { PasskeyService } from './passkey.service';
+import { PrismaService } from '../database/prisma.service';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
 import { UserWithMethods } from 'src/users/user.model';
+
+export type VerificationCodeCharset = 'numeric' | 'alphanumeric' | 'hex';
+
+/**
+ * What the client must collect to answer the challenge. Discriminated on `type`
+ * so a client can render the right UI without knowing the method.
+ */
+export type VerificationInput =
+  | {
+    /** Show a code field; it is posted back as `factor_code`. */
+    type: 'code';
+    length: number;
+    /** Character set: 'numeric' (0-9), 'alphanumeric' (0-9 A-Z), 'hex' (0-9 A-F). */
+    charset: VerificationCodeCharset;
+  }
+  | {
+    /** Run a WebAuthn ceremony instead of typing anything. */
+    type: 'passkey';
+    /** Ceremony endpoints: `${base}/options` then `${base}/verify`. */
+    base: string;
+  };
 
 export interface VerificationMethod {
   type: string;
@@ -14,12 +38,8 @@ export interface VerificationMethod {
   details: {
     sendable: boolean;
     data: Record<string, unknown>;
-    /** Rules for the verification code input. */
-    code: {
-      length: number;
-      /** Character set: 'numeric' (0-9), 'alphanumeric' (0-9 A-Z), 'hex' (0-9 A-F). Default: 'numeric'. */
-      type: 'numeric' | 'alphanumeric' | 'hex';
-    } | null;
+    /** What the client must collect to complete the challenge. */
+    input: VerificationInput;
   } | null;
 }
 
@@ -50,18 +70,47 @@ interface MethodDefinition {
   details: {
     sendable: boolean;
     data: (user: any) => Record<string, unknown>;
-    code: { length: number; type: 'numeric' | 'alphanumeric' | 'hex' } | null;
+    input: (user: any, ctx: MethodContext) => VerificationInput;
   } | null;
   /** Whether this method is available (enabled) for the given user. */
-  available: (user: any) => boolean | Promise<boolean>;
+  available: (user: any, ctx: MethodContext) => boolean | Promise<boolean>;
 }
+
+/**
+ * Per-request facts collected once before evaluating the registry, so individual
+ * definitions do not each have to hit the database.
+ */
+export interface MethodContext {
+  /** The user has at least one passkey registered. */
+  hasPasskey: boolean;
+}
+
+/** Challenge shape shared by every 6-digit code method. */
+const CODE_6_DIGITS: VerificationInput = { type: 'code', length: 6, charset: 'numeric' };
+
+/** Ceremony endpoint prefix advertised to clients for the passkey method. */
+const PASSKEY_CEREMONY_BASE = '/auth/passkey/login';
+
+/**
+ * Verification row type of the short-lived code minted after a passkey assertion.
+ * Mirrors the email MFA codes (`email_code`) but with a TOTP-like lifetime.
+ */
+const PASSKEY_CODE_TYPE = 'passkey_code';
+/** Lifetime of a passkey-issued code — same order as a TOTP step (30 s). */
+const PASSKEY_CODE_TTL_SECONDS = 30;
+/** Length of the numeric passkey code (same as email/TOTP). */
+const PASSKEY_CODE_LENGTH = 6;
 
 const VERIFICATION_METHODS: Record<string, MethodDefinition> = {
   totp: {
     type: 'totp',
     name: 'Authenticator App',
-    description: 'Use an authenticator app like Google Authenticator',
-    details: { sendable: false, data: () => ({}), code: { length: 6, type: 'numeric' } },
+    description: 'Use an authenticator app',
+    details: { 
+      sendable: false, 
+      data: () => ({}), 
+      input: () => CODE_6_DIGITS
+    },
     available: (user) => !!(user.twofaEnabled && user.twofaSecret),
   },
   email: {
@@ -71,9 +120,24 @@ const VERIFICATION_METHODS: Record<string, MethodDefinition> = {
     details: {
       sendable: true,
       data: (user) => ({ target: user.id }),
-      code: { length: 6, type: 'numeric' },
+      input: () => CODE_6_DIGITS,
     },
     available: (user) => !!(user.email && user.emailVerified),
+  },
+  passkey: {
+    type: 'passkey',
+    name: 'Passkey',
+    description: 'Approve with a passkey',
+    details: {
+      // Nothing to send and no code to type — the client runs a WebAuthn ceremony.
+      sendable: false,
+      data: () => ({}),
+      input: (_user, ctx) => ({ 
+        type: 'passkey', 
+        base: PASSKEY_CEREMONY_BASE
+      }),
+    },
+    available: (_user, ctx) => ctx.hasPasskey,
   },
 };
 
@@ -85,6 +149,8 @@ export class VerificationService {
     @Inject(forwardRef(() => EmailVerificationService))
     private readonly email: EmailVerificationService,
     private readonly totp: TotpService,
+    private readonly passkeys: PasskeyService,
+    private readonly prisma: PrismaService,
   ) { }
 
   private methodDisplayName(method: string): string {
@@ -92,9 +158,15 @@ export class VerificationService {
   }
 
   async getAvailableVerificationMethods(user: any): Promise<VerificationMethod[]> {
+    const ctx: MethodContext = {
+      hasPasskey: user?.id 
+        ? await this.passkeys.hasPasskeys(user.id).catch(() => false) 
+        : false,
+    };
+
     const results = await Promise.all(
       Object.values(VERIFICATION_METHODS).map(async (m) => {
-        if (!(await m.available(user))) return null;
+        if (!(await m.available(user, ctx))) return null;
         const method: VerificationMethod = {
           type: m.type,
           name: m.name,
@@ -103,7 +175,7 @@ export class VerificationService {
           details: m.details ? {
             sendable: m.details.sendable,
             data: m.details.data(user),
-            code: m.details.code,
+            input: m.details.input(user, ctx),
           } : null,
         };
         return method;
@@ -216,9 +288,75 @@ export class VerificationService {
     }
   }
 
+  // ── Passkey factor ─────────────────────────────────────────────────────
+
+  /**
+   * Mints a single-use 6-digit code proving a passkey assertion just happened.
+   *
+   * It follows the exact same storage/validation path as the email MFA codes
+   * (`verifications` table), only with a TOTP-like lifetime, and is accepted
+   * wherever a `factor_code` is expected — which lets a passkey satisfy the same
+   * `VERIFICATION_REQUIRED` handshake as a typed code (e.g. for sensitive profile
+   * updates) without the server having to replay the ceremony.
+   */
+  async issuePasskeyCode(userId: number): Promise<string> {
+    const code = this.generateNumericCode();
+    const expires = new Date(Date.now() + PASSKEY_CODE_TTL_SECONDS * 1000);
+
+    // A user only ever has one outstanding passkey code.
+    await this.prisma.verifications.deleteMany({
+      where: { userId, type: PASSKEY_CODE_TYPE },
+    });
+
+    await this.prisma.verifications.create({
+      data: { userId, type: PASSKEY_CODE_TYPE, code, expires },
+    });
+
+    return code;
+  }
+
+  /** Consumes a passkey code; false when unknown, expired or already used. */
+  private async consumePasskeyCode(
+    userId: number,
+    code: string,
+  ): Promise<boolean> {
+    if (!code) return false;
+
+    const record = await this.prisma.verifications.findFirst({
+      where: {
+        userId,
+        type: PASSKEY_CODE_TYPE,
+        code,
+        validated: false,
+        expires: { gt: new Date() },
+      },
+    });
+    if (!record) return false;
+
+    await this.prisma.verifications.update({
+      where: { id: record.id },
+      data: { validated: true },
+    });
+    return true;
+  }
+
+  /** Random numeric code, zero-padded to the method length. */
+  private generateNumericCode(): string {
+    const max = 10 ** PASSKEY_CODE_LENGTH;
+    return String(randomInt(0, max)).padStart(PASSKEY_CODE_LENGTH, '0');
+  }
+
   async verifyFactorCode(user: UserWithMethods, code: string): Promise<VerificationFactorResult> {
     const methods = await this.getAvailableVerificationMethods(user);
     if (!methods.length) return { success: false, message: 'No verification methods available' };
+
+    // Passkey — the ceremony already proved the factor, `code` is its one-time code.
+    if (methods.find(m => m.type === 'passkey') && await this.consumePasskeyCode(user.id, code))
+      return { 
+        success: true, 
+        message: 'Verified', 
+        verified_method: 'passkey'
+      };
 
     // Try email first if available
     if (methods.find(m => m.type === 'email')) {

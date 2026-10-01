@@ -94,4 +94,7 @@ export class InstanceConfigDto {
 
     @ApiProperty({ description: 'Allowed image resize widths (pixels)', example: [64, 128, 256, 512, 1024, 1280, 1920], type: [Number] })
     allowedImageWidths!: number[];
+
+    @ApiProperty({ description: 'Whether the instance supports passkey (WebAuthn) registration and login', example: true })
+    supportPasskey!: boolean;
 }

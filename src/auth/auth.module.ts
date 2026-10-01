@@ -1,6 +1,8 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { PasskeyController } from './passkey.controller';
+import { PasskeyService } from './passkey.service';
 import { SessionService } from './session.service';
 import { DeviceService } from './device.service';
 import { VerificationService } from './verification.service';
@@ -26,10 +28,12 @@ import { CacheModule } from '../cache/cache.module';
         CacheModule
     ],
     controllers: [
-        AuthController
+        AuthController,
+        PasskeyController
     ],
     providers: [
         AuthService,
+        PasskeyService,
         SessionService,
         DeviceService,
         VerificationService,
@@ -45,6 +49,7 @@ import { CacheModule } from '../cache/cache.module';
     ],
     exports: [
         AuthService,
+        PasskeyService,
         VerificationService,
         AuthUserGuard,
         OptionalAuthUserGuard,

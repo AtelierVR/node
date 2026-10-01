@@ -39,6 +39,37 @@ model Device {
   @@map("devices")
 }
 
+/// WebAuthn / passkey credential registered by a user.
+/// A user can have several (one per device / authenticator).
+model Passkey {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int    @map("user_id")
+  /// base64url-encoded credential ID (unique across all users)
+  credentialId String   @unique @map("credential_id")
+  /// base64url-encoded COSE public key
+  publicKey    String   @map("public_key")
+  /// Signature counter — used to detect cloned authenticators
+  counter      BigInt   @default(0)
+  /// Authenticator transports (usb, nfc, ble, internal, hybrid…)
+  transports   String[] @default([])
+  /// Resident/discoverable key — enables usernameless login
+  discoverable Boolean  @default(false) @map("discoverable")
+  /// "singleDevice" | "multiDevice"
+  deviceType   String   @default("singleDevice") @map("device_type")
+  /// Whether the credential is synced/backed up (multi-device)
+  backedUp     Boolean  @default(false) @map("backed_up")
+  /// Authenticator AAGUID (identifies the authenticator model)
+  aaguid       String?
+  /// User-provided label (e.g. "My laptop")
+  name         String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+
+  @@index([userId])
+  @@map("passkeys")
+}
+
 datasource db {
   provider = "postgresql"
 }
@@ -87,6 +118,7 @@ model User {
 
   sessions      Session[]
   verifications Verification[]
+  passkeys      Passkey[]
   tables        UserTable[]
 
   @@map("users")
@@ -145,9 +177,10 @@ model Config {
   @@map("configs")
 }
 
-/// Generic verification entry — handles MFA codes (email) and email confirmation tokens.
-///   type="email_code"  → MFA 6-digit code, expires in 10 min, validated on use
-///   type="email_link"  → clickable link token, expires in 24h, validated when user clicks
+/// Generic verification entry — handles MFA codes (email/passkey) and email confirmation tokens.
+///   type="email_code"   → MFA 6-digit code, expires in 10 min, validated on use
+///   type="passkey_code" → MFA 6-digit code minted after a passkey assertion, expires in 30 s, validated on use
+///   type="email_link"   → clickable link token, expires in 24h, validated when user clicks
 model Verification {
   id        Int      @id @default(autoincrement())
   userId    Int      @map("user_id")

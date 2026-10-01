@@ -8,6 +8,7 @@ import { VerificationService } from './verification.service';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
 import { User } from 'src/users/user.model';
+import type { UserWithMethods } from 'src/users/user.model';
 import { AppConfigService } from 'src/config/config.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import { NoxIdentifier } from '../common/identifier';
@@ -58,16 +59,7 @@ export class AuthService {
             },
         }), this.users);
         // Create session
-        const sessionExpiration = await this.config.get<number>('session.expiration');
-        const session = await this.sessions.createTokenSession({
-            userId: user.id,
-            expires: new Date(Date.now() + sessionExpiration),
-            publicKeyBase64: input.public_key ?? null,
-        });
-
-        // Register device if metadata provided
-        if (meta?.ip && meta?.userAgent)
-            await this.devices.upsertDevice(session.id, meta.ip, meta.userAgent);
+        const session = await this.issueSession(user, meta, input.public_key ?? null);
 
         this.users.activity.create({
             type: 'user.register',
@@ -106,15 +98,7 @@ export class AuthService {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, { field: 'factor_code', message: verifyResult.message }, verifyResult.message);
         }
 
-        const sessionExpiration = await this.config.get<number>('session.expiration');
-        const session = await this.sessions.createTokenSession({
-            userId: user.id,
-            expires: new Date(Date.now() + sessionExpiration),
-            publicKeyBase64: input.public_key ?? null,
-        });
-
-        if (meta?.ip && meta?.userAgent)
-            await this.devices.upsertDevice(session.id, meta.ip, meta.userAgent);
+        const session = await this.issueSession(user, meta, input.public_key ?? null);
 
         this.users.activity.create({
             type: 'auth.login',
@@ -130,6 +114,28 @@ export class AuthService {
             );
 
         return { session, user };
+    }
+
+    /**
+     * Creates a session token for a user and records the originating device.
+     * Shared by password login, registration and passkey authentication.
+     */
+    async issueSession(
+        user: UserWithMethods,
+        meta?: { ip?: string; userAgent?: string },
+        publicKeyBase64?: string | null,
+    ) {
+        const sessionExpiration = await this.config.get<number>('session.expiration');
+        const session = await this.sessions.createTokenSession({
+            userId: user.id,
+            expires: new Date(Date.now() + sessionExpiration),
+            publicKeyBase64: publicKeyBase64 ?? null,
+        });
+
+        if (meta?.ip && meta?.userAgent)
+            await this.devices.upsertDevice(session.id, meta.ip, meta.userAgent);
+
+        return session;
     }
 
     async logoutByToken(token: string): Promise<boolean> {

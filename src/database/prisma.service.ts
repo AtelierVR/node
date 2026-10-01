@@ -98,6 +98,10 @@ export class PrismaService implements OnModuleInit {
         return this._client.device;
     }
 
+    get passkeys() {
+        return this._client.passkey;
+    }
+
     get verifications() {
         return this._client.verification;
     }

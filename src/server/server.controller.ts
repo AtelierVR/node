@@ -62,7 +62,20 @@ export class ServerController {
       allow_avatar_creation_by_external: await this.appConfig.get<boolean>('instance.avatarCreationByExternal'),
       regions: await this.appConfig.get<string[]>('instance.regions'),
       allowed_image_widths: [...ALLOWED_WIDTHS],
+      support_passkey: await this.passkeyAvailable(),
     };
+  }
+
+  /**
+   * Passkeys are advertised only when the relying party is actually usable:
+   * an RP ID and at least one allowed origin must be configured.
+   */
+  private async passkeyAvailable(): Promise<boolean> {
+    const [rpId, origins] = await Promise.all([
+      this.appConfig.get<string>('passkey.rp_id').catch(() => ''),
+      this.appConfig.get<string>('passkey.origins').catch(() => ''),
+    ]);
+    return !!rpId?.trim() && origins.split(',').some((o) => o.trim());
   }
 
   @ApiOperation({ summary: 'List environment', description: 'Return all registered config keys with their current values, environment overrides and metadata. Admin only.' })

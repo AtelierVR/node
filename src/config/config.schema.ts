@@ -423,6 +423,64 @@ export class SessionConfig {
   expiration: number;
 }
 
+/**
+ * WebAuthn / passkey settings.
+ *
+ * The RP ID is the effective domain (~eTLD+1) that passkeys are bound to: it must
+ * be a suffix of the page origin host. The allowed origins are the exact page
+ * origins the browser will report during a ceremony.
+ */
+export class PasskeyConfig {
+  @Label('Passkey RP Name')
+  @Description('Human-readable relying party name shown in the passkey prompt. Defaults to the instance name.')
+  @Default((r) => {
+    const raw = (r.get('instance.name') ?? '').trim();
+    if (!raw.startsWith('{')) return raw || 'Nox';
+    try {
+      const map = JSON.parse(raw) as Record<string, string>;
+      return map.en ?? Object.values(map)[0] ?? 'Nox';
+    } catch { return 'Nox'; }
+  })
+  @ConfigVar({ key: 'passkey.rp_name', env: 'PASSKEY_RP_NAME' })
+  @IsString()
+  @IsNotEmpty()
+  rp_name: string;
+
+  @Label('Passkey RP ID')
+  @Description('WebAuthn relying party ID — the effective domain, without scheme or port (e.g. "nox.hactazia.fr"). Passkeys are scoped to it. Defaults to the hostname of http.domain.')
+  @Default((r) => (r.get('http.domain') ?? 'localhost').replace(/^https?:\/\//, '').split(/[:/]/)[0])
+  @ConfigVar({ key: 'passkey.rp_id', env: 'PASSKEY_RP_ID' })
+  @IsString()
+  @IsNotEmpty()
+  rp_id: string;
+
+  @Label('Passkey Origins')
+  @Description('Comma-separated list of page origins allowed to run WebAuthn ceremonies (e.g. "https://nox.hactazia.fr,http://localhost:3000"). Defaults to the public web URL and the http.domain origin.')
+  @Default((r) => {
+    const web = (r.get('gateway.web') ?? '').replace(/\/$/, '');
+    const scheme = r.get('http.secure') === 'true' || r.get('http.ssl') === 'true' ? 'https' : 'http';
+    const domain = r.get('http.domain') ?? '';
+    const address = r.get('address') ?? '';
+    const origins = new Set<string>();
+    if (web) origins.add(web);
+    if (domain) origins.add(`${scheme}://${domain}`);
+    if (address && address !== domain) origins.add(`${scheme}://${address}`);
+    return [...origins].join(',');
+  })
+  @ConfigVar({ key: 'passkey.origins', env: 'PASSKEY_ORIGINS' })
+  @IsString()
+  @IsOptional()
+  origins?: string;
+
+  @Label('Passkey Challenge TTL')
+  @Description('Lifetime in seconds of a WebAuthn challenge before it expires.')
+  @Default(300)
+  @ConfigVar({ key: 'passkey.challenge_ttl', env: 'PASSKEY_CHALLENGE_TTL' })
+  @IsInt()
+  @Min(30)
+  challenge_ttl: number;
+}
+
 export class StorageLocalConfig {
   @Label('Local storage directory')
   @Description('Absolute path to the directory used for local file storage (assets).')
@@ -664,6 +722,11 @@ export class AppConfig {
   @Type(() => SessionConfig)
   @IsOptional()
   session?: SessionConfig;
+
+  @ValidateNested()
+  @Type(() => PasskeyConfig)
+  @IsOptional()
+  passkey?: PasskeyConfig;
 
   @ValidateNested()
   @Type(() => StorageConfig)

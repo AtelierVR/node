@@ -34,6 +34,7 @@
     "@nestjs/websockets": "^11.1.18",
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
+    "@simplewebauthn/server": "^14.0.3",
     "@types/dockerode": "^4.0.1",
     "@types/sharp": "^0.31.1",
     "@types/ws": "^8.18.1",
