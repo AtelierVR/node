@@ -77,7 +77,7 @@ export class Session {
         return {
             id: session.id,
             current: isCurrent,
-            active: isCurrent || this.manager.ws.isUserConnected(session.userId),
+            active: this.manager.ws.isSessionConnected(session.id),
             fingerprint: session.fingerprint ?? null,
             expires_at: session.expires instanceof Date
                 ? session.expires.getTime()

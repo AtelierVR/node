@@ -46,4 +46,11 @@ export class WsService {
     isUserConnected(userId: number): boolean {
         return this.gateway.isUserConnected(userId);
     }
+
+    /**
+     * Check if a specific session has at least one active WebSocket connection.
+     */
+    isSessionConnected(sessionId: string): boolean {
+        return this.gateway.isSessionConnected(sessionId);
+    }
 }

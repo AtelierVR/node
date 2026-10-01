@@ -42,6 +42,9 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
     /** User ID → connected sockets (for per-user targeted events). */
     private readonly userSockets = new Map<number, Set<WebSocket>>();
 
+    /** Session ID → connected sockets (for per-session activity tracking). */
+    private readonly sessionSockets = new Map<string, Set<WebSocket>>();
+
     /** Optional per-room access validators registered by other modules. */
     private readonly validators = new Map<string, WsRoomValidator>();
 
@@ -145,8 +148,11 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         }
 
         data.user = user;
+        data.sessionId = session.id;
         if (!this.userSockets.has(user.id)) this.userSockets.set(user.id, new Set());
         this.userSockets.get(user.id)!.add(ws);
+        if (!this.sessionSockets.has(session.id)) this.sessionSockets.set(session.id, new Set());
+        this.sessionSockets.get(session.id)!.add(ws);
         this.sendFrame(ws, 'hello', {
             mode: 'user',
             user: await user.sanitizeCurrent(),
@@ -214,6 +220,14 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         for (const room of data.rooms) {
             const set = this.rooms.get(room);
             if (set) { set.delete(ws); if (set.size === 0) this.rooms.delete(room); }
+        }
+
+        if (data.sessionId) {
+            const set = this.sessionSockets.get(data.sessionId);
+            if (set) {
+                set.delete(ws);
+                if (set.size === 0) this.sessionSockets.delete(data.sessionId);
+            }
         }
 
         if (data.mode === 'user') {
@@ -797,6 +811,12 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
     /** Check if a user has at least one active WebSocket connection. */
     isUserConnected(userId: number): boolean {
         const set = this.userSockets.get(userId);
+        return set !== undefined && set.size > 0;
+    }
+
+    /** Check if a specific session has at least one active WebSocket connection. */
+    isSessionConnected(sessionId: string): boolean {
+        const set = this.sessionSockets.get(sessionId);
         return set !== undefined && set.size > 0;
     }
 }

@@ -11,6 +11,8 @@ export interface WsClientData {
     socketId: string;
     /** Populated when mode === 'user' */
     user?: UserWithMethods;
+    /** Session ID backing the user connection (populated when mode === 'user'). */
+    sessionId?: string;
     /** Populated when mode === 'relay' */
     relayId?: number;
     /** Room subscriptions */
