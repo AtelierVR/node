@@ -529,10 +529,11 @@ export class UsersController {
         };
     }
 
-    @ApiOperation({ summary: 'Follow user', description: 'Follow a user or send a follow request if the user requires approval.' })
+    @ApiOperation({ summary: 'Follow user', description: 'Follow a user or send a follow request if the user requires approval. Fails when the target automatically refuses follow requests.' })
     @ApiWrappedResponse(ApiRelationDto, HttpStatus.CREATED)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+    @ApiErrorResponse(HttpStatus.FORBIDDEN, 'This user does not accept follow requests.')
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)

@@ -278,6 +278,13 @@ export class UsersService implements OnModuleInit {
         return { users: wrapped, total };
     }
 
+    /** Follow-request policy encoded by a user's tags. */
+    private static followPolicy(tags: string[]): 'auto_accept' | 'manual_accept' | 'auto_reject' {
+        if (tags.includes(Tags.build(Tags.USER, 'manual_follow'))) return 'manual_accept';
+        if (tags.includes(Tags.build(Tags.USER, 'auto_reject_follow'))) return 'auto_reject';
+        return 'auto_accept';
+    }
+
     /** Update a user by id with the provided fields. Returns wrapped updated user. */
     async updateUser(userId: number, input: UpdateUserDto, files?: { thumbnail?: Express.Multer.File[]; banner?: Express.Multer.File[] }): Promise<UserWithMethods> {
         const model = await this.users.findFirst({ where: { id: userId } });
@@ -428,6 +435,23 @@ export class UsersService implements OnModuleInit {
             }
         } catch (err) {
             this.logger.warn(`Failed to delete old banner for user ${model.id}: ${(err as Error).message}`);
+        }
+
+        // Follow policy: switching to auto-accept / auto-refuse also resolves the
+        // pending follow requests (best-effort).
+        if (updates.tags !== undefined) {
+            const policy = UsersService.followPolicy(updates.tags as string[]);
+            if (policy !== 'manual_accept')
+                try {
+                    const resolved = await this.relations.applyFollowPolicy(
+                        wrapped,
+                        policy === 'auto_accept' ? 'accept' : 'refuse',
+                    );
+                    if (resolved > 0)
+                        this.logger.log(`Follow policy "${policy}": resolved ${resolved} pending request(s) for user ${model.id}`);
+                } catch (err) {
+                    this.logger.warn(`Failed to apply follow policy for user ${model.id}: ${(err as Error).message}`);
+                }
         }
 
         return wrapped;

@@ -95,6 +95,9 @@ export class RelationsService {
             const targetUser = await this.users.findByIdentifier(userTarget);
             if (!targetUser) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Target user');
 
+            if (targetUser.isAutoRejectFollow())
+                throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'This user does not accept follow requests');
+
             if (targetUser)
                 requiresRequest = targetUser.isManualFollowApproval();
 
@@ -235,6 +238,30 @@ export class RelationsService {
     }
 
     /**
+     * Applies a follow policy to every pending request targeting `user`:
+     * `accept` turns them into follows, `refuse` drops them. Used when the account
+     * switches to an auto-accept or an auto-refuse policy.
+     *
+     * Best-effort: one failing request does not abort the others.
+     */
+    async applyFollowPolicy(user: UserWithMethods, policy: 'accept' | 'refuse'): Promise<number> {
+        const pending = await this.prisma.userRelations.findMany({
+            where: { targetRef: user.identifier().toString(), type: UserRelationType.REQUEST },
+            select: { initiatorRef: true },
+        });
+
+        let resolved = 0;
+        for (const rel of pending)
+            try {
+                await this.respondToRequest(user, NoxIdentifier.parse(rel.initiatorRef), policy === 'accept');
+                resolved++;
+            } catch (err) {
+                this.logger.warn(`Failed to apply follow policy to ${rel.initiatorRef}: ${(err as Error).message}`);
+            }
+        return resolved;
+    }
+
+    /**
      * Drop every relation involving `userId` (both directions) and notify the
      * affected local users so their follow/friend lists update live.
      *
@@ -316,6 +343,8 @@ export class RelationsService {
             case 'follow': {
                 const targetUser = await this.users.findById(dto.target);
                 if (!targetUser) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Target user');
+                if (targetUser.isAutoRejectFollow())
+                    throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'This user does not accept follow requests');
                 const target = targetUser.identifier();
                 const requiresRequest = targetUser.isManualFollowApproval();
                 const existing = await this.findRelation(initiator, target);

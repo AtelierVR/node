@@ -20,6 +20,7 @@ export type UserWithMethods = UserModel & {
   isHideFollowers(): boolean;
   isHideFollowing(): boolean;
   isManualFollowApproval(): boolean;
+  isAutoRejectFollow(): boolean;
   isDiscoverable(): boolean;
   isAdmin(): boolean;
   canExternalFetch(): boolean;
@@ -195,6 +196,10 @@ export class User {
 
   isManualFollowApproval(this: UserWithMethods): boolean {
     return Tags.has(this.tags, Tags.ALL, 'manual_follow');
+  }
+
+  isAutoRejectFollow(this: UserWithMethods): boolean {
+    return Tags.has(this.tags, Tags.ALL, 'auto_reject_follow');
   }
 
   isDiscoverable(this: UserWithMethods): boolean {
