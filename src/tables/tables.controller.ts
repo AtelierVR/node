@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { createHash } from 'node:crypto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { ApiWrappedResponse, ApiErrorResponse } from '../api/swagger';
 import { TableListDataDto, PublicTableDto, PublicTableListDto, TableDeleteResponseDto } from './dto/table-response.dto';
 import { TablesService } from './tables.service';
@@ -213,8 +213,14 @@ export class TablesController {
     /**
      * GET /api/users/:id/public
      * Returns the list of public tables for a user (no auth required).
+     *
+     * `filter` is a glob-style key pattern (`*` wildcard), e.g.
+     * `public.favorites.*` returns only the favorites entries.
      */
-    @ApiOperation({ summary: 'List user public tables', description: "Return the list of public table entries for a given user (no auth required)." })
+    @ApiOperation({ summary: 'List user public tables', description: "Return the list of public table entries for a given user (no auth required). The `filter` query is a glob-style key pattern (`*` wildcard), e.g. `public.favorites.*`." })
+    @ApiQuery({ name: 'limit', required: false, schema: { type: 'integer', default: 20, maximum: 100 } })
+    @ApiQuery({ name: 'offset', required: false, schema: { type: 'integer', default: 0 } })
+    @ApiQuery({ name: 'filter', required: false, description: 'Glob-style key pattern (`*` wildcard). `public.favorites.*` returns only favorites.', schema: { type: 'string', maxLength: 200 } })
     @ApiWrappedResponse(PublicTableListDto)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
