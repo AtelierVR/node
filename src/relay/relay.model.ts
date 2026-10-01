@@ -79,6 +79,7 @@ export class Relay {
                     : details.ports,
             } : null,
             created_at: this.createdAt.toISOString(),
+            lifecycle: this.relayService.getLifecycleInfo(this, status?.i ?? null),
             status: status ? {
                 instances: {
                     count: status.i,

@@ -32,6 +32,7 @@ import type { Socket } from 'socket.io';
 import { Relay } from './relay.model';
 import type { RelayWithMethods, RelayWithMethodsAndToken } from './relay.model';
 import type {
+    ApiRelayLifecycle,
     RelayAssignedInstance,
     RelayInstanceSlot,
     RelayResolvedUser,
@@ -56,6 +57,9 @@ const disconnectHooks: RelayLifecycleHook[] = [];
 
 /** Callbacks fired when an instance is unassigned from a relay (receives the instance id). */
 const instanceUnassignedHooks: ((id: number) => void)[] = [];
+
+/** Callbacks fired when an instance is assigned to a relay (receives the instance id). */
+const instanceAssignedHooks: ((id: number) => void)[] = [];
 
 @Injectable()
 export class RelayService implements OnModuleInit {
@@ -83,6 +87,7 @@ export class RelayService implements OnModuleInit {
     async onModuleInit() {
         // Register relay-specific event validators
         this.events.registerValidator('relay_status_change', (s) => this.isRelayAdmin(s));
+        this.events.registerValidator('relay_lifecycle', (s) => this.isRelayAdmin(s));
         this.events.registerValidator('relay_added', (s) => this.isRelayAdmin(s));
         this.events.registerValidator('relay_removed', (s) => this.isRelayAdmin(s));
         this.events.registerValidator('relay_logs', (s) => this.isRelayAdmin(s));
@@ -157,6 +162,7 @@ export class RelayService implements OnModuleInit {
             worldRef: NoxIdentifier.parse(r.instance.worldRef),
             ownerRef: NoxIdentifier.parse(r.instance.ownerRef),
             capacity: r.instance.capacity,
+            tags: r.instance.tags,
             createdAt: r.instance.createdAt,
         }));
     }
@@ -183,6 +189,9 @@ export class RelayService implements OnModuleInit {
                 create: { relayId, instanceId },
                 update: { relayId },
             });
+            // Freeze the idle timer: the instance is not hosted by its new relay yet, so a zero
+            // player count must not be read as "empty".
+            for (const hook of instanceAssignedHooks) hook(instanceId);
             this.activity.create({
                 type: 'relay.assign_instance',
                 message: `Instance #${instanceId} assigned to relay #${relayId}`,
@@ -223,6 +232,33 @@ export class RelayService implements OnModuleInit {
     /** Relay IDs for which startRelay() is currently in progress (container being started). */
     readonly pendingStartRelayIds = new Set<number>();
 
+    /**
+     * Callback registered by {@link RelayAutoManager} so serialized relays can report their
+     * in-memory cleanup state. Registered this way to avoid a circular dependency
+     * (the auto-manager already depends on this service).
+     */
+    private lifecycleProvider: ((relay: RelayWithMethods, liveInstances: number | null) => ApiRelayLifecycle | null) | null = null;
+
+    /** Expose the auto-manager's lifecycle state (called once, from its `onModuleInit`). */
+    setLifecycleProvider(provider: (relay: RelayWithMethods, liveInstances: number | null) => ApiRelayLifecycle | null) {
+        this.lifecycleProvider = provider;
+    }
+
+    /**
+     * Cleanup state of a relay, or null when no auto-manager is registered.
+     *
+     * @param liveInstances Instances the relay currently reports, or null when it is offline —
+     *                      used to hide grace/idle information for relays that are not empty.
+     */
+    getLifecycleInfo(relay: RelayWithMethods, liveInstances: number | null = null): ApiRelayLifecycle | null {
+        if (!this.lifecycleProvider) return null;
+        try {
+            return this.lifecycleProvider(relay, liveInstances);
+        } catch {
+            return null;
+        }
+    }
+
     async startRelay(id: number, maxLink?: number): Promise<string> {
         const relay = await this.findById(id);
         if (!relay) throw new Error(`Relay (${id}) not found`);
@@ -254,6 +290,24 @@ export class RelayService implements OnModuleInit {
         if (relay.providerId) await runner.stop(relay.providerId, kill);
 
         this.logger.log(`Relay #${id} ${kill ? 'killed' : 'stopped'}`);
+        this.activity.create({ type: kill ? 'relay.kill' : 'relay.stop', message: `Relay #${id} ${kill ? 'killed' : 'stopped'}`, details: { relay_id: id } }).catch(() => { });
+    }
+
+    /**
+     * Stop and destroy the relay's process/container through its provider runner.
+     * The database row is left untouched — callers decide whether to delete it.
+     *
+     * Routed through {@link RunnerFactory} so every provider (Docker today, Kubernetes
+     * or Proxmox later) cleans up its own resources; callers never talk to Docker directly.
+     */
+    async removeRunner(id: number, kill: boolean = true): Promise<void> {
+        const relay = await this.findById(id);
+        if (!relay) throw new Error(`Relay (${id}) not found`);
+
+        const runner = this.runners.get(relay.provider);
+        if (relay.providerId) await runner.remove(relay.providerId, kill);
+
+        this.logger.log(`Relay #${id} provider resources ${kill ? 'killed' : 'stopped and removed'}`);
         this.activity.create({ type: kill ? 'relay.kill' : 'relay.stop', message: `Relay #${id} ${kill ? 'killed' : 'stopped'}`, details: { relay_id: id } }).catch(() => { });
     }
 
@@ -331,6 +385,8 @@ export class RelayService implements OnModuleInit {
     onDisconnect(hook: (relayId: number) => void) { disconnectHooks.push(hook); }
     /** Register a callback invoked when an instance is unassigned (relayId set to null). */
     onInstanceUnassigned(hook: (instanceId: number) => void) { instanceUnassignedHooks.push(hook); }
+    /** Register a callback invoked when an instance is assigned/moved to a relay. */
+    onInstanceAssigned(hook: (instanceId: number) => void) { instanceAssignedHooks.push(hook); }
 
     getSocketsForRelay(relayId: number): string[] {
         const result: string[] = [];

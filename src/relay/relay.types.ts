@@ -12,6 +12,8 @@ export interface RelayAssignedInstance {
     /** Owner reference as a NoxIdentifier */
     ownerRef: NoxIdentifier;
     capacity: number;
+    /** Instance tags, used to resolve the cleanup state (e.g. `sys:persistent`). */
+    tags: string[];
     createdAt: Date;
 }
 
@@ -97,6 +99,12 @@ export interface RelayPlayerLeaveEvent {
 export interface RelayStatusChangeEvent {
     relay_id: number;
     status: 'connected' | 'disconnected' | 'ready';
+    time: number;
+}
+
+/** Relay lifecycle event emitted to WS clients when the auto-cleanup state changes. */
+export interface RelayLifecycleChangeEvent {
+    relay_id: number;
     time: number;
 }
 
@@ -209,6 +217,28 @@ export interface ApiRelayStatus {
     specs: ApiRelaySpecs | null;
 }
 
+/** Reasons a relay can be in a grace period — the UI maps them to `admin.relay_grace_<kind>`. */
+export type RelayGraceKind = 'startup' | 'disconnect';
+
+/**
+ * Cleanup state of a relay, computed by the RelayAutoManager.
+ *
+ * `null` means "nothing to report": the provider is not managed by this node, auto-management is
+ * disabled, or the relay is busy — a relay hosting an instance is never removed.
+ */
+export type ApiRelayLifecycle =
+    /** Pinned with a moderation-namespace `persistent` tag (e.g. `sys:persistent`): never removed. */
+    | { type: 'persistent' }
+    /**
+     * Grace period currently protecting the relay.
+     *
+     * `key` is the reason — `startup` for a node boot / process start / relay reconnect,
+     * `disconnect` when the connection was lost — and `expires` the deadline in epoch ms.
+     */
+    | { type: 'grace'; key: RelayGraceKind; expires: number }
+    /** Scheduled removal: `at` is the estimated epoch ms (idle timeout reached, or already dead). */
+    | { type: 'removal'; at: number };
+
 export interface ApiRelay {
     id: number;
     label: string | null;
@@ -221,4 +251,5 @@ export interface ApiRelay {
     runner: ApiRelayRunnerInfo | null;
     created_at: string;
     status: ApiRelayStatus | null;
+    lifecycle: ApiRelayLifecycle | null;
 }

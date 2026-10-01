@@ -562,6 +562,14 @@ export class RelayConfig {
   @Max(65535)
   max_port: number;
 
+  @Label('Relay Idle Timeout (ms)')
+  @Description('Stop and remove a connected relay once it has had no linked instance for this long, in milliseconds. Set to 0 to disable idle cleanup. Relays tagged with a moderation-namespace `persistent` tag are never stopped, and one connected relay is always kept warm so the node never ends up without a relay.')
+  @Default(5 * 60 * 1000)
+  @ConfigVar({ key: 'relay.idle_timeout', env: 'RELAY_IDLE_TIMEOUT' })
+  @IsInt()
+  @Min(0)
+  idle_timeout: number;
+
   @Label('Relay Group')
   @Description('Unique group identifier used to scope relay containers to this Nox instance. Prevents multiple Nox instances sharing the same Docker daemon from interfering with each other. Defaults to a random UUID generated at first start and persisted in the database.')
   @Default('default')

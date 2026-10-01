@@ -53,11 +53,53 @@ export interface RelayStartConfig {
     label?: string;
 }
 
+// ── Instances & lifecycle events (discovery) ──────────────────────────────────
+
+/** One relay process/container the provider currently knows about. */
+export interface RelayRunnerInstance {
+    /** Provider-specific identifier (e.g. Docker container id). */
+    providerId: string;
+    /** Relay DB id when the provider can map the instance back to a Nox relay, null otherwise. */
+    relayId: number | null;
+    /** True when the process is currently up. */
+    running: boolean;
+}
+
+/** Lifecycle transitions a runner reports. */
+export type RelayRunnerEventAction = 'start' | 'die' | 'destroy';
+
+export interface RelayRunnerEvent {
+    /** Provider-specific identifier of the process the event is about. */
+    providerId: string;
+    /** Relay DB id the process belongs to, null when it cannot be resolved. */
+    relayId: number | null;
+    action: RelayRunnerEventAction;
+}
+
 // ── The provider interface ────────────────────────────────────────────────────
 
 export interface IRelayRunner {
     /** Provider name — must match the `provider` column in the DB */
     readonly name: string;
+
+    /**
+     * True when the node can discover and control this provider's relay processes
+     * (list them, remove them, subscribe to their lifecycle).
+     *
+     * False for providers whose relays are managed outside the node (e.g. `external`):
+     * the auto-manager must never reconcile or delete them.
+     */
+    readonly manages: boolean;
+
+    /**
+     * Selection priority for spawning a **new** relay when the node needs one.
+     * The highest value wins; `-1` means "impossible right now" (provider managed
+     * outside the node, backend unreachable, …) and is never selected.
+     *
+     * @returns the priority (higher = preferred), or -1 when this provider cannot
+     *          create relays.
+     */
+    priority(): Promise<number>;
 
     /**
      * Start the relay process/container.
@@ -71,6 +113,15 @@ export interface IRelayRunner {
      * @param kill Whether to forcefully kill the relay if it doesn't stop gracefully.
      */
     stop(providerId: string, kill: boolean): Promise<void>;
+
+    /**
+     * Stop (when needed) and permanently destroy the relay process/container.
+     * Called when a relay is dropped (delete, dead, or idle cleanup).
+     *
+     * @param providerId The value stored in `Relay.providerId`.
+     * @param kill Whether to kill the relay outright instead of stopping it first.
+     */
+    remove(providerId: string, kill: boolean): Promise<void>;
 
     /**
      * Restart the relay process.
@@ -87,6 +138,21 @@ export interface IRelayRunner {
      * Return true if the relay process is currently running.
      */
     isRunning(providerId: string | null): Promise<boolean>;
+
+    /**
+     * List every relay process this provider manages for this node.
+     * Used for health checks and orphan reconciliation.
+     * Providers with `manages === false` return an empty list.
+     */
+    list(): Promise<RelayRunnerInstance[]>;
+
+    /**
+     * Subscribe to the provider's lifecycle events (start / die / destroy).
+     *
+     * @returns an unsubscribe function — providers that cannot report events
+     *          return a no-op.
+     */
+    subscribe(handler: (event: RelayRunnerEvent) => void): Promise<() => void>;
 
     /**
      * Return true if this runner can accept a new relay to manage.

@@ -8,6 +8,7 @@ import { Tags } from '../common/tags';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
 import { ApiInstanceConnectionDto } from './dto/instance-response.dto';
+import type { ApiInstanceLifecycle } from './instance-lifecycle.types';
 import type { UserWithMethods } from '../users/user.model';
 import { Instance } from 'src/generated/prisma/client';
 import type { WsGateway } from '../ws/ws.gateway';
@@ -67,6 +68,28 @@ export class InstancesService {
 
     /** Register a callback invoked when any instance is created. */
     onInstanceCreated(hook: (id: number) => void) { instanceCreatedHooks.push(hook); }
+
+    /**
+     * Callback registered by the `InstanceReaperService` so serialized instances can report their
+     * cleanup state. Registered this way to keep the reaper (relay module) out of this module's
+     * dependency graph.
+     */
+    private lifecycleProvider: ((instanceId: number, tags: readonly string[] | null | undefined) => ApiInstanceLifecycle | null) | null = null;
+
+    /** Expose the reaper's lifecycle state (called once, from its `onModuleInit`). */
+    setLifecycleProvider(provider: (instanceId: number, tags: readonly string[] | null | undefined) => ApiInstanceLifecycle | null) {
+        this.lifecycleProvider = provider;
+    }
+
+    /** Cleanup state of an instance, or null when no reaper is registered. */
+    getLifecycle(instanceId: number, tags: readonly string[] | null | undefined): ApiInstanceLifecycle | null {
+        if (!this.lifecycleProvider) return null;
+        try {
+            return this.lifecycleProvider(instanceId, tags);
+        } catch {
+            return null;
+        }
+    }
 
     async domain(): Promise<string> {
         return this.wellKnown.address();
@@ -316,6 +339,7 @@ export class InstancesService {
             connection,
             count,
             players,
+            lifecycle: this.getLifecycle(instance.id, instance.tags),
             alias: [
                 { key: 'api', value: `${apiBase}instances/${instance.id}` },
                 { key: 'iid', value: `${instance.id}@${domain}` },

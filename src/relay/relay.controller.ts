@@ -252,6 +252,7 @@ export class RelayController {
                 threshold: slotThresholdMap.get(i.id) ?? null,
                 effective_tps: slotEffTpsMap.get(i.id) ?? null,
                 effective_threshold: slotEffThresholdMap.get(i.id) ?? null,
+                lifecycle: this.instances.getLifecycle(i.id, i.tags),
             })),
         };
     }

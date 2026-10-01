@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import Docker from 'dockerode';
 import { AppConfigService } from '../../../config/config.service';
-import type { IRelayRunner, RelayRunnerInfo, RelayRunnerPort, RelayStartConfig } from '../runner.interface';
+import type { IRelayRunner, RelayRunnerEvent, RelayRunnerEventAction, RelayRunnerInfo, RelayRunnerInstance, RelayRunnerPort, RelayStartConfig } from '../runner.interface';
 
 /** Id applied to every relay container so we can filter them. */
 const RELAY_ID = 'nox.relay.id';
@@ -14,6 +14,9 @@ const RELAY_LABEL = 'nox.relay.label';
 @Injectable()
 export class DockerRunner implements IRelayRunner {
     readonly name = 'docker';
+
+    /** The node owns these containers — it can list, stop, remove and observe them. */
+    readonly manages = true;
 
     private readonly logger = new Logger(DockerRunner.name);
     private docker!: Docker;
@@ -75,7 +78,19 @@ export class DockerRunner implements IRelayRunner {
     }
 
     // ── IRelayRunner ──────────────────────────────────────────────────────────
-
+    /**
+     * Docker is the default provider that can spawn relays.
+     * Returns -1 when the daemon is unreachable so the node can fail loudly instead of
+     * creating a relay row it will never be able to start.
+     */
+    async priority(): Promise<number> {
+        try {
+            await this.docker.ping();
+            return 100;
+        } catch {
+            return -1;
+        }
+    }
     async start(cfg: RelayStartConfig): Promise<string> {
         if (this.creating) {
             throw new Error('A relay is already being created — wait for it to finish before starting another');
@@ -210,6 +225,24 @@ export class DockerRunner implements IRelayRunner {
         }
     }
 
+    /**
+     * Stop (unless `kill`) then force-remove the container.
+     * Best-effort: a container that is already gone is not an error.
+     */
+    async remove(providerId: string, kill: boolean): Promise<void> {
+        const container = this.docker.getContainer(providerId);
+        try {
+            if (!kill) {
+                const info = await container.inspect().catch(() => null);
+                if (info?.State?.Running) 
+                    await container.stop({ t: 5 }).catch(() => null);
+            }
+            await container.remove({ force: true });
+        } catch (err) {
+            this.logger.warn(`Could not remove relay container ${providerId}: ${(err as Error)?.message ?? err}`);
+        }
+    }
+
     async restart(providerId: string): Promise<void> {
         try {
             const container = this.docker.getContainer(providerId);
@@ -217,6 +250,68 @@ export class DockerRunner implements IRelayRunner {
         } catch (err) {
             // ignore
         }
+    }
+
+    /** Relay DB id from the container labels, or null when the label is missing/not numeric. */
+    private static relayIdOf(info: Docker.ContainerInfo): number | null {
+        const id = parseInt(info.Labels?.[RELAY_ID] ?? '', 10);
+        return isNaN(id) ? null : id;
+    }
+
+    /** Every relay container belonging to this node's group. */
+    async list(): Promise<RelayRunnerInstance[]> {
+        const containers = await this.docker.listContainers({
+            all: true,
+            filters: {
+                label: [
+                    RELAY_ID,
+                    `${GROUP_LABEL}=${await this.group()}`
+                ]
+            },
+        });
+        return containers.map(c => ({
+            providerId: c.Id,
+            relayId: DockerRunner.relayIdOf(c),
+            running: c.State === 'running',
+        }));
+    }
+
+    /** Stream Docker container events for this node's relay containers. */
+    async subscribe(handler: (event: RelayRunnerEvent) => void): Promise<() => void> {
+        const stream = await this.docker.getEvents({
+            filters: {
+                label: [
+                    RELAY_ID,
+                    `${GROUP_LABEL}=${await this.group()}`
+                ]
+            },
+        });
+
+        stream.on('data', (buf: Buffer) => {
+            try {
+                const obj = JSON.parse(buf.toString());
+                if (obj.Type !== 'container') return;
+
+                const action = obj.Action as RelayRunnerEventAction;
+                if (action !== 'start' && action !== 'die' && action !== 'destroy') return;
+
+                const relayId = parseInt(obj.Actor?.Attributes?.[RELAY_ID] ?? '', 10);
+                if (isNaN(relayId)) return;
+
+                handler({
+                    providerId: obj.id || obj.Actor?.ID || '',
+                    relayId,
+                    action,
+                });
+            } catch { /* ignore parse errors */ }
+        });
+
+        stream.on('error', (err: Error) => this.logger.warn(`Docker event stream error: ${err.message}`));
+
+        return () => {
+            // `getEvents()` resolves a node stream: tear it down so Docker closes the connection.
+            try { (stream as { destroy?: () => void }).destroy?.(); } catch { /* ignore */ }
+        };
     }
 
     async getInfo(providerId: string | null): Promise<RelayRunnerInfo> {

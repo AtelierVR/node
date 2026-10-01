@@ -1,5 +1,7 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ApiRelay } from '../relay.types';
+import { ApiExtraModels, ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
+import { ApiRelay, ApiRelayLifecycle, type RelayGraceKind } from '../relay.types';
+import type { ApiInstanceLifecycle } from '../../instances/instance-lifecycle.types';
+import { ApiInstanceGraceLifecycleDto, ApiInstancePersistentLifecycleDto, ApiInstanceRemovalLifecycleDto } from '../../instances/dto/instance-response.dto';
 
 export class RelayLogEntryApiDto {
     @ApiProperty({ description: 'Unix timestamp in milliseconds', example: 1680000000000 })
@@ -206,6 +208,7 @@ export class ApiRelayStatusDto {
     specs!: ApiRelaySpecsDto | null;
 }
 
+@ApiExtraModels(ApiInstancePersistentLifecycleDto, ApiInstanceGraceLifecycleDto, ApiInstanceRemovalLifecycleDto)
 export class RelayAssignedInstanceDto {
     @ApiProperty({ description: 'Internal numeric instance ID (database)', example: 1 })
     id!: number;
@@ -230,6 +233,17 @@ export class RelayAssignedInstanceDto {
 
     @ApiProperty({ description: 'Creation timestamp in milliseconds since epoch', example: 1704067200000 })
     created_at!: number;
+
+    @ApiPropertyOptional({
+        description: 'Cleanup state of the instance (from the instance reaper), or null when there is nothing to report',
+        nullable: true,
+        oneOf: [
+            { $ref: getSchemaPath(ApiInstancePersistentLifecycleDto) },
+            { $ref: getSchemaPath(ApiInstanceGraceLifecycleDto) },
+            { $ref: getSchemaPath(ApiInstanceRemovalLifecycleDto) },
+        ],
+    })
+    lifecycle!: ApiInstanceLifecycle | null;
 }
 
 export class ApiRelayInstancesSummaryDto {
@@ -240,6 +254,31 @@ export class ApiRelayInstancesSummaryDto {
     maximum!: number;
 }
 
+export class ApiRelayPersistentLifecycleDto {
+    @ApiProperty({ description: 'Discriminant', example: 'persistent', enum: ['persistent'] })
+    type!: 'persistent';
+}
+
+export class ApiRelayGraceLifecycleDto {
+    @ApiProperty({ description: 'Discriminant', example: 'grace', enum: ['grace'] })
+    type!: 'grace';
+
+    @ApiProperty({ description: 'Reason for the grace period: "startup" (node boot, process start or relay reconnect) or "disconnect" (connection lost). Clients map it to the translation key `admin.relay_grace_<key>`', enum: ['startup', 'disconnect'], example: 'startup' })
+    key!: RelayGraceKind;
+
+    @ApiProperty({ description: 'When the grace period expires (epoch ms)', example: 1735689600000 })
+    expires!: number;
+}
+
+export class ApiRelayRemovalLifecycleDto {
+    @ApiProperty({ description: 'Discriminant', example: 'removal', enum: ['removal'] })
+    type!: 'removal';
+
+    @ApiProperty({ description: 'Estimated time (epoch ms) at which the auto-manager will remove the relay (idle timeout reached, or relay already dead)', example: 1735689600000 })
+    at!: number;
+}
+
+@ApiExtraModels(ApiRelayPersistentLifecycleDto, ApiRelayGraceLifecycleDto, ApiRelayRemovalLifecycleDto)
 export class ApiRelayDto {
     @ApiProperty({ description: 'Internal numeric relay ID', example: 1 })
     id!: number;
@@ -270,4 +309,15 @@ export class ApiRelayDto {
 
     @ApiPropertyOptional({ type: () => ApiRelayStatusDto, description: 'Live status data, or null when disconnected', nullable: true })
     status!: ApiRelayStatusDto | null;
+
+    @ApiPropertyOptional({
+        description: 'Cleanup state of the relay, or null when there is nothing to report (provider not managed by this node, auto-management disabled, or relay hosting an instance)',
+        nullable: true,
+        oneOf: [
+            { $ref: getSchemaPath(ApiRelayPersistentLifecycleDto) },
+            { $ref: getSchemaPath(ApiRelayGraceLifecycleDto) },
+            { $ref: getSchemaPath(ApiRelayRemovalLifecycleDto) },
+        ],
+    })
+    lifecycle!: ApiRelayLifecycle | null;
 }

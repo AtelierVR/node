@@ -1,71 +1,87 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Inject, forwardRef } from '@nestjs/common';
-import Docker from 'dockerode';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { AppConfigService } from '../config/config.service';
 import { EventsService } from '../gateway/events.service';
 import { RelayService } from './relay.service';
 import { RelayGateway } from './relay.gateway';
-import type { RelayWithMethodsAndToken } from './relay.model';
-import { WsGateway } from '../ws/ws.gateway';
-
-/** Label used to identify relay containers. */
-const RELAY_LABEL = 'nox.relay.id';
-/** Label used to scope relay containers to a specific Nox instance. */
-const GROUP_LABEL = 'nox.relay.group';
+import type { RelayWithMethods, RelayWithMethodsAndToken } from './relay.model';
+import type { ApiRelayLifecycle, RelayLifecycleChangeEvent } from './relay.types';
+import { Tags } from '../common/tags';
+import type { RelayModel } from '../generated/prisma/models/Relay';
+import { RunnerFactory } from './runners/runner.factory';
+import type { IRelayRunner, RelayRunnerEvent, RelayRunnerInstance } from './runners/runner.interface';
 
 /** How often (ms) to check relay health. */
 const CHECK_INTERVAL_MS = 5_000;
 
-/** Seconds after container start before we enforce connectivity. */
+/** Seconds of grace granted when the node boots, a relay process starts, or a relay connects. */
 const STARTUP_GRACE_S = 60;
 
 /** Seconds after disconnect before we declare a relay dead. */
 const DISCONNECT_GRACE_S = 60;
 
-interface ContainerEvent {
-    id: string;
-    action: string;
-    relayId: number;
-}
+/** Fallback idle TTL used when `relay.idle_timeout` cannot be read. */
+const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * RelayAutoManager replicates the automatic relay lifecycle management from node.old/.
  *
+ * Everything provider-specific (listing relay processes, removing them, lifecycle events) goes
+ * through an {@link IRelayRunner} resolved by {@link RunnerFactory}: this service never talks to
+ * Docker (or any other backend) directly, and it only reconciles providers whose runner reports
+ * `manages === true` — relays managed outside the node (e.g. `external`) are left untouched.
+ *
  * Behaviour (when relay.auto_manage = true, default):
- *  - Every 5 s: check all docker relays
- *    - Remove DB records for relays whose container has disappeared
- *    - Remove dead relays (not connected + past grace period) and their containers
- *    - If all relays are full (or none exist), spin up a new one automatically
- *  - Docker event stream: update status on start / die / destroy
+ *  - Every 5 s: check all managed relays
+ *    - Remove DB records for relays whose process has disappeared
+ *    - Remove dead relays (not connected + past grace period) through their provider
+ *    - Stop and remove connected relays that have had no linked instance for
+ *      `relay.idle_timeout`, unless they are pinned persistent (`sys:persistent`)
+ *  - Provider lifecycle events: update status on start / die / destroy
+ *
+ * Creating relays is deliberately *not* done here: {@link InstanceDistributorService} calls
+ * {@link ensureRelayExists} on demand as soon as an instance needs a slot. Pre-creating one
+ * periodically would fight the idle cleanup (spawn → sit empty → reap → spawn again).
  */
 @Injectable()
 export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
 
     private readonly logger = new Logger(RelayAutoManager.name);
 
-    private docker!: Docker;
-
-    private async group(): Promise<string> {
-        return this.config.get<string>('relay.group');
-    }
-
     private checkTimer: NodeJS.Timeout | null = null;
-    private eventStream: any = null;
+
+    /** Unsubscribe handles returned by the runners' event subscriptions. */
+    private readonly eventSubscriptions: Array<() => void> = [];
 
     /** Lock — prevents two simultaneous relay creations (exposed for InstanceDistributorService). */
     private creating = false;
 
-    /** Relay IDs currently being created (between create() and container start event). */
+    /** Relay IDs currently being created (between create() and the provider's start event). */
     private readonly pendingRelayIds = new Set<number>();
 
-    /** Relay ID → time the container last started. */
-    private readonly containerStartTimes = new Map<number, Date>();
+    /**
+     * Relay ID → epoch ms until which the relay is protected by a grace period.
+     *
+     * Grace is granted when the node boots, when a relay process starts and when the relay
+     * (re)connects: a relay that just came up must never be reaped before it had the chance to
+     * report its instances.
+     */
+    private readonly graceUntil = new Map<number, number>();
 
     /** Relay ID → time the relay last disconnected. */
     private readonly disconnectTimes = new Map<number, Date>();
 
-    /** Dedup Docker events (id-action-relayId). */
+    /** Relay ID → time from which the relay has been observed empty (no linked instance). */
+    private readonly emptySince = new Map<number, number>();
+
+    /** Dedup provider events (providerId-action-relayId). */
     private readonly processedEvents = new Set<string>();
+
+    /** True once auto-management is confirmed enabled (`relay.auto_manage`). */
+    private autoManage = false;
+
+    /** Last `relay.idle_timeout` (ms) read by the reaper — cached for the lifecycle API. */
+    private idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
 
     constructor(
         private readonly prisma: PrismaService,
@@ -73,50 +89,75 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
         private readonly events: EventsService,
         private readonly relay: RelayService,
         private readonly gateway: RelayGateway,
-        @Inject(forwardRef(() => WsGateway))
-        private readonly wsGateway: WsGateway,
+        private readonly runners: RunnerFactory,
     ) { }
+
+    /**
+     * Protect a relay for `seconds` (default {@link STARTUP_GRACE_S}).
+     *
+     * @param notify Emit a lifecycle event so admin clients refresh. Bulk callers (boot) pass
+     *               false — nothing is connected yet and it would spam one event per relay.
+     */
+    private grantGrace(relayId: number, seconds: number = STARTUP_GRACE_S, notify = true): void {
+        this.graceUntil.set(relayId, Date.now() + seconds * 1000);
+        if (notify) this.emitLifecycle(relayId);
+    }
+
+    /** True while the relay is inside a grace period. */
+    private inGrace(relayId: number): boolean {
+        const until = this.graceUntil.get(relayId);
+        return until !== undefined && Date.now() < until;
+    }
+
+    /**
+     * Tell admin clients that a relay's cleanup state changed (grace granted, idle timer started
+     * or cleared, …). The payload is only a signal: clients re-fetch the relay, which keeps the
+     * serialized `lifecycle` (persistent / managed / grace / remove_at) the single source of truth.
+     */
+    private emitLifecycle(relayId: number): void {
+        this.events.emit<RelayLifecycleChangeEvent>('relay_lifecycle', {
+            relay_id: relayId,
+            time: Date.now(),
+        });
+    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
     async onModuleInit() {
+        // Expose the cleanup state to the API (`Relay.serialize()` → `lifecycle`).
+        this.relay.setLifecycleProvider((relay, liveInstances) => this.lifecycleInfo(relay, liveInstances));
+
         const enabled = (await this.config.getOptional<boolean>('relay.auto_manage')) ?? true;
         if (!enabled) {
             this.logger.log('Auto-management disabled (relay.auto_manage = false)');
             return;
         }
+        this.autoManage = true;
 
-        // Initialise Docker client (same config key as DockerRunner)
-        let opts: any = await this.config.getOptional<string | object>('relay.docker_options');
-        if (typeof opts === 'string')
-            try { opts = JSON.parse(opts); }
-            catch { opts = {}; }
-        this.docker = new Docker((opts as Docker.DockerOptions) ?? {});
-
-        // Subscribe to the Docker event stream
-        try {
-            this.eventStream = await this.docker.getEvents({
-                filters: {
-                    label: [
-                        RELAY_LABEL,
-                        `${GROUP_LABEL}=${await this.group()}`
-                    ]
-                }
-            });
-
-            this.eventStream.on('data', (buf: Buffer) => this.onContainerEvent(buf));
-            this.eventStream.on('error', (err: Error) => this.logger.warn(`Docker event stream error: ${err.message}`));
-            this.logger.log('Subscribed to Docker relay event stream');
-        } catch (err: any) {
-            this.logger.warn(`Could not subscribe to Docker events: ${err.message}`);
+        // Subscribe to the lifecycle events of every managed provider
+        for (const runner of this.runners.managed()) {
+            try {
+                const unsubscribe = await runner.subscribe((event) => void this.onRunnerEvent(event));
+                this.eventSubscriptions.push(unsubscribe);
+                this.logger.log(`Subscribed to "${runner.name}" relay lifecycle events`);
+            } catch (err: any) {
+                this.logger.warn(`Could not subscribe to "${runner.name}" events: ${err?.message ?? err}`);
+            }
         }
 
-        // Hook into relay disconnect events so we can track disconnect times
+        // Relay connection lifecycle: track disconnect times, and re-grant a grace period on every
+        // (re)connection so a relay is never reaped right after coming back.
         this.relay.onDisconnect((relayId) => void this.disconnectTimes.set(relayId, new Date()));
-        this.relay.onConnect((relayId) => void this.disconnectTimes.delete(relayId));
+        this.relay.onConnect((relayId) => {
+            this.disconnectTimes.delete(relayId);
+            this.grantGrace(relayId);
+        });
 
-        // Sync existing containers (treat running ones as already started)
-        await this.syncExistingContainers();
+        // Server start: grace every known relay before anything else can be reaped.
+        await this.graceAllRelays();
+
+        // Sync existing relay processes (adopts running ones as freshly started)
+        await this.syncRunnerInstances();
 
         // Periodic health check
         this.checkTimer = setInterval(() => this.checkHosts(), CHECK_INTERVAL_MS);
@@ -126,90 +167,94 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
     onModuleDestroy() {
         if (this.checkTimer)
             clearInterval(this.checkTimer);
-        if (this.eventStream)
+        for (const unsubscribe of this.eventSubscriptions)
             try {
-                this.eventStream.destroy();
+                unsubscribe();
             } catch { /* ignore */ }
+        this.eventSubscriptions.length = 0;
     }
 
-    // ── Docker event stream ───────────────────────────────────────────────────────
+    // ── Provider lifecycle events ─────────────────────────────────────────────────
 
-    private async onContainerEvent(buf: Buffer) {
-        try {
-            const obj = JSON.parse(buf.toString());
-            if (obj.Type !== 'container') return;
+    /** Handle a start / die / destroy event reported by a provider runner. */
+    private async onRunnerEvent(event: RelayRunnerEvent) {
+        if (event.relayId === null) return;
 
-            const relayId = parseInt(obj.Actor?.Attributes?.[RELAY_LABEL], 10);
-            if (isNaN(relayId)) return;
+        // Some providers may replay an event — ignore duplicates (providerId-action-relayId).
+        const key = `${event.providerId}-${event.action}-${event.relayId}`;
+        if (this.processedEvents.has(key)) return;
+        this.processedEvents.add(key);
+        setTimeout(() => this.processedEvents.delete(key), 5_000);
 
-            const key = `${obj.id}-${obj.Action}-${relayId}`;
-            if (this.processedEvents.has(key)) return;
-            this.processedEvents.add(key);
-            setTimeout(() => this.processedEvents.delete(key), 5_000);
-
-            await this.handleContainerAction({
-                id: obj.id || obj.Actor?.ID || '',
-                action: obj.Action,
-                relayId,
-            });
-        } catch { /* ignore parse errors */ }
-    }
-
-    private async syncExistingContainers() {
-        try {
-            const containers = await this.docker.listContainers({
-                all: true,
-                filters: {
-                    label: [
-                        RELAY_LABEL,
-                        `${GROUP_LABEL}=${await this.group()}`
-                    ]
-                },
-            });
-            for (const c of containers) {
-                const relayId = parseInt(c.Labels[RELAY_LABEL], 10);
-                if (isNaN(relayId)) continue;
-                // Mark as "just started" so we don't immediately declare them dead
-                if (c.State === 'running') this.containerStartTimes.set(relayId, new Date());
-                await this.handleContainerAction({
-                    id: c.Id,
-                    action: c.State === 'running' ? 'start' : 'die',
-                    relayId,
-                });
-            }
-        } catch (err: any) {
-            this.logger.warn(`Could not sync existing containers: ${err.message}`);
-        }
-    }
-
-    private async handleContainerAction(event: ContainerEvent) {
         switch (event.action) {
             case 'start':
-                this.containerStartTimes.set(event.relayId, new Date());
-                this.logger.log(`Container started for relay #${event.relayId}`);
+                this.grantGrace(event.relayId);
+                this.logger.log(`Relay #${event.relayId}: process started`);
                 this.events.emit('relay_status_change', { relay_id: event.relayId, status: 'up', time: Date.now() });
                 break;
 
             case 'die':
-                this.containerStartTimes.delete(event.relayId);
-                this.logger.log(`Container died for relay #${event.relayId}`);
+                this.graceUntil.delete(event.relayId);
+                this.logger.log(`Relay #${event.relayId}: process died`);
                 this.events.emit('relay_status_change', { relay_id: event.relayId, status: 'down', time: Date.now() });
-                // Do NOT remove the container here — the RestartPolicy (unless-stopped) will
-                // automatically restart it on transient failures. Force-removing it would fight
-                // the restart policy and leave the relay in a broken state. checkHosts() handles
-                // cleanup of relays that are truly dead (no connection after grace periods).
+                // Do NOT remove anything here — the provider is expected to restart transient
+                // crashes on its own (e.g. the Docker `unless-stopped` restart policy). Removing
+                // the process would fight that policy and leave the relay broken; checkHosts()
+                // cleans up relays that are truly dead (no connection after the grace periods).
                 break;
 
             case 'destroy':
-                this.containerStartTimes.delete(event.relayId);
+                this.graceUntil.delete(event.relayId);
                 this.disconnectTimes.delete(event.relayId);
-                this.logger.log(`Container destroyed for relay #${event.relayId}`);
-                // Safe to delete the DB record here: the die handler no longer calls
-                // container.remove(), so destroy only fires from intentional removals
-                // (checkHosts cleanup or admin action), never from a transient crash.
+                this.logger.log(`Relay #${event.relayId}: process destroyed`);
+                // Safe to delete the DB record here: 'destroy' only fires from intentional
+                // removals (checkHosts cleanup or an admin action), never from a transient crash.
                 // relay.delete() emits relay_removed internally if the record still exists.
                 await this.relay.delete(event.relayId).catch(() => null);
                 break;
+        }
+    }
+
+    /**
+     * Grant a grace period to every managed relay when the node boots.
+     *
+     * Without it, a relay whose process is not up yet, or that has not reconnected yet, would be
+     * dropped on the very first tick — either as "no process found" or as "past grace period"
+     * (no disconnect was ever observed for this boot).
+     */
+    private async graceAllRelays(): Promise<void> {
+        const managedProviders = new Set(this.runners.managed().map(r => r.name));
+        const relays = await this.prisma.relays
+            .findMany({ select: { id: true, provider: true } })
+            .catch(() => []);
+
+        let granted = 0;
+        for (const r of relays)
+            if (managedProviders.has(r.provider)) {
+                this.grantGrace(r.id, STARTUP_GRACE_S, false);
+                granted++;
+            }
+
+        if (granted) this.logger.log(`Grace period granted to ${granted} relay(s) on startup`);
+    }
+
+    /** Adopt the relay processes that are already running when the node boots. */
+    private async syncRunnerInstances() {
+        for (const runner of this.runners.managed()) {
+            try {
+                for (const instance of await runner.list()) {
+                    if (instance.relayId === null) continue;
+                    // `onRunnerEvent()` grants the grace period — a running process is adopted
+                    // exactly like a fresh start.
+                    await this.onRunnerEvent({
+                        providerId: instance.providerId,
+                        relayId: instance.relayId,
+                        action: instance.running ? 'start' : 'die',
+                    });
+                }
+            } catch (err: any) {
+                this.logger.warn(`Could not sync "${runner.name}" relay processes: ${err?.message ?? err}`);
+            }
         }
     }
 
@@ -217,45 +262,40 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
 
     private async checkHosts() {
         try {
-            const relays = await this.prisma.relays.findMany({ where: { provider: 'docker' } });
+            // Only relays whose provider lets the node manage its processes. A relay whose
+            // provider cannot be reconciled (e.g. `external`) is never touched here.
+            const managed = this.runners.managed();
+            const managedProviders = new Set(managed.map(r => r.name));
+            const relays = (await this.prisma.relays.findMany({
+                include: { _count: { select: { links: true } } },
+            })).filter(r => managedProviders.has(r.provider));
 
-            const containers = await this.docker.listContainers({
-                all: true,
-                filters: {
-                    label: [
-                        RELAY_LABEL,
-                        `${GROUP_LABEL}=${await this.group()}`
-                    ]
-                },
-            });
-            const containersByRelayId = new Map<number, Docker.ContainerInfo>();
-            for (const c of containers) {
-                const rid = parseInt(c.Labels[RELAY_LABEL], 10);
-                if (!isNaN(rid)) containersByRelayId.set(rid, c);
+            // Collect the process backing each relay, per managed provider.
+            const runnerByRelayId = new Map<number, { runner: IRelayRunner; instance: RelayRunnerInstance }>();
+            for (const runner of managed) {
+                for (const instance of await runner.list().catch(() => [])) {
+                    if (instance.relayId !== null)
+                        runnerByRelayId.set(instance.relayId, { runner, instance });
+                }
             }
 
             for (const r of relays) {
-                // No container at all → orphan DB record, remove it.
-                // Skip if creation is still in progress, or if we set a start time recently
-                // (the container may not appear in listContainers immediately after startRelay).
-                if (!containersByRelayId.has(r.id)) {
+                // No process at all → orphan DB record, remove it. Skipped while a creation is in
+                // progress or while the relay is in grace (the process may not show up in list()
+                // immediately after a boot or a startRelay).
+                if (!runnerByRelayId.has(r.id)) {
                     if (this.pendingRelayIds.has(r.id)) continue;
                     if (this.relay.pendingStartRelayIds.has(r.id)) continue;
-                    const startTime = this.containerStartTimes.get(r.id);
-                    if (startTime && (Date.now() - startTime.getTime()) / 1000 < STARTUP_GRACE_S) continue;
-                    this.logger.warn(`Relay #${r.id}: no container found, removing DB record`);
+                    if (this.inGrace(r.id)) continue;
+                    this.logger.warn(`Relay #${r.id}: no process found, removing DB record`);
                     await this.relay.delete(r.id).catch(() => null);
-                    this.containerStartTimes.delete(r.id);
+                    this.graceUntil.delete(r.id);
                     this.disconnectTimes.delete(r.id);
                     continue;
                 }
 
-                // Still in startup grace period — don't touch it
-                const startTime = this.containerStartTimes.get(r.id);
-                if (startTime) {
-                    const ageSecs = (Date.now() - startTime.getTime()) / 1000;
-                    if (ageSecs < STARTUP_GRACE_S) continue;
-                }
+                // Still in grace (node boot / process just started / relay just connected)
+                if (this.inGrace(r.id)) continue;
 
                 // Connected → healthy
                 if (this.relay.isRelayConnected(r.id)) continue;
@@ -268,79 +308,158 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
                 }
 
                 // Past all grace periods and not connected → dead, remove
-                this.logger.warn(`Relay #${r.id}: past grace period and not connected — removing`);
-                const containerInfo = containersByRelayId.get(r.id)!;
-                try {
-                    const container = this.docker.getContainer(containerInfo.Id);
-                    if (containerInfo.State === 'running') await container.stop({ t: 5 }).catch(() => null);
-                    await container.remove({ force: true }).catch(() => null);
-                } catch { /* ignore */ }
-                // relay.delete() emits relay_removed; container.remove() above will also trigger
-                // the destroy handler which calls relay.delete() again (no-op if already deleted).
-                await this.relay.delete(r.id).catch(() => null);
-                this.containerStartTimes.delete(r.id);
-                this.disconnectTimes.delete(r.id);
+                await this.dropRelay(r.id, 'past grace period and not connected');
             }
 
-            // Remove orphan containers: containers labelled with a relay ID that has no DB record.
-            // This happens when a relay is deleted via the API (DB deleted, container left running).
+            // Remove orphan processes: a provider still manages a relay process while its DB record
+            // is gone (relay deleted via the API while the process was still up). Removal is
+            // delegated to the owning provider so each runner cleans up in its own way.
             const relayIds = new Set(relays.map(r => r.id));
-            for (const [relayId, containerInfo] of containersByRelayId) {
-                if (!relayIds.has(relayId)) {
-                    this.logger.warn(`Relay #${relayId}: orphan container found (no DB record), removing`);
-                    try {
-                        const container = this.docker.getContainer(containerInfo.Id);
-                        if (containerInfo.State === 'running') await container.stop({ t: 5 }).catch(() => null);
-                        await container.remove({ force: true }).catch(() => null);
-                    } catch { /* ignore */ }
-                }
+            for (const [relayId, { runner, instance }] of runnerByRelayId) {
+                if (relayIds.has(relayId)) continue;
+                this.logger.warn(`Relay #${relayId}: orphan "${runner.name}" process found (no DB record), removing`);
+                await runner.remove(instance.providerId, true).catch((err: any) =>
+                    this.logger.warn(`Relay #${relayId}: could not remove the orphan process: ${err?.message ?? err}`));
             }
 
-            // Create a new relay if all are full (or none exist)
-            if (await this.isFull()) {
-                await this.ensureRelayExists();
-            }
+            // Stop every relay that has been sitting empty. No exemption beyond `persistent`: an
+            // idle managed relay that has no scheduled removal at all would be a bug.
+            await this.reapIdleRelays(relays);
         } catch (err: any) {
             this.logger.warn(`checkHosts error: ${err.message}`);
         }
     }
 
     /**
-     * Returns true when a new relay container should be created:
-     *  - No docker relays exist, OR
-     *  - Every relay that is connected (or in startup grace) is at full capacity.
+     * Stop, destroy and forget a relay, going through its provider runner rather than
+     * talking to Docker from here (see {@link RelayService.removeRunner}).
+     *
+     * `relay.delete()` emits `relay_removed`; the provider also reports the process as destroyed,
+     * whose handler calls `relay.delete()` again (no-op by then). If the runner cannot resolve
+     * `relay.providerId` (stale id), the process is left behind and the orphan pass in
+     * `checkHosts()` picks it up on the next tick once the row is gone.
      */
-    private async isFull(): Promise<boolean> {
-        const relays = await this.prisma.relays.findMany({ where: { provider: 'docker' } });
-        if (relays.length === 0) return true;
+    private async dropRelay(relayId: number, reason: string): Promise<void> {
+        this.logger.warn(`Relay #${relayId}: ${reason} — stopping and removing`);
+        await this.relay.removeRunner(relayId, true).catch((err: any) =>
+            this.logger.warn(`Relay #${relayId}: the provider could not remove the runner: ${err?.message ?? err}`));
+        await this.relay.delete(relayId).catch(() => null);
+        this.graceUntil.delete(relayId);
+        this.disconnectTimes.delete(relayId);
+        this.emptySince.delete(relayId);
+    }
 
-        let anyNotFull = false;
-        for (const r of relays) {
-            const connected = this.relay.isRelayConnected(r.id);
-            const startTime = this.containerStartTimes.get(r.id);
-            const inStartupGrace = startTime && (Date.now() - startTime.getTime()) / 1000 < STARTUP_GRACE_S;
+    /** True when the instance must never be auto-deleted. Mirrors `InstanceReaperService` and
+     * the tag lookup below (`Tags.MODERATION`, e.g. `sys:persistent`).
+     */
+    private isPersistent(tags: readonly string[] | null | undefined): boolean {
+        return Tags.has(tags, Tags.MODERATION, 'persistent');
+    }
 
-            if (!connected && !inStartupGrace) continue; // dead / not relevant
+    /**
+     * Cleanup state of a relay, exposed through the admin API (`Relay.serialize()`).
+     *
+     * Synchronous and cheap: everything comes from the maps maintained by `checkHosts()`, so the
+     * values are at most one tick (5 s) stale.
+     *
+     * @param liveInstances Instances the relay currently reports (null when offline). A relay that
+     *                      hosts something is never removed — there is nothing to report then.
+     * @returns the current state, or null when there is nothing to say.
+     */
+    lifecycleInfo(relay: RelayWithMethods, liveInstances: number | null = null): ApiRelayLifecycle | null {
+        // Nothing is ever removed by this node for an unmanaged provider or when auto-management is off.
+        if (!this.autoManage) return null;
+        if (!this.runners.managed().some(r => r.name === relay.provider)) return null;
 
-            if (inStartupGrace && !connected) {
-                // Starting up — assume not full yet
-                anyNotFull = true;
-                continue;
-            }
+        // Pinned: never auto-removed, whatever the grace or idle timers say.
+        if (this.isPersistent(relay.tags)) return { type: 'persistent' };
 
-            // Connected: query live status
-            const status = await this.wsGateway.requestStatus(r.id, 2_000).catch(() => null);
-            if (!status) {
-                // Can't reach it → assume not full
-                anyNotFull = true;
-                continue;
-            }
-            if ((status.i ?? 0) < (status.m ?? 1)) {
-                anyNotFull = true;
-            }
+        // Busy relay (or one the relay itself reports as busy): nothing to clean up.
+        if (liveInstances !== null && liveInstances > 0) return null;
+
+        const now = Date.now();
+
+        // Grace — the node just booted, the process just started or the relay just (re)connected.
+        const graceUntil = this.graceUntil.get(relay.id);
+        if (graceUntil !== undefined && now < graceUntil)
+            return { type: 'grace', key: 'startup', expires: graceUntil };
+
+        // Not connected: either still inside the disconnect grace period, or dead and about to
+        // be dropped on the next tick (`checkHosts()` removes it as soon as the grace is over).
+        if (!this.relay.isRelayConnected(relay.id)) {
+            const discTime = this.disconnectTimes.get(relay.id);
+            const until = discTime ? discTime.getTime() + DISCONNECT_GRACE_S * 1000 : 0;
+            return until > now
+                ? { type: 'grace', key: 'disconnect', expires: until }
+                : { type: 'removal', at: now + CHECK_INTERVAL_MS };
         }
 
-        return !anyNotFull;
+        // Connected and empty: the reaper removes it once the idle TTL is reached.
+        // (`emptySince` is only tracked for relays that are actually candidates: connected, no
+        // linked instance and not persistent.)
+        const since = this.emptySince.get(relay.id);
+        if (since !== undefined && this.idleTimeoutMs > 0)
+            return { type: 'removal', at: since + this.idleTimeoutMs };
+
+        return null;
+    }
+
+    /**
+     * Stops and removes connected relays that have had no linked instance for
+     * `relay.idle_timeout` (0 disables the cleanup).
+     *
+     * A relay is only exempt when it is pinned as persistent (moderation-namespace
+     * `persistent` tag, e.g. `sys:persistent`) — mirrors {@link InstanceReaperService}.
+     *
+     * Relays that are empty because they are not connected yet are left alone — the
+     * dead-relay path above owns them.
+     */
+    private async reapIdleRelays(
+        relays: Array<RelayModel & { _count: { links: number } }>,
+    ): Promise<void> {
+        const idleTtlMs = await this.config.get<number>('relay.idle_timeout').catch(() => DEFAULT_IDLE_TIMEOUT_MS);
+        this.idleTimeoutMs = idleTtlMs;
+        if (!idleTtlMs || idleTtlMs <= 0) return; // idle cleanup disabled
+
+        const now = Date.now();
+        const seen = new Set<number>();
+
+        for (const r of relays) {
+            seen.add(r.id);
+
+            // Not a candidate (disconnected / still hosting / persistent) → reset its idle timer
+            // so the TTL always measures an uninterrupted empty period.
+            const candidate = this.relay.isRelayConnected(r.id)
+                && r._count.links === 0
+                && !this.isPersistent(r.tags);
+            if (!candidate) {
+                // No longer a cleanup candidate (busy / disconnected / persistent): drop the timer
+                // and tell the UI, which may still be displaying a scheduled removal.
+                if (this.emptySince.delete(r.id)) 
+                    this.emitLifecycle(r.id);
+                continue;
+            }
+
+            // Just booted / just connected — give it a chance to be linked before counting it idle.
+            if (this.inGrace(r.id)) continue;
+
+            let since = this.emptySince.get(r.id);
+            if (since === undefined) {
+                since = now;
+                this.emptySince.set(r.id, since);
+                // The idle timer just started → this relay now has a scheduled removal.
+                this.emitLifecycle(r.id);
+            }
+            if (now - since < idleTtlMs) continue;
+
+            const idleMin = Math.round((now - since) / 60_000);
+            await this.dropRelay(r.id, `empty for ${idleMin} min`);
+        }
+
+        // Drop timers for relays that no longer exist.
+        for (const id of [...this.emptySince.keys()])
+            if (!seen.has(id))
+                this.emptySince.delete(id);
     }
 
     /**
@@ -366,14 +485,19 @@ export class RelayAutoManager implements OnModuleInit, OnModuleDestroy {
     }
 
     private async createRelayContainer(): Promise<RelayWithMethodsAndToken> {
-        const relay = await this.relay.create({ provider: 'docker' });
+        // Let the providers themselves decide whether they can host a new relay
+        // (`priority()` returns -1 when impossible, e.g. external relays or no Docker daemon).
+        const runner = await this.runners.best();
+        if (!runner) throw new Error('No relay provider is available to create a relay');
+
+        const relay = await this.relay.create({ provider: runner.name });
         this.pendingRelayIds.add(relay.id);
         try {
             await this.relay.startRelay(relay.id);
-            // Mark startup time immediately so checkHosts treats this relay as "in startup
-            // grace" even before the Docker 'start' event fires.
-            this.containerStartTimes.set(relay.id, new Date());
-            this.logger.log(`Auto-created and started relay #${relay.id}`);
+            // Grant the grace period immediately so checkHosts treats this relay as protected even
+            // before the provider's 'start' event fires.
+            this.grantGrace(relay.id);
+            this.logger.log(`Auto-created and started relay #${relay.id} (provider: ${runner.name})`);
             this.events.emit('relay_added', { relay_id: relay.id, time: Date.now() });
             return relay;
         } catch (err: any) {

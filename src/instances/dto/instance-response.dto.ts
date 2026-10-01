@@ -1,5 +1,6 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiExtraModels, ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
 import { ApiAliasDto } from '../../api/dto/shared.dto';
+import type { ApiInstanceLifecycle, InstanceGraceKind } from '../instance-lifecycle.types';
 
 export class ApiInstancePlayerDto {
     @ApiPropertyOptional({ type: 'string', description: 'NoxIdentifier of the user, or null for anonymous', example: '1@my-server.com', nullable: true })
@@ -20,6 +21,31 @@ export class ApiInstanceConnectionDto {
     region!: string | null;
 }
 
+export class ApiInstancePersistentLifecycleDto {
+    @ApiProperty({ description: 'Discriminant', example: 'persistent', enum: ['persistent'] })
+    type!: 'persistent';
+}
+
+export class ApiInstanceGraceLifecycleDto {
+    @ApiProperty({ description: 'Discriminant', example: 'grace', enum: ['grace'] })
+    type!: 'grace';
+
+    @ApiProperty({ description: 'Reason for the grace period: "created" (the instance was just created), "assigned" (just assigned/moved to a relay) or "startup" (node restart). Clients map it to the translation key `admin.instance_grace_<key>`', enum: ['created', 'assigned', 'startup'], example: 'created' })
+    key!: InstanceGraceKind;
+
+    @ApiProperty({ description: 'When the grace period expires (epoch ms)', example: 1735689600000 })
+    expires!: number;
+}
+
+export class ApiInstanceRemovalLifecycleDto {
+    @ApiProperty({ description: 'Discriminant', example: 'removal', enum: ['removal'] })
+    type!: 'removal';
+
+    @ApiProperty({ description: 'Estimated time (epoch ms) at which the instance will be removed (idle timeout reached)', example: 1735689600000 })
+    at!: number;
+}
+
+@ApiExtraModels(ApiInstancePersistentLifecycleDto, ApiInstanceGraceLifecycleDto, ApiInstanceRemovalLifecycleDto)
 export class ApiInstanceDto {
     @ApiProperty({ description: 'Internal numeric instance ID', example: 1 })
     id!: number;
@@ -62,4 +88,15 @@ export class ApiInstanceDto {
 
     @ApiProperty({ description: 'Aliases (NoxIdentifier extras)', type: () => [ApiAliasDto] })
     alias!: ApiAliasDto[];
+
+    @ApiPropertyOptional({
+        description: 'Cleanup state of the instance, or null when there is nothing to report (automatic cleanup disabled, instance persistent, or player count unknown — e.g. relay offline)',
+        nullable: true,
+        oneOf: [
+            { $ref: getSchemaPath(ApiInstancePersistentLifecycleDto) },
+            { $ref: getSchemaPath(ApiInstanceGraceLifecycleDto) },
+            { $ref: getSchemaPath(ApiInstanceRemovalLifecycleDto) },
+        ],
+    })
+    lifecycle!: ApiInstanceLifecycle | null;
 }
