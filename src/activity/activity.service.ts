@@ -1,99 +1,87 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import type { CreateActivityEventDto, ApiActivityEvent } from './activity.types';
 import { EventsService } from '../gateway/events.service';
 import { NoxIdentifier } from '../common/identifier';
 import { WellKnownService } from '../fediverse/well-known.service';
+import { CreateActivityEventDto } from './dto/create.dto';
+import { Activity, ActivityWithMethods } from './activity.model';
+import { ActivityEvent as PrismaInstance } from 'src/generated/prisma/client';
 
 @Injectable()
 export class ActivityService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventsService,
+    private readonly wellKnown: WellKnownService,
+  ) {}
 
-    constructor(
-        private readonly prisma: PrismaService,
-        private readonly events: EventsService,
-        private readonly wellKnown: WellKnownService,
-    ) { }
+  async domain(): Promise<string> {
+    return this.wellKnown.address();
+  }
 
-    private async sanitize(row: {
-        id: number;
-        type: string;
-        message: string;
-        details: unknown;
-        authorRef: string | null;
-        createdAt: Date;
-    }, domain?: string): Promise<ApiActivityEvent> {
-        domain ??= await this.wellKnown.address();
-        return {
-            id: row.id,
-            type: row.type,
-            message: row.message,
-            details: row.details ?? null,
-            author: row.authorRef
-                ? NoxIdentifier.type(null, NoxIdentifier.parse(row.authorRef)).toString(domain)
-                : null,
-            created_at: row.createdAt.toISOString(),
-        };
+  /** Graft the model getters (`relay`, `lifecycle`) onto a database row. */
+  private attach(model: PrismaInstance): ActivityWithMethods {
+    return Activity.attach(model, this);
+  }
+
+  async create(dto: CreateActivityEventDto): Promise<ActivityWithMethods> {
+    const activity = this.attach(
+      await this.prisma.activityEvents.create({
+        data: {
+          type: dto.type,
+          message: dto.message,
+          details: dto.details ? (dto.details as any) : undefined,
+          authorRef: dto.author
+            ? NoxIdentifier.type(
+                null,
+                NoxIdentifier.parse(dto.author),
+              ).toString()
+            : null,
+        },
+      }),
+    );
+
+    this.events.emit('activity', event);
+    return activity;
+  }
+
+  async search(opts: {
+    q?: string;
+    type?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ total: number; items: ActivityWithMethods[] }> {
+    const where: any = {};
+
+    if (opts.type) where.type = opts.type;
+    if (opts.q)
+      where.OR = [
+        { type: { contains: opts.q, mode: 'insensitive' } },
+        { message: { contains: opts.q, mode: 'insensitive' } },
+      ];
+
+    const [total, rows] = await Promise.all([
+      this.prisma.activityEvents.count({ where }),
+      this.prisma.activityEvents.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: opts.limit,
+        skip: opts.offset,
+      }),
+    ]);
+
+    return {
+      total,
+      items: rows.map((a) => this.attach(a)),
+    };
+  }
+
+  async deleteById(id: number): Promise<boolean> {
+    try {
+      await this.prisma.activityEvents.delete({ where: { id } });
+      return true;
+    } catch {
+      return false;
     }
-
-    async create(dto: CreateActivityEventDto): Promise<ApiActivityEvent> {
-        // Normalize author identifier to remove type prefix if present
-        let authorRef: string | null = null;
-        if (dto.author && typeof dto.author === 'string') {
-            const ni = NoxIdentifier.type(null, NoxIdentifier.parse(dto.author));
-            authorRef = ni.toString();
-        }
-
-        const row = await this.prisma.activityEvents.create({
-            data: {
-                type: dto.type,
-                message: dto.message,
-                details: dto.details !== undefined ? (dto.details as any) : undefined,
-                authorRef,
-            },
-        });
-
-        const event = await this.sanitize(row);
-        this.events.emit('activity', event);
-        return event;
-    }
-
-    async list(opts: {
-        q?: string;
-        type?: string;
-        limit: number;
-        offset: number;
-    }): Promise<{ total: number; items: ApiActivityEvent[] }> {
-        const where: any = {};
-        
-        if (opts.type) where.type = opts.type;
-        if (opts.q) where.OR = [
-            { type: { contains: opts.q, mode: 'insensitive' } },
-            { message: { contains: opts.q, mode: 'insensitive' } },
-        ];
-
-        const [total, rows] = await Promise.all([
-            this.prisma.activityEvents.count({ where }),
-            this.prisma.activityEvents.findMany({
-                where,
-                orderBy: { createdAt: 'desc' },
-                take: opts.limit,
-                skip: opts.offset,
-            }),
-        ]);
-
-        let domain = await this.wellKnown.address();
-        return {
-            total,
-            items: await Promise.all(rows.map(r => this.sanitize(r, domain))),
-        };
-    }
-
-    async deleteById(id: number): Promise<boolean> {
-        try {
-            await this.prisma.activityEvents.delete({ where: { id } });
-            return true;
-        } catch {
-            return false;
-        }
-    }
+  }
 }
