@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import configuration from './config/configuration';
+import { EventsModule } from './events/events.module';
 import { PrismaModule } from './database/prisma.module';
 import { AppConfigModule } from './config/config.module';
 import { FediverseModule } from './fediverse/fediverse.module';
@@ -30,6 +32,9 @@ import { EmailModule } from './email/email.module';
       isGlobal: true,
       load: [configuration],
     }),
+    // In-process domain events: `EmitterService.emit(Events.X, payload)` + `@OnEvent(Events.X)`.
+    EventEmitterModule.forRoot({ verboseMemoryLeak: true, maxListeners: 50 }),
+    EventsModule,
     PrismaModule,
     FediverseModule,
     AppConfigModule,

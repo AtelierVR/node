@@ -1,7 +1,7 @@
 import { ApiExtraModels, ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
 import { ApiRelay, ApiRelayLifecycle, type RelayGraceKind } from '../relay.types';
-import type { ApiInstanceLifecycle } from '../../instances/instance-lifecycle.types';
-import { ApiInstanceGraceLifecycleDto, ApiInstancePersistentLifecycleDto, ApiInstanceRemovalLifecycleDto } from '../../instances/dto/instance-response.dto';
+import type { ApiInstanceLifecycle } from '../../instances/lifecycle/lifecycle.types';
+import { ApiInstanceGraceLifecycleDto, ApiInstancePersistentLifecycleDto, ApiInstanceRemovalLifecycleDto } from '../../instances/dto/response.dto';
 
 export class RelayLogEntryApiDto {
     @ApiProperty({ description: 'Unix timestamp in milliseconds', example: 1680000000000 })

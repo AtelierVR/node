@@ -15,6 +15,8 @@ import { GatewayModule } from '../gateway/gateway.module';
         forwardRef(() => RelayModule),
     ],
     providers: [WsGateway, WsService, SessionService],
+    // `WsGateway` stays available for the relay protocol (request/reply), which is not
+    // client-facing event traffic; domain services should inject `WsService` instead.
     exports: [WsService, WsGateway],
 })
 export class WsModule { }

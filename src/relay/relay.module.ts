@@ -2,9 +2,11 @@ import { Module, forwardRef } from '@nestjs/common';
 import { RelayService } from './relay.service';
 import { RelayGateway } from './relay.gateway';
 import { RelayController } from './relay.controller';
-import { RelayAutoManager } from './relay-auto-manager.service';
-import { InstanceDistributorService } from './instance-distributor.service';
-import { InstanceReaperService } from './instance-reaper.service';
+import { RelayCreator } from './logics/creator.service';
+import { InstanceDistributor } from './logics/distributor.service';
+import { InstanceReaper } from './logics/reaper.service';
+import { InstanceLifecycle } from '../instances/lifecycle/lifecycle.registry';
+import { RelayLifecycle } from './lifecycle/lifecycle.registry';
 import { GatewayModule } from '../gateway/gateway.module';
 import { FediverseModule } from '../fediverse/fediverse.module';
 import { AppConfigModule } from '../config/config.module';
@@ -30,7 +32,8 @@ import { ExternalUsersModule } from '../external/external-users.module';
     ],
     controllers: [RelayController],
     providers: [
-        RelayService, RelayGateway, RelayAutoManager, InstanceDistributorService, InstanceReaperService,
+        RelayService, RelayGateway, RelayCreator, InstanceDistributor, InstanceReaper,
+        InstanceLifecycle, RelayLifecycle,
         DockerRunner, ExternalRunner,
         {
             provide: RELAY_RUNNERS,

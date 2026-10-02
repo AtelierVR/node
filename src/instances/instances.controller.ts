@@ -1,6 +1,20 @@
 import {
-    Controller, Get, Put, Post, Patch, Delete, Param, Req, Res, Query, Body,
-    UseGuards, HttpCode, HttpStatus, UseInterceptors, UploadedFile,
+  Controller,
+  Get,
+  Put,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Req,
+  Res,
+  Query,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -8,294 +22,451 @@ import { diskStorage } from 'multer';
 import { tmpdir } from 'os';
 import { randomBytes } from 'node:crypto';
 import { extname } from 'path';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiWrappedSuccessResponse, ApiErrorResponse, ApiOptionalBearerAuth } from '../api/swagger';
-import { ApiInstanceDto } from './dto/instance-response.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import {
+  ApiWrappedResponse,
+  ApiWrappedArrayResponse,
+  ApiWrappedSuccessResponse,
+  ApiErrorResponse,
+  ApiOptionalBearerAuth,
+} from '../api/swagger';
+import { ApiInstanceDto } from './dto/response.dto';
 import { InstancesService } from './instances.service';
-import { CreateInstanceDto } from './dto/create-instance.dto';
-import { UpdateInstanceDto } from './dto/update-instance.dto';
-import { AuthUserGuard, UserAuthenticatedRequest, OptionalAuthUserGuard } from '../auth/auth.guard';
+import { CreateInstanceDto } from './dto/create.dto';
+import { UpdateInstanceDto } from './dto/update.dto';
+import {
+  AuthUserGuard,
+  UserAuthenticatedRequest,
+  OptionalAuthUserGuard,
+} from '../auth/auth.guard';
 import type { OptionalUserAuthenticatedRequest } from '../auth/auth.guard';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
-import { IMAGE_PRESETS, ensureImageSize } from '../storage/image-resize.constants';
+import {
+  IMAGE_PRESETS,
+  ensureImageSize,
+} from '../storage/image-resize.constants';
 import { NoxIdentifier } from '../common/identifier';
 import { ExternalServersService } from '../external/external-servers.service';
 
 const multerTempOpts = {
-    storage: diskStorage({
-        destination: tmpdir(),
-        filename: (_req: any, file: any, cb: any) => {
-            const uid = randomBytes(6).toString('hex');
-            cb(null, `${Date.now()}-${uid}${extname(file.originalname)}`);
-        },
-    }),
+  storage: diskStorage({
+    destination: tmpdir(),
+    filename: (_req: any, file: any, cb: any) => {
+      const uid = randomBytes(6).toString('hex');
+      cb(null, `${Date.now()}-${uid}${extname(file.originalname)}`);
+    },
+  }),
 };
 
 @ApiTags('Instances')
 @Controller('instances')
 export class InstancesController {
-    constructor(
-        private readonly instances: InstancesService,
-        private readonly externalServers: ExternalServersService,
-    ) { }
+  constructor(
+    private readonly instances: InstancesService,
+    private readonly externalServers: ExternalServersService,
+  ) {}
 
-    // ── Helpers ───────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────────
 
-    private parsePaging(rawLimit?: string, rawOffset?: string, def = 10) {
-        let limit = parseInt(rawLimit ?? String(def), 10);
-        let offset = parseInt(rawOffset ?? '0', 10);
-        if (!Number.isFinite(limit) || limit < 1) limit = def;
-        if (limit > 100) limit = 100;
-        if (!Number.isFinite(offset) || offset < 0) offset = 0;
-        return { limit, offset };
+  private parsePaging(rawLimit?: string, rawOffset?: string, def = 10) {
+    let limit = parseInt(rawLimit ?? String(def), 10);
+    let offset = parseInt(rawOffset ?? '0', 10);
+    if (!Number.isFinite(limit) || limit < 1) limit = def;
+    if (limit > 100) limit = 100;
+    if (!Number.isFinite(offset) || offset < 0) offset = 0;
+    return { limit, offset };
+  }
+
+  /**
+   * Normalize a NoxIdentifier string to its canonical local form
+   * (e.g. "42@hactazia.fr" → "42@::") so it matches how identifiers are
+   * stored in the DB (see `ownerRef` and the Prisma schema comment "1@::").
+   * Remote identifiers keep their server suffix.
+   */
+  private async normalizeRef(raw: string): Promise<string> {
+    const domain = await this.instances.domain();
+    let identifier = NoxIdentifier.type(null, NoxIdentifier.parse(raw));
+    if (identifier.isLocal(domain))
+      identifier = new NoxIdentifier(
+        null,
+        identifier.id,
+        undefined,
+        identifier.query,
+      );
+    return identifier.toString();
+  }
+
+  /**
+   * Resolve a route `:id` parameter to a numeric instance id.
+   * Accepts `42`, `42@host` and typed identifiers (`i:42@host`) — the type
+   * prefix is ignored, routes are already typed by resource.
+   */
+  private numericId(raw: string): number | null {
+    return NoxIdentifier.parse(raw).numericId;
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────────────
+
+  @ApiOperation({
+    summary: 'Search instances',
+    description:
+      'Paginated search for running instances, optionally filtered by world or owner.',
+  })
+  @ApiWrappedArrayResponse(ApiInstanceDto)
+  @ApiOptionalBearerAuth()
+  @UseGuards(OptionalAuthUserGuard)
+  @Get()
+  async search(
+    @Req() req: Request & OptionalUserAuthenticatedRequest,
+    @Query('server') s?: string,
+    @Query('q') query?: string,
+    @Query('world') world?: string,
+    @Query('owner') owner?: string,
+    @Query('limit') rawLimit?: string,
+    @Query('offset') rawOffset?: string,
+  ) {
+    if (s && s !== (await this.instances.domain())) {
+      if (!req.user)
+        throw new ApiException(
+          ApiErrorCode.UNAUTHORIZED,
+          null,
+          'Authentication required for remote fetch',
+        );
+      if (!req.user.canExternalFetch())
+        throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
+      const server = await this.externalServers.findOrDiscover(s);
+      if (!server)
+        throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${s})`);
+      const params = new URLSearchParams();
+      if (query) params.set('q', query);
+      if (world) params.set('world', world);
+      if (owner) params.set('owner', owner);
+      if (rawLimit) params.set('limit', rawLimit);
+      if (rawOffset) params.set('offset', rawOffset);
+      const qs = params.toString();
+      const resp = await server.fetch<any>(`/instances${qs ? '?' + qs : ''}`, {
+        user: req.user,
+      });
+      if (resp.error || !resp.data)
+        throw new ApiException(
+          ApiErrorCode.EXTERNAL_SERVER_ERROR,
+          null,
+          `Server (${s})`,
+        );
+      return resp.data;
     }
 
-    /**
-     * Normalize a NoxIdentifier string to its canonical local form
-     * (e.g. "42@hactazia.fr" → "42@::") so it matches how identifiers are
-     * stored in the DB (see `ownerRef` and the Prisma schema comment "1@::").
-     * Remote identifiers keep their server suffix.
-     */
-    private async normalizeRef(raw: string): Promise<string> {
-        const domain = await this.instances.domain();
-        let identifier = NoxIdentifier.type(null, NoxIdentifier.parse(raw));
-        if (identifier.isLocal(domain))
-            identifier = new NoxIdentifier(null, identifier.id, undefined, identifier.query);
-        return identifier.toString();
-    }
+    const { limit, offset } = this.parsePaging(rawLimit, rawOffset);
 
-    /**
-     * Resolve a route `:id` parameter to a numeric instance id.
-     * Accepts `42`, `42@host` and typed identifiers (`i:42@host`) — the type
-     * prefix is ignored, routes are already typed by resource.
-     */
-    private numericId(raw: string): number | null {
-        return NoxIdentifier.parse(raw).numericId;
-    }
+    // Normalize identifiers (convert local domain to ::)
+    const normalizedWorld = world ? await this.normalizeRef(world) : undefined;
+    const normalizedOwner = owner ? await this.normalizeRef(owner) : undefined;
 
-    // ── Search ────────────────────────────────────────────────────────────────────
+    const { items, total } = await this.instances.search(
+      {
+        query,
+        world: normalizedWorld,
+        owner: normalizedOwner,
+      },
+      limit,
+      offset,
+    );
 
-    @ApiOperation({ summary: 'Search instances', description: 'Paginated search for running instances, optionally filtered by world or owner.' })
-    @ApiWrappedArrayResponse(ApiInstanceDto)
-    @ApiOptionalBearerAuth()
-    @UseGuards(OptionalAuthUserGuard)
-    @Get()
+    const serialized = await Promise.all(
+      items.map((i) => i.sanitize(req.user)),
+    );
+    return { items: serialized, total, limit, offset };
+  }
 
-    async search(
-        @Req() req: Request & OptionalUserAuthenticatedRequest,
-        @Query('server') s?: string,
-        @Query('q') query?: string,
-        @Query('world') world?: string,
-        @Query('owner') owner?: string,
-        @Query('limit') rawLimit?: string,
-        @Query('offset') rawOffset?: string,
-    ) {
-        if (s && s !== await this.instances.domain()) {
-            if (!req.user)
-                throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
-            if (!req.user.canExternalFetch())
-                throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
-            const server = await this.externalServers.findOrDiscover(s);
-            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${s})`);
-            const params = new URLSearchParams();
-            if (query) params.set('q', query);
-            if (world) params.set('world', world);
-            if (owner) params.set('owner', owner);
-            if (rawLimit) params.set('limit', rawLimit);
-            if (rawOffset) params.set('offset', rawOffset);
-            const qs = params.toString();
-            const resp = await server.fetch<any>(`/instances${qs ? '?' + qs : ''}`, { user: req.user });
-            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.EXTERNAL_SERVER_ERROR, null, `Server (${s})`);
-            return resp.data;
-        }
+  // ── Get single ────────────────────────────────────────────────────────────────
 
-        const { limit, offset } = this.parsePaging(rawLimit, rawOffset);
+  @ApiOperation({
+    summary: 'Get instance',
+    description: 'Return a single instance by numeric ID or slug name.',
+  })
+  @ApiWrappedResponse(ApiInstanceDto)
+  @ApiErrorResponse(HttpStatus.NOT_FOUND)
+  @ApiOptionalBearerAuth()
+  @UseGuards(OptionalAuthUserGuard)
+  @Get(':id')
+  async getOne(
+    @Req() req: Request & OptionalUserAuthenticatedRequest,
+    @Param('id') idOrName: string,
+  ) {
+    const raw = idOrName.startsWith('#') ? idOrName.slice(1) : idOrName;
+    const identifier = NoxIdentifier.parse(raw);
+    const instance =
+      identifier.numericId !== null
+        ? await this.instances.findById(identifier.numericId)
+        : await this.instances.findByName(identifier.id);
 
-        // Normalize identifiers (convert local domain to ::)
-        const normalizedWorld = world ? await this.normalizeRef(world) : undefined;
-        const normalizedOwner = owner ? await this.normalizeRef(owner) : undefined;
-        
-        const { items, total } = await this.instances.search({ 
-            query, 
-            world: normalizedWorld, 
-            owner: normalizedOwner 
-        }, limit, offset);
+    if (!instance)
+      throw new ApiException(
+        ApiErrorCode.NOT_FOUND,
+        null,
+        `Instance (${idOrName})`,
+      );
+    return instance.sanitize(req.user);
+  }
 
-        const serialized = await Promise.all(items.map(i => this.instances.serialize(i)));
-        return { items: serialized, total, limit, offset };
-    }
+  // ── Create ────────────────────────────────────────────────────────────────────
 
-    // ── Get single ────────────────────────────────────────────────────────────────
+  @ApiOperation({
+    summary: 'Create instance',
+    description: 'Create a new instance for the given world (authenticated).',
+  })
+  @ApiWrappedResponse(ApiInstanceDto, HttpStatus.CREATED)
+  @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+  @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+  @ApiErrorResponse(HttpStatus.NOT_FOUND)
+  @ApiBearerAuth()
+  @UseGuards(AuthUserGuard)
+  @Put()
+  async create(
+    @Req() req: Request & UserAuthenticatedRequest,
+    @Body() body: CreateInstanceDto,
+  ) {
+    if (!this.instances.canCreate(req.user))
+      throw new ApiException(
+        ApiErrorCode.UNAUTHORIZED,
+        null,
+        'create instance',
+      );
 
-    @ApiOperation({ summary: 'Get instance', description: 'Return a single instance by numeric ID or slug name.' })
-    @ApiWrappedResponse(ApiInstanceDto)
-    @ApiErrorResponse(HttpStatus.NOT_FOUND)
-    @ApiOptionalBearerAuth()
-    @UseGuards(OptionalAuthUserGuard)
-    @Get(':id')
-    async getOne(@Param('id') idOrName: string) {
-        const raw = idOrName.startsWith('#') ? idOrName.slice(1) : idOrName;
-        const identifier = NoxIdentifier.parse(raw);
-        const instance = identifier.numericId !== null
-            ? await this.instances.findById(identifier.numericId)
-            : await this.instances.findByName(identifier.id);
+    const instance = await this.instances.create({
+      name: body.name,
+      title: body.title ?? null,
+      description: body.description ?? null,
+      capacity: body.capacity,
+      worldRef: await this.normalizeRef(body.world),
+      ownerRef: req.user.identifier().toString(),
+      tags: body.tags ?? [],
+      thumbnail: body.thumbnail ?? null,
+      region: body.region ?? null,
+      useWhitelist: body.use_whitelist ?? false,
+      whitelistRefs: await Promise.all(
+        (body.whitelist ?? []).map((ref) => this.normalizeRef(ref)),
+      ),
+      usePassword: body.use_password ?? false,
+      password: body.password ?? null,
+    });
 
-        if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${idOrName})`);
-        return this.instances.serialize(instance);
-    }
+    return instance.sanitize(req.user);
+  }
 
-    // ── Create ────────────────────────────────────────────────────────────────────
+  // ── Update ────────────────────────────────────────────────────────────────────
 
-    @ApiOperation({ summary: 'Create instance', description: 'Create a new instance for the given world (authenticated).' })
-    @ApiWrappedResponse(ApiInstanceDto, HttpStatus.CREATED)
-    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
-    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
-    @ApiErrorResponse(HttpStatus.NOT_FOUND)
-    @ApiBearerAuth()
-    @UseGuards(AuthUserGuard)
-    @Put()
-    async create(@Req() req: Request & UserAuthenticatedRequest, @Body() body: CreateInstanceDto) {
-        if (!this.instances.canCreate(req.user))
-            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'create instance');
+  @ApiOperation({
+    summary: 'Update instance',
+    description: 'Update instance metadata (owner or admin only).',
+  })
+  @ApiWrappedResponse(ApiInstanceDto)
+  @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+  @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+  @ApiErrorResponse(HttpStatus.NOT_FOUND)
+  @ApiBearerAuth()
+  @UseGuards(AuthUserGuard)
+  @Patch(':id')
+  async update(
+    @Req() req: Request & UserAuthenticatedRequest,
+    @Param('id') rawId: string,
+    @Body() body: UpdateInstanceDto,
+  ) {
+    const id = this.numericId(rawId);
+    if (id === null)
+      throw new ApiException(
+        ApiErrorCode.BAD_REQUEST,
+        null,
+        'Invalid instance ID',
+      );
 
-        const instance = await this.instances.create({
-            name:          body.name,
-            title:         body.title          ?? null,
-            description:   body.description    ?? null,
-            capacity:      body.capacity,
-            worldRef:      await this.normalizeRef(body.world),
-            ownerRef:      req.user.identifier().toString(),
-            tags:          body.tags           ?? [],
-            thumbnail:     body.thumbnail      ?? null,
-            region:        body.region         ?? null,
-            useWhitelist:  body.use_whitelist  ?? false,
-            whitelistRefs: await Promise.all((body.whitelist ?? []).map(ref => this.normalizeRef(ref))),
-            usePassword:   body.use_password   ?? false,
-            password:      body.password       ?? null,
-        });
+    const instance = await this.instances.findById(id);
+    if (!instance)
+      throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
 
-        return this.instances.serialize(instance);
-    }
+    if (!this.instances.canManage(req.user, instance))
+      throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'edit instance');
 
-    // ── Update ────────────────────────────────────────────────────────────────────
+    const updated = await this.instances.update(id, {
+      ...(body.title !== undefined && { title: body.title }),
+      ...(body.description !== undefined && { description: body.description }),
+      ...(body.capacity !== undefined && { capacity: body.capacity }),
+      ...(body.tags !== undefined && { tags: body.tags }),
+      ...(body.thumbnail !== undefined && { thumbnail: body.thumbnail }),
+      ...(body.use_whitelist !== undefined && {
+        useWhitelist: body.use_whitelist,
+      }),
+      ...(body.whitelist !== undefined && {
+        whitelistRefs: await Promise.all(
+          body.whitelist.map((ref) => this.normalizeRef(ref)),
+        ),
+      }),
+      ...(body.use_password !== undefined && {
+        usePassword: body.use_password,
+      }),
+      ...(body.password !== undefined && { password: body.password }),
+    });
 
-    @ApiOperation({ summary: 'Update instance', description: 'Update instance metadata (owner or admin only).' })
-    @ApiWrappedResponse(ApiInstanceDto)
-    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
-    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
-    @ApiErrorResponse(HttpStatus.NOT_FOUND)
-    @ApiBearerAuth()
-    @UseGuards(AuthUserGuard)
-    @Patch(':id')
-    async update(@Req() req: Request & UserAuthenticatedRequest, @Param('id') rawId: string, @Body() body: UpdateInstanceDto) {
-        const id = this.numericId(rawId);
-        if (id === null) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
+    return instance.sanitize(req.user);
+  }
 
-        const instance = await this.instances.findById(id);
-        if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
+  // ── Thumbnail ─────────────────────────────────────────────────────────────────
 
-        if (!this.instances.canManage(req.user, instance))
-            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'edit instance');
+  /** GET /api/instances/:id/thumbnail */
+  @ApiOperation({
+    summary: 'Get instance thumbnail',
+    description: 'Redirect to the instance thumbnail URL.',
+  })
+  @ApiResponse({
+    status: HttpStatus.FOUND,
+    description: 'Redirect to the thumbnail URL.',
+  })
+  @ApiErrorResponse(HttpStatus.NOT_FOUND)
+  @Get(':id/thumbnail')
+  async getThumbnail(
+    @Param('id') rawId: string,
+    @Res() res: Response,
+    @Query('size') size?: string,
+    @Query('unoptimized') unoptimized?: string,
+  ) {
+    const id = this.numericId(rawId);
+    if (id === null)
+      throw new ApiException(
+        ApiErrorCode.BAD_REQUEST,
+        null,
+        'Invalid instance ID',
+      );
+    const instance = await this.instances.findById(id);
+    if (!instance)
+      throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
+    if (!instance.thumbnail)
+      throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
+    const file = await this.instances.storage.get(instance.thumbnail);
+    return res.redirect(
+      302,
+      ensureImageSize(
+        file.url,
+        IMAGE_PRESETS.OTHER_THUMBNAIL,
+        size,
+        unoptimized,
+      ),
+    );
+  }
 
-        const updated = await this.instances.update(id, {
-            ...(body.title          !== undefined && { title:         body.title }),
-            ...(body.description    !== undefined && { description:   body.description }),
-            ...(body.capacity       !== undefined && { capacity:      body.capacity }),
-            ...(body.tags           !== undefined && { tags:          body.tags }),
-            ...(body.thumbnail      !== undefined && { thumbnail:     body.thumbnail }),
-            ...(body.use_whitelist  !== undefined && { useWhitelist:  body.use_whitelist }),
-            ...(body.whitelist      !== undefined && { whitelistRefs: await Promise.all(body.whitelist.map(ref => this.normalizeRef(ref))) }),
-            ...(body.use_password   !== undefined && { usePassword:   body.use_password }),
-            ...(body.password       !== undefined && { password:      body.password }),
-        });
+  /** POST /api/instances/:id/thumbnail */
+  @ApiOperation({
+    summary: 'Upload instance thumbnail',
+    description:
+      'Upload an image (multipart/form-data, field: file) as the instance thumbnail.',
+  })
+  @ApiResponse({
+    status: HttpStatus.FOUND,
+    description: 'Redirect to the uploaded thumbnail URL.',
+  })
+  @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+  @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+  @ApiErrorResponse(HttpStatus.FORBIDDEN)
+  @ApiErrorResponse(HttpStatus.NOT_FOUND)
+  @ApiBearerAuth()
+  @UseGuards(AuthUserGuard)
+  @UseInterceptors(FileInterceptor('file', multerTempOpts))
+  @Post(':id/thumbnail')
+  async uploadThumbnail(
+    @Param('id') rawId: string,
+    @Req() req: Request & UserAuthenticatedRequest,
+    @Res() res: Response,
+    @UploadedFile() file?: Express.Multer.File,
+    @Query('size') size?: string,
+    @Query('unoptimized') unoptimized?: string,
+  ) {
+    const id = this.numericId(rawId);
+    if (id === null)
+      throw new ApiException(
+        ApiErrorCode.BAD_REQUEST,
+        null,
+        'Invalid instance ID',
+      );
+    const instance = await this.instances.findById(id);
+    if (!instance)
+      throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
+    if (!this.instances.canManage(req.user, instance))
+      throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify instance');
+    if (!this.instances.canUploadFile(req.user))
+      throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'upload file');
+    if (!file) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'file');
+    if (!/^image\/(png|jpeg|jpg|gif|webp)$/.test(file.mimetype))
+      throw new ApiException(
+        ApiErrorCode.BAD_REQUEST,
+        null,
+        'file must be an image (png, jpeg, gif, webp)',
+      );
+    const f = file as Express.Multer.File & { path?: string };
+    const stored = await this.instances.storage.store({
+      source: f.path!,
+      mimetype: f.mimetype,
+    });
+    const oldThumb = instance.thumbnail;
+    const updated = await this.instances.update(id, { thumbnail: stored.key });
+    if (oldThumb && oldThumb !== stored.key)
+      await this.instances.storage.delete(oldThumb);
+    const storedFile = await this.instances.storage.get(updated.thumbnail!);
+    return res.redirect(
+      302,
+      ensureImageSize(
+        storedFile.url,
+        IMAGE_PRESETS.OTHER_THUMBNAIL,
+        size,
+        unoptimized,
+      ),
+    );
+  }
 
-        return this.instances.serialize(updated);
-    }
+  // ── Delete ────────────────────────────────────────────────────────────────────
 
-    // ── Thumbnail ─────────────────────────────────────────────────────────────────
+  @ApiOperation({
+    summary: 'Delete instance',
+    description: 'Delete an instance (owner or admin only).',
+  })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'Instance deleted successfully.',
+  })
+  @ApiErrorResponse(HttpStatus.BAD_REQUEST)
+  @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
+  @ApiErrorResponse(HttpStatus.NOT_FOUND)
+  @ApiBearerAuth()
+  @UseGuards(AuthUserGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Delete(':id')
+  async remove(
+    @Req() req: Request & UserAuthenticatedRequest,
+    @Param('id') rawId: string,
+  ) {
+    const id = this.numericId(rawId);
+    if (id === null)
+      throw new ApiException(
+        ApiErrorCode.BAD_REQUEST,
+        null,
+        'Invalid instance ID',
+      );
 
-    /** GET /api/instances/:id/thumbnail */
-    @ApiOperation({ summary: 'Get instance thumbnail', description: 'Redirect to the instance thumbnail URL.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the thumbnail URL.' })
-    @ApiErrorResponse(HttpStatus.NOT_FOUND)
-    @Get(':id/thumbnail')
-    async getThumbnail(
-        @Param('id') rawId: string,
-        @Res() res: Response,
-        @Query('size') size?: string,
-        @Query('unoptimized') unoptimized?: string,
-    ) {
-        const id = this.numericId(rawId);
-        if (id === null) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
-        const instance = await this.instances.findById(id);
-        if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
-        if (!instance.thumbnail) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
-        const file = await this.instances.storage.get(instance.thumbnail);
-        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.OTHER_THUMBNAIL, size, unoptimized));
-    }
+    const instance = await this.instances.findById(id);
+    if (!instance)
+      throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
 
-    /** POST /api/instances/:id/thumbnail */
-    @ApiOperation({ summary: 'Upload instance thumbnail', description: 'Upload an image (multipart/form-data, field: file) as the instance thumbnail.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the uploaded thumbnail URL.' })
-    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
-    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
-    @ApiErrorResponse(HttpStatus.FORBIDDEN)
-    @ApiErrorResponse(HttpStatus.NOT_FOUND)
-    @ApiBearerAuth()
-    @UseGuards(AuthUserGuard)
-    @UseInterceptors(FileInterceptor('file', multerTempOpts))
-    @Post(':id/thumbnail')
-    async uploadThumbnail(
-        @Param('id') rawId: string,
-        @Req() req: Request & UserAuthenticatedRequest,
-        @Res() res: Response,
-        @UploadedFile() file?: Express.Multer.File,
-        @Query('size') size?: string,
-        @Query('unoptimized') unoptimized?: string,
-    ) {
-        const id = this.numericId(rawId);
-        if (id === null) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
-        const instance = await this.instances.findById(id);
-        if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
-        if (!this.instances.canManage(req.user, instance))
-            throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'modify instance');
-        if (!this.instances.canUploadFile(req.user))
-            throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'upload file');
-        if (!file) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'file');
-        if (!/^image\/(png|jpeg|jpg|gif|webp)$/.test(file.mimetype))
-            throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'file must be an image (png, jpeg, gif, webp)');
-        const f = file as Express.Multer.File & { path?: string };
-        const stored = await this.instances.storage.store({ source: f.path!, mimetype: f.mimetype });
-        const oldThumb = instance.thumbnail;
-        const updated = await this.instances.update(id, { thumbnail: stored.key });
-        if (oldThumb && oldThumb !== stored.key)
-            await this.instances.storage.delete(oldThumb);
-        const storedFile = await this.instances.storage.get(updated.thumbnail!);
-        return res.redirect(302, ensureImageSize(storedFile.url, IMAGE_PRESETS.OTHER_THUMBNAIL, size, unoptimized));
-    }
+    if (!this.instances.canManage(req.user, instance))
+      throw new ApiException(
+        ApiErrorCode.UNAUTHORIZED,
+        null,
+        'delete instance',
+      );
 
-    // ── Delete ────────────────────────────────────────────────────────────────────
-
-    @ApiOperation({ summary: 'Delete instance', description: 'Delete an instance (owner or admin only).' })
-    @ApiResponse({ status: HttpStatus.NO_CONTENT, description: 'Instance deleted successfully.' })
-    @ApiErrorResponse(HttpStatus.BAD_REQUEST)
-    @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
-    @ApiErrorResponse(HttpStatus.NOT_FOUND)
-    @ApiBearerAuth()
-    @UseGuards(AuthUserGuard)
-    @HttpCode(HttpStatus.NO_CONTENT)
-    @Delete(':id')
-    async remove(@Req() req: Request & UserAuthenticatedRequest, @Param('id') rawId: string) {
-        const id = this.numericId(rawId);
-        if (id === null) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid instance ID');
-
-        const instance = await this.instances.findById(id);
-        if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${id})`);
-
-        if (!this.instances.canManage(req.user, instance))
-            throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'delete instance');
-
-        await this.instances.delete(id);
-    }
+    await this.instances.delete(id);
+  }
 }

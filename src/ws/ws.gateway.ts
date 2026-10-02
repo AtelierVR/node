@@ -9,7 +9,10 @@ import {
 import { HttpAdapterHost } from '@nestjs/core';
 import { WebSocketServer, WebSocket, RawData } from 'ws';
 import type { IncomingMessage } from 'http';
-import { EventsService } from '../gateway/events.service';
+import { WsFrames } from '../events/websocket-frames';
+import { OnWebsocketEventRegister } from '../events/websocket-event.decorator';
+import { WsService } from './ws.service';
+import { WebsocketGuardRegistry } from '../events/websocket-guard.service';
 import { SessionService } from '../auth/session.service';
 import { UsersService } from '../users/users.service';
 import { RelayService } from '../relay/relay.service';
@@ -63,7 +66,10 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         private readonly users: UsersService,
         @Inject(forwardRef(() => RelayService))
         private readonly relayService: RelayService,
-        private readonly eventsService: EventsService,
+        // WsService fans out to this gateway, so the reference has to be deferred.
+        @Inject(forwardRef(() => WsService))
+        private readonly ws: WsService,
+        private readonly guards: WebsocketGuardRegistry,
         private readonly prisma: PrismaService,
     ) { }
 
@@ -83,11 +89,7 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         );
 
         this.logger.log(`Native WebSocket server listening on ${path}`);
-
-        // Register this gateway with EventsService so it can broadcast to native WebSocket clients
-        this.eventsService.registerWsGateway(this);
     }
-
     onModuleDestroy(): void {
         // Clean up pending requests
         for (const [id, pending] of this.pendingRequests.entries()) {
@@ -311,8 +313,11 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
 
         for (const event of events) {
             if (typeof event !== 'string' || event.length === 0) continue;
-            const validator = this.validators.get(event);
-            if (validator && !(await validator(data, ws))) { denied.push(event); continue; }
+            // Access comes from the `@OnWebsocketEventRegister` guards in `WebsocketGuardRegistry`.
+            if (!(await this.guards.canSubscribe(event, { data, ws }))) {
+                denied.push(event);
+                continue;
+            }
             if (!this.rooms.has(event)) this.rooms.set(event, new Set());
             this.rooms.get(event)!.add(ws);
             data.rooms.add(event);
@@ -417,6 +422,11 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         this.logger.debug(`User "${data.user.username}" set location: ${iid}`);
     }
 
+    @OnWebsocketEventRegister(WsFrames.USER_PRESENCE)
+    private registerPresenceFrame(socket: { data: WsClientData }): Promise<boolean> {
+        return Promise.resolve(socket.data?.mode === 'user');
+    }
+
     /** Broadcast a `user:presence` event to all sockets subscribed to `user:presence`. */
     private async _emitPresenceEvent(userId: number): Promise<void> {
         const user = await this.users.findById(userId);
@@ -429,7 +439,7 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
         const broadcastLocations = visibility.visible_everyone
             ? this.getLocationsForUser(userId)
             : null;
-        this.eventsService.emit('user:presence', {
+        this.ws.emit(WsFrames.USER_PRESENCE, {
             user: `${userId}@${domain}`,
             status,
             text: user.presenceStatus ?? null,
@@ -607,7 +617,6 @@ export class WsGateway implements OnModuleInit, OnModuleDestroy {
     registerValidator(name: string, fn: WsRoomValidator): void {
         this.validators.set(name, fn);
     }
-
     // ── Relay requests ─────────────────────────────────────────────────────
 
     /**

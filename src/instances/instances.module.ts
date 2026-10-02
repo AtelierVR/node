@@ -9,9 +9,16 @@ import { RelayModule } from '../relay/relay.module';
 import { ExternalServersModule } from '../external/external-servers.module';
 
 @Module({
-    imports: [forwardRef(() => FediverseModule), AuthModule, StorageModule, forwardRef(() => WsModule), forwardRef(() => RelayModule), ExternalServersModule],
-    controllers: [InstancesController],
-    providers: [InstancesService],
-    exports: [InstancesService],
+  imports: [
+    forwardRef(() => FediverseModule),
+    AuthModule,
+    StorageModule,
+    forwardRef(() => WsModule),
+    forwardRef(() => RelayModule),
+    ExternalServersModule,
+  ],
+  controllers: [InstancesController],
+  providers: [InstancesService],
+  exports: [InstancesService],
 })
-export class InstancesModule { }
+export class InstancesModule {}

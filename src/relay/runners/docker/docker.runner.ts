@@ -21,7 +21,7 @@ export class DockerRunner implements IRelayRunner {
     private readonly logger = new Logger(DockerRunner.name);
     private docker!: Docker;
 
-    /** Prevents two simultaneous relay starts (belt-and-suspenders with RelayAutoManager). */
+    /** Prevents two simultaneous relay starts (belt-and-suspenders with RelayCreator). */
     private creating = false;
 
     private async group(): Promise<string> {

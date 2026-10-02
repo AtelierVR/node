@@ -12,6 +12,7 @@ import { Logger, Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { SessionService } from '../auth/session.service';
 import { UsersService } from '../users/users.service';
+import { WebsocketGuardRegistry } from '../events/websocket-guard.service';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -20,17 +21,13 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     server: Server;
 
     private readonly logger = new Logger(EventsGateway.name);
-    private readonly validators = new Map<string, (socket: Socket) => Promise<boolean>>();
 
     constructor(
         private readonly sessions: SessionService,
+        private readonly guards: WebsocketGuardRegistry,
         @Inject(forwardRef(() => UsersService))
         private readonly users: UsersService,
-    ) {
-        // Built-in validators — admin-only events
-        this.validators.set('activity', (s) => this.requireAdmin(s));
-        this.validators.set('server_logs', (s) => this.requireAdmin(s));
-    }
+    ) { }
 
     afterInit() {
         this.logger.log('WebSocket gateway initialized');
@@ -87,8 +84,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
         for (const event of data.events) {
             if (typeof event !== 'string' || event.length === 0) continue;
-            const validator = this.validators.get(event);
-            if (validator && !(await validator(client))) {
+            // Access comes from the `@OnWebsocketEventRegister` guards collected by WsService.
+            if (!(await this.guards.canSubscribe(event, client))) {
                 denied.push(event);
                 continue;
             }
@@ -115,11 +112,6 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
         }
 
         return { success: true, unsubscribed };
-    }
-
-    /** Register a validator for a named event — called to check if the socket may subscribe. */
-    registerValidator(name: string, fn: (socket: Socket) => Promise<boolean>) {
-        this.validators.set(name, fn);
     }
 
     /** Emit an event to all sockets subscribed to the given room. */
@@ -158,9 +150,5 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
         }
 
         return null;
-    }
-
-    private async requireAdmin(socket: Socket): Promise<boolean> {
-        return !!(socket.data?.user?.isAdmin?.());
     }
 }

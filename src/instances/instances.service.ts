@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { WellKnownService } from '../fediverse/well-known.service';
@@ -7,344 +8,344 @@ import { NoxIdentifier } from '../common/identifier';
 import { Tags } from '../common/tags';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
-import { ApiInstanceConnectionDto } from './dto/instance-response.dto';
-import type { ApiInstanceLifecycle } from './instance-lifecycle.types';
+import { ApiInstanceConnectionDto } from './dto/response.dto';
+import type {
+  InstanceCreatedEvent,
+  InstanceLifecycleChangeEvent,
+  InstanceRemovedEvent,
+  InstanceUpdatedEvent,
+} from '../events/domain-events';
+import type { InstanceWithMethods } from './instance.model';
+import type { InstanceLifecycle } from './lifecycle/lifecycle.registry';
+import type { RelayWithMethods } from '../relay/relay.model';
+import { EmitterService } from '../events/emitter.service';
+import { Events } from '../events/domain-events';
+import { OnWebsocketEventRegister } from '../events/websocket-event.decorator';
+import { WsFrames } from '../events/websocket-frames';
+import { WsService } from '../ws/ws.service';
 import type { UserWithMethods } from '../users/user.model';
-import { Instance } from 'src/generated/prisma/client';
+import { Instance } from './instance.model';
+import type { Instance as PrismaInstance } from 'src/generated/prisma/client';
+import type { Socket } from 'socket.io';
 import type { WsGateway } from '../ws/ws.gateway';
 import type { RelayService } from '../relay/relay.service';
 
 export interface CreateInstanceDto {
-    name?: string;
-    title?: string | null;
-    description?: string | null;
-    capacity: number;
-    worldRef: string;
-    ownerRef: string;
-    tags?: string[];
-    thumbnail?: string | null;
-    region?: string | null;
-    useWhitelist?: boolean;
-    whitelistRefs?: string[];
-    usePassword?: boolean;
-    password?: string | null;
+  name?: string;
+  title?: string | null;
+  description?: string | null;
+  capacity: number;
+  worldRef: string;
+  ownerRef: string;
+  tags?: string[];
+  thumbnail?: string | null;
+  region?: string | null;
+  useWhitelist?: boolean;
+  whitelistRefs?: string[];
+  usePassword?: boolean;
+  password?: string | null;
 }
 
 export interface UpdateInstanceDto {
-    title?: string | null;
-    description?: string | null;
-    capacity?: number;
-    tags?: string[];
-    thumbnail?: string | null;
-    useWhitelist?: boolean;
-    whitelistRefs?: string[];
-    usePassword?: boolean;
-    password?: string | null;
+  title?: string | null;
+  description?: string | null;
+  capacity?: number;
+  tags?: string[];
+  thumbnail?: string | null;
+  useWhitelist?: boolean;
+  whitelistRefs?: string[];
+  usePassword?: boolean;
+  password?: string | null;
 }
 
 export interface InstanceSearchParams {
-    query?: string;
-    world?: string;
-    owner?: string;
+  query?: string;
+  world?: string;
+  owner?: string;
 }
-
-/** Callbacks fired when an instance is created (receives the new instance id). */
-const instanceCreatedHooks: ((id: number) => void)[] = [];
 
 @Injectable()
 export class InstancesService {
+  public readonly logger = new Logger(InstancesService.name);
 
-    private readonly logger = new Logger(InstancesService.name);
+  constructor(
+    public readonly prisma: PrismaService,
+    public readonly wellKnown: WellKnownService,
+    public readonly storage: StorageService,
+    private readonly emitter: EmitterService,
+    @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
+    public readonly wsGateway: WsGateway,
+    @Inject(forwardRef(() => require('../relay/relay.service').RelayService))
+    public readonly relayService: RelayService,
+    private readonly ws: WsService,
+  ) {}
 
-    constructor(
-        private readonly prisma: PrismaService,
-        public readonly wellKnown: WellKnownService,
-        public readonly storage: StorageService,
-        @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
-        private readonly wsGateway: WsGateway,
-        @Inject(forwardRef(() => require('../relay/relay.service').RelayService))
-        private readonly relayService: RelayService,
-    ) { }
+  // ── Client-facing frames ─────────────────────────────────────────────────────
+  // Kept apart from the internal events above: a service decides on its own what a browser may
+  // see. The guard below is what the gateways call when a socket subscribes; delivery stays the
+  // explicit `this.ws.emit(...)` next to each change.
 
-    /** Register a callback invoked when any instance is created. */
-    onInstanceCreated(hook: (id: number) => void) { instanceCreatedHooks.push(hook); }
+  @OnWebsocketEventRegister(WsFrames.INSTANCE_CREATED)
+  @OnWebsocketEventRegister(WsFrames.INSTANCE_UPDATED)
+  @OnWebsocketEventRegister(WsFrames.INSTANCE_REMOVED)
+  @OnWebsocketEventRegister(WsFrames.INSTANCE_LIFECYCLE)
+  private registerInstanceFrame(socket: Socket): Promise<boolean> {
+    // Instance lifecycle is public: any signed-in account may follow an instance.
+    return Promise.resolve(!!socket.data?.user);
+  }
 
-    /**
-     * Callback registered by the `InstanceReaperService` so serialized instances can report their
-     * cleanup state. Registered this way to keep the reaper (relay module) out of this module's
-     * dependency graph.
-     */
-    private lifecycleProvider: ((instanceId: number, tags: readonly string[] | null | undefined) => ApiInstanceLifecycle | null) | null = null;
+  /**
+   * The reaper saw an instance leave its grace period and start an idle timer (or the reverse).
+   *
+   * It only owns the idle timer, so it cannot publish a client signal itself; this service
+   * already serializes instances, so it relays the news to the admin UI. The frame is the
+   * instance plus the relay whose page shows the badge — a client re-reads from there.
+   *
+   * Only the client frame: the domain event has already been published by the reaper, and
+   * re-emitting it here would make this handler its own subscriber.
+   */
+  @OnEvent(Events.INSTANCE_LIFECYCLE)
+  publishLifecycle(event: InstanceLifecycleChangeEvent) {
+    this.ws.emit(WsFrames.INSTANCE_LIFECYCLE, {
+      instance_id: event.instance_id,
+      relay_id: event.relay_id,
+      lifecycle: event.lifecycle,
+      time: event.time,
+    });
+  }
 
-    /** Expose the reaper's lifecycle state (called once, from its `onModuleInit`). */
-    setLifecycleProvider(provider: (instanceId: number, tags: readonly string[] | null | undefined) => ApiInstanceLifecycle | null) {
-        this.lifecycleProvider = provider;
+  /** Where every instance reads its cleanup state from (see {@link InstanceLifecycle}). */
+  get instanceLifecycleService(): InstanceLifecycle {
+    return this.relayService.instanceLifecycle;
+  }
+
+  /** Graft the model getters (`relay`, `lifecycle`) onto a database row. */
+  private attach(model: PrismaInstance): InstanceWithMethods {
+    return Instance.attach(model, this);
+  }
+
+  async domain(): Promise<string> {
+    return this.wellKnown.address();
+  }
+
+  // ── Validators ───────────────────────────────────────────────────────────────
+
+  private static readonly NAME_REGEX = /^[a-z0-9_-]{3,32}$/;
+
+  isValidName(name: string): boolean {
+    return InstancesService.NAME_REGEX.test(name);
+  }
+
+  isValidCapacity(n: number): boolean {
+    return Number.isInteger(n) && n >= 0 && n <= 65535;
+  }
+
+  generateName(): string {
+    return randomBytes(4).toString('hex');
+  }
+
+  // ── Permissions ──────────────────────────────────────────────────────────────
+
+  canCreate(user: UserWithMethods): boolean {
+    return (
+      user.isAdmin() ||
+      Tags.has(user.tags, Tags.MODERATION, 'can_instance_create')
+    );
+  }
+
+  canUploadFile(user: UserWithMethods): boolean {
+    return (
+      user.isAdmin() || Tags.has(user.tags, Tags.MODERATION, 'can_file_upload')
+    );
+  }
+
+  canManage(user: UserWithMethods, instance: InstanceWithMethods): boolean {
+    if (user.isAdmin()) return true;
+    const domain = NoxIdentifier.LOCALSERVER;
+    const ownerRef = NoxIdentifier.parse(instance.ownerRef);
+    if (ownerRef.isLocal(domain)) {
+      const ownerId = ownerRef.numericId;
+      if (ownerId !== null && ownerId === user.id) return true;
+    }
+    return false;
+  }
+
+  // ── CRUD ──────────────────────────────────────────────────────────────────────
+
+  async findById(id: number): Promise<InstanceWithMethods | null> {
+    const row = await this.prisma.instances.findUnique({ where: { id } });
+    return row ? this.attach(row) : null;
+  }
+
+  async findByName(name: string): Promise<InstanceWithMethods | null> {
+    const row = await this.prisma.instances.findUnique({ where: { name } });
+    return row ? this.attach(row) : null;
+  }
+
+  async search(
+    params: InstanceSearchParams,
+    limit = 10,
+    offset = 0,
+  ): Promise<{ items: InstanceWithMethods[]; total: number }> {
+    const conditions: any[] = [];
+
+    if (params.query) {
+      conditions.push({
+        OR: [
+          { name: { contains: params.query, mode: 'insensitive' } },
+          { title: { contains: params.query, mode: 'insensitive' } },
+          { description: { contains: params.query, mode: 'insensitive' } },
+        ],
+      });
     }
 
-    /** Cleanup state of an instance, or null when no reaper is registered. */
-    getLifecycle(instanceId: number, tags: readonly string[] | null | undefined): ApiInstanceLifecycle | null {
-        if (!this.lifecycleProvider) return null;
-        try {
-            return this.lifecycleProvider(instanceId, tags);
-        } catch {
-            return null;
-        }
+    if (params.world) conditions.push({ worldRef: params.world });
+    if (params.owner) conditions.push({ ownerRef: params.owner });
+
+    const where = conditions.length > 0 ? { AND: conditions } : {};
+
+    const [items, total] = await Promise.all([
+      this.prisma.instances.findMany({
+        where,
+        skip: offset,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.instances.count({ where }),
+    ]);
+
+    return { items: items.map((i) => this.attach(i)), total };
+  }
+
+  async create(dto: CreateInstanceDto): Promise<InstanceWithMethods> {
+    const name =
+      dto.name && this.isValidName(dto.name) ? dto.name : this.generateName();
+
+    // Ensure uniqueness
+    let finalName = name;
+    let attempts = 0;
+    while (
+      await this.prisma.instances.findUnique({ where: { name: finalName } })
+    ) {
+      finalName = this.generateName();
+      if (++attempts > 10)
+        throw new ApiException(
+          ApiErrorCode.INTERNAL_SERVER_ERROR,
+          null,
+          'Could not generate unique instance name',
+        );
     }
 
-    async domain(): Promise<string> {
-        return this.wellKnown.address();
-    }
+    const instance = await this.prisma.instances.create({
+      data: {
+        name: finalName,
+        title: dto.title ?? null,
+        description: dto.description ?? null,
+        capacity: dto.capacity,
+        worldRef: dto.worldRef,
+        ownerRef: dto.ownerRef,
+        tags: dto.tags ?? [],
+        thumbnail: dto.thumbnail ?? null,
+        useWhitelist: dto.useWhitelist ?? false,
+        whitelistRefs: dto.whitelistRefs ?? [],
+        usePassword: dto.usePassword ?? false,
+        password: dto.password ?? null,
+      },
+    });
 
-    // ── Validators ───────────────────────────────────────────────────────────────
+    // No relay yet: the assignment is a separate event (`relay.instance.assigned`).
+    const event: InstanceCreatedEvent = {
+      instance_id: instance.id,
+      relay_id: null,
+      time: Date.now(),
+    };
+    this.emitter.emit(Events.INSTANCE_CREATED, event);
+    this.ws.emit(WsFrames.INSTANCE_CREATED, {
+      instance_id: event.instance_id,
+      time: event.time,
+    });
+    return this.attach(instance);
+  }
 
-    private static readonly NAME_REGEX = /^[a-z0-9_-]{3,32}$/;
+  async update(
+    id: number,
+    dto: UpdateInstanceDto,
+  ): Promise<InstanceWithMethods> {
+    const data = {
+      ...(dto.title !== undefined && { title: dto.title }),
+      ...(dto.description !== undefined && { description: dto.description }),
+      ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+      ...(dto.tags !== undefined && { tags: dto.tags }),
+      ...(dto.thumbnail !== undefined && { thumbnail: dto.thumbnail }),
+      ...(dto.useWhitelist !== undefined && { useWhitelist: dto.useWhitelist }),
+      ...(dto.whitelistRefs !== undefined && {
+        whitelistRefs: dto.whitelistRefs,
+      }),
+      ...(dto.usePassword !== undefined && { usePassword: dto.usePassword }),
+      ...(dto.password !== undefined && { password: dto.password }),
+    };
 
-    isValidName(name: string): boolean {
-        return InstancesService.NAME_REGEX.test(name);
-    }
+    const instance = await this.prisma.instances.update({
+      where: { id },
+      data,
+    });
+    const event: InstanceUpdatedEvent = {
+      instance_id: instance.id,
+      fields: Object.keys(data),
+      time: Date.now(),
+    };
+    this.emitter.emit(Events.INSTANCE_UPDATED, event);
+    this.ws.emit(WsFrames.INSTANCE_UPDATED, { ...event });
+    return this.attach(instance);
+  }
 
-    isValidCapacity(n: number): boolean {
-        return Number.isInteger(n) && n >= 0 && n <= 65535;
-    }
+  /**
+   * Delete an instance and tell its relay to stop hosting it.
+   *
+   * @param dropReason why it is going away, forwarded to the relay so its logs stay meaningful.
+   */
+  async delete(
+    id: number,
+    dropReason: { reason: string; message?: string } = {
+      reason: 'deleted',
+      message: 'Instance deleted',
+    },
+  ): Promise<InstanceWithMethods | null> {
+    // Read the link *before* deleting: it says which relay is hosting the instance, and it goes
+    // away with the instance (cascade).
+    const link = await this.prisma.relayInstance.findUnique({
+      where: { instanceId: id },
+    });
 
-    generateName(): string {
-        return randomBytes(4).toString('hex');
-    }
+    try {
+      const deleted = await this.prisma.instances.delete({ where: { id } });
 
-    // ── Permissions ──────────────────────────────────────────────────────────────
-
-    canCreate(user: UserWithMethods): boolean {
-        return user.isAdmin() || Tags.has(user.tags, Tags.MODERATION, 'can_instance_create');
-    }
-
-    canUploadFile(user: UserWithMethods): boolean {
-        return user.isAdmin() || Tags.has(user.tags, Tags.MODERATION, 'can_file_upload');
-    }
-
-    canManage(user: UserWithMethods, instance: Instance): boolean {
-        if (user.isAdmin()) return true;
-        const domain = NoxIdentifier.LOCALSERVER;
-        const ownerRef = NoxIdentifier.parse(instance.ownerRef);
-        if (ownerRef.isLocal(domain)) {
-            const ownerId = ownerRef.numericId;
-            if (ownerId !== null && ownerId === user.id) return true;
-        }
-        return false;
-    }
-
-    // ── CRUD ──────────────────────────────────────────────────────────────────────
-
-    async findById(id: number): Promise<Instance | null> {
-        return this.prisma.instances.findUnique({ where: { id } });
-    }
-
-    async findByName(name: string): Promise<Instance | null> {
-        return this.prisma.instances.findUnique({ where: { name } });
-    }
-
-    async search(params: InstanceSearchParams, limit = 10, offset = 0): Promise<{ items: Instance[]; total: number }> {
-        const conditions: any[] = [];
-
-        if (params.query) {
-            conditions.push({
-                OR: [
-                    { name: { contains: params.query, mode: 'insensitive' } },
-                    { title: { contains: params.query, mode: 'insensitive' } },
-                    { description: { contains: params.query, mode: 'insensitive' } },
-                ],
-            });
-        }
-
-        if (params.world) conditions.push({ worldRef: params.world });
-        if (params.owner) conditions.push({ ownerRef: params.owner });
-
-        const where = conditions.length > 0 ? { AND: conditions } : {};
-
-        const [items, total] = await Promise.all([
-            this.prisma.instances.findMany({ where, skip: offset, take: limit, orderBy: { createdAt: 'desc' } }),
-            this.prisma.instances.count({ where }),
-        ]);
-
-        return { items, total };
-    }
-
-    async create(dto: CreateInstanceDto): Promise<Instance> {
-        const name = dto.name && this.isValidName(dto.name) ? dto.name : this.generateName();
-
-        // Ensure uniqueness
-        let finalName = name;
-        let attempts = 0;
-        while (await this.prisma.instances.findUnique({ where: { name: finalName } })) {
-            finalName = this.generateName();
-            if (++attempts > 10) throw new ApiException(ApiErrorCode.INTERNAL_SERVER_ERROR, null, 'Could not generate unique instance name');
-        }
-
-        return this.prisma.instances.create({
-            data: {
-                name: finalName,
-                title: dto.title ?? null,
-                description: dto.description ?? null,
-                capacity: dto.capacity,
-                worldRef: dto.worldRef,
-                ownerRef: dto.ownerRef,
-                tags: dto.tags ?? [],
-                thumbnail: dto.thumbnail ?? null,
-                useWhitelist: dto.useWhitelist ?? false,
-                whitelistRefs: dto.whitelistRefs ?? [],
-                usePassword: dto.usePassword ?? false,
-                password: dto.password ?? null,
-            },
-        }).then(inst => {
-            for (const hook of instanceCreatedHooks) hook(inst.id);
-            return inst;
+      // Without this the relay keeps hosting — and counting — the instance forever: the node has
+      // no record of it left, so nothing else can ever notice the ghost.
+      if (link && this.relayService.isRelayConnected(link.relayId))
+        this.wsGateway.pushToRelay(link.relayId, 'drop_instance', {
+          instance_id: id,
+          ...dropReason,
         });
+
+      const event: InstanceRemovedEvent = {
+        instance_id: id,
+        relay_id: link?.relayId ?? null,
+        reason: dropReason.reason,
+        time: Date.now(),
+      };
+      this.emitter.emit(Events.INSTANCE_REMOVED, event);
+      // The frame drops the relay it was assigned to — the removal is global, not relay-scoped.
+      this.ws.emit(WsFrames.INSTANCE_REMOVED, {
+        instance_id: event.instance_id,
+        reason: event.reason,
+        time: event.time,
+      });
+
+      return this.attach(deleted);
+    } catch (err: any) {
+      if (err?.code === 'P2025') return null;
+      throw err;
     }
-
-    async update(id: number, dto: UpdateInstanceDto): Promise<Instance> {
-        return this.prisma.instances.update({
-            where: { id },
-            data: {
-                ...(dto.title !== undefined && { title: dto.title }),
-                ...(dto.description !== undefined && { description: dto.description }),
-                ...(dto.capacity !== undefined && { capacity: dto.capacity }),
-                ...(dto.tags !== undefined && { tags: dto.tags }),
-                ...(dto.thumbnail !== undefined && { thumbnail: dto.thumbnail }),
-                ...(dto.useWhitelist !== undefined && { useWhitelist: dto.useWhitelist }),
-                ...(dto.whitelistRefs !== undefined && { whitelistRefs: dto.whitelistRefs }),
-                ...(dto.usePassword !== undefined && { usePassword: dto.usePassword }),
-                ...(dto.password !== undefined && { password: dto.password }),
-            },
-        });
-    }
-
-    async delete(id: number): Promise<Instance | null> {
-        try {
-            return await this.prisma.instances.delete({ where: { id } });
-        } catch (err: any) {
-            if (err?.code === 'P2025') return null;
-            throw err;
-        }
-    }
-
-    // ── Connection info ───────────────────────────────────────────────────────────
-
-    async getConnectionInfo(instance: Instance): Promise<ApiInstanceConnectionDto | null> {
-        const link = await this.prisma.relayInstance.findUnique({ where: { instanceId: instance.id } });
-        const relayId = link?.relayId;
-        if (!relayId) {
-            this.logger.debug(`[getConnectionInfo] Instance ${instance.id} has no relayId`);
-            return null;
-        }
-
-        // Request status from relay to get address map and region
-        const status = await this.wsGateway.requestStatus(relayId);
-        if (!status || !status.a) {
-            this.logger.debug(`[getConnectionInfo] No status/address from relay ${relayId} for instance ${instance.id}`);
-            return null;
-        }
-
-        // Check if instance exists on relay
-        const instancesResult = await this.wsGateway.requestInstances(relayId, 1000, 0);
-        if (!instancesResult || !instancesResult.instances) {
-            this.logger.debug(`[getConnectionInfo] No instances list from relay ${relayId} for instance ${instance.id}`);
-            return null;
-        }
-
-        const hasInstance = instancesResult.instances.some(i => i.n === instance.id);
-        if (!hasInstance) {
-            this.logger.debug(`[getConnectionInfo] Instance ${instance.id} not found in relay ${relayId} instances list`);
-            return null;
-        }
-
-        // Build connection data
-        const addresses = Object.entries(status.a).map(([proto, addr]) => `${proto}://${addr}`);
-        const connectionData = {
-            a: addresses,
-            i: instance.id,
-            p: status.p ?? 0,
-        };
-
-        // Region comes from the provider, not the relay binary
-        const runnerInfo = await this.relayService.getRunnerInfo(relayId).catch(() => null);
-
-        this.logger.debug(`[getConnectionInfo] Successfully built connection for instance ${instance.id} on relay ${relayId}`);
-
-        return {
-            method: 'relay',
-            data: Buffer.from(JSON.stringify(connectionData)).toString('base64'),
-            region: runnerInfo?.region ?? null,
-        };
-    }
-
-    // ── Response serializer ───────────────────────────────────────────────────────
-
-    async serialize(instance: Instance) {
-        const domain = await this.domain();
-        const apiBase = await this.wellKnown.apiBaseUrl();
-        const owner = NoxIdentifier.parse(instance.ownerRef);
-        const world = NoxIdentifier.parse(instance.worldRef);
-
-        // Get connection info automatically
-        const connection = await this.getConnectionInfo(instance);
-
-        // ── Player list ──────────────────────────────────────────────────────────
-        let count = 0;
-        const players: { user: string | null; display: string }[] = [];
-        const relayLink = await this.prisma.relayInstance.findUnique({ where: { instanceId: instance.id } });
-        const relayId = relayLink?.relayId;
-        if (relayId) {
-            // 1. Fetch instances list to resolve internal_id (i) from node master_id (n)
-            const instancesResp = await this.wsGateway.requestInstances(relayId, 100, 0);
-            const relayInstance = instancesResp?.instances?.find(
-                (ri: { n: number }) => ri.n === instance.id,
-            ) as { i: number; p: number } | undefined;
-
-            if (relayInstance) {
-                count = relayInstance.p;
-                // 2. Fetch the first 20 visible players using the internal_id
-                const result = await this.wsGateway.requestPlayers(
-                    relayId,
-                    relayInstance.i,
-                    20,
-                    0,
-                    false
-                );
-                for (const p of result?.i ?? [])
-                    players.push({
-                        user: p.u ?? null,
-                        display: p.d
-                    });
-            }
-        }
-        // ─────────────────────────────────────────────────────────────────────────
-
-        const tags = [
-            ...instance.tags,
-            ...(instance.capacity === 0 ? [Tags.build(Tags.SYSTEM, 'unlimited')] : []),
-            ...(instance.useWhitelist ? [Tags.build(Tags.SYSTEM, 'whitelist')] : []),
-            ...(instance.password && instance.usePassword ? [Tags.build(Tags.SYSTEM, 'password')] : []),
-        ];
-
-        return {
-            id: instance.id,
-            name: instance.name,
-            title: instance.title ?? null,
-            description: instance.description ?? null,
-            thumbnail: instance.thumbnail ?? null,
-            capacity: instance.capacity,
-            server: domain,
-            owner: owner.toString(domain),
-            world: world.toString(domain),
-            tags,
-            connection,
-            count,
-            players,
-            lifecycle: this.getLifecycle(instance.id, instance.tags),
-            alias: [
-                { key: 'api', value: `${apiBase}instances/${instance.id}` },
-                { key: 'iid', value: `${instance.id}@${domain}` },
-                { key: 'nid', value: `${instance.name}@${domain}` },
-            ],
-        };
-    }
+  }
 }

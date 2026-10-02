@@ -35,7 +35,7 @@ export interface RelayResolvedUser {
 }
 
 /** Inbound log entry forwarded from the relay binary. */
-export interface RelayLogEntry {
+export interface RelayLogFrame {
     relay_id: number;
     time: number;
     level: string;
@@ -44,14 +44,14 @@ export interface RelayLogEntry {
 }
 
 /** Inbound client connection event from the relay binary. */
-export interface RelayClientEvent {
+export interface RelayClientFrame {
     relay_id: number;
     time: number;
     client: { id: number; address: string | null; platform: string; engine: string; user: string | null; connected_at: number };
 }
 
 /** Inbound client-disconnected event from the relay binary. */
-export interface RelayClientDisconnectedEvent {
+export interface RelayClientDisconnectedFrame {
     relay_id: number;
     time: number;
     id: number;
@@ -60,7 +60,7 @@ export interface RelayClientDisconnectedEvent {
 }
 
 /** Inbound client-authentified event from the relay binary. */
-export interface RelayClientAuthentifiedEvent {
+export interface RelayClientAuthentifiedFrame {
     relay_id: number;
     time: number;
     client_id: number;
@@ -68,7 +68,7 @@ export interface RelayClientAuthentifiedEvent {
 }
 
 /** Inbound player-join event from the relay binary. */
-export interface RelayPlayerJoinEvent {
+export interface RelayPlayerJoinFrame {
     relay_id: number;
     time: number;
     player: {
@@ -83,7 +83,7 @@ export interface RelayPlayerJoinEvent {
 }
 
 /** Inbound player-leave event from the relay binary. */
-export interface RelayPlayerLeaveEvent {
+export interface RelayPlayerLeaveFrame {
     relay_id: number;
     time: number;
     player: {
@@ -95,21 +95,8 @@ export interface RelayPlayerLeaveEvent {
     };
 }
 
-/** Relay lifecycle event emitted to WS clients. */
-export interface RelayStatusChangeEvent {
-    relay_id: number;
-    status: 'connected' | 'disconnected' | 'ready';
-    time: number;
-}
-
-/** Relay lifecycle event emitted to WS clients when the auto-cleanup state changes. */
-export interface RelayLifecycleChangeEvent {
-    relay_id: number;
-    time: number;
-}
-
 /** Inbound instance-settings-changed event from the relay binary. */
-export interface RelayInstanceSettingsChangedEvent {
+export interface RelayInstanceSettingsFrame {
     relay_id: number;
     time: number;
     /** Relay-internal instance slot (0–254). */
@@ -221,7 +208,7 @@ export interface ApiRelayStatus {
 export type RelayGraceKind = 'startup' | 'disconnect';
 
 /**
- * Cleanup state of a relay, computed by the RelayAutoManager.
+ * Cleanup state of a relay, computed by the RelayCreator.
  *
  * `null` means "nothing to report": the provider is not managed by this node, auto-management is
  * disabled, or the relay is busy — a relay hosting an instance is never removed.

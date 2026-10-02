@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Patch, Param, Query, Body, UseGuards, HttpStatus, Inject, forwardRef } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Patch, Param, Query, Body, UseGuards, HttpStatus, Inject, forwardRef, Req } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiWrappedSuccessResponse, ApiErrorResponse } from '../api/swagger';
@@ -16,6 +16,7 @@ import { ApiErrorCode } from '../api/api-error.factory';
 import type { RelayWithMethods } from './relay.model';
 import { NoxIdentifier } from 'src/common/identifier';
 import { InstancesService } from '../instances/instances.service';
+import { UserAuthenticatedRequest } from 'src/auth/auth.guard';
 
 @ApiTags('Relay')
 @Controller('relays')
@@ -252,7 +253,7 @@ export class RelayController {
                 threshold: slotThresholdMap.get(i.id) ?? null,
                 effective_tps: slotEffTpsMap.get(i.id) ?? null,
                 effective_threshold: slotEffThresholdMap.get(i.id) ?? null,
-                lifecycle: this.instances.getLifecycle(i.id, i.tags),
+                lifecycle: this.relay.instanceLifecycle.serialize(i.id, i.tags),
             })),
         };
     }
@@ -374,7 +375,11 @@ export class RelayController {
     @ApiBearerAuth()
     @UseGuards(AdminUserGuard)
     @Get(':id/instances/:iid')
-    async getRelayInstance(@Param('id') rawId: string, @Param('iid') iid: string) {
+    async getRelayInstance(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @Param('id') rawId: string, 
+        @Param('iid') iid: string
+    ) {
         const id = parseInt(rawId, 10);
         if (!Number.isFinite(id)) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Invalid relay ID');
 
@@ -398,7 +403,7 @@ export class RelayController {
         const instance = await this.instances.findById(dbId);
         if (!instance) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Instance (${dbId})`);
 
-        return this.instances.serialize(instance);
+        return instance.sanitize(req.user);
     }
 
     // ── Players in instance ───────────────────────────────────────────────────────

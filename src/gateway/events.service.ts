@@ -1,20 +1,36 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { EventsGateway } from './events.gateway';
-import type { Socket } from 'socket.io';
-import { WsGateway } from 'src/ws/ws.gateway';
 import LoggerStore from '../utils/logger';
+import { OnWebsocketEventRegister } from '../events/websocket-event.decorator';
+import { WsFrames } from '../events/websocket-frames';
+import type { WebsocketFrame, WebsocketFrames } from '../events/websocket-frames';
+import type { Socket } from 'socket.io';
 
+/**
+ * Client-facing frames over **Socket.IO**.
+ *
+ * This is the Socket.IO transport only. It knows nothing about the in-process bus
+ * (`EmitterService`), and services do not publish here directly: they go through `WsService.emit`,
+ * which fans out to both transports and types the payload against `WebsocketFrames`.
+ *
+ * It stays a provider because the two gateways are distinct sockets — a client may be connected to
+ * either one, or to both.
+ */
 @Injectable()
 export class EventsService implements OnModuleInit {
 
-    private wsGateway: WsGateway | null = null;
-
     constructor(private readonly gateway: EventsGateway) { }
+
+    @OnWebsocketEventRegister(WsFrames.SERVER_LOGS)
+    @OnWebsocketEventRegister(WsFrames.ACTIVITY)
+    private _register(socket: Socket): Promise<boolean> {
+        return Promise.resolve(!!socket.data?.user?.isAdmin?.());
+    }
 
     onModuleInit() {
         // Register callback to broadcast server logs in real-time
         LoggerStore.onLogPush((entry) => {
-            this.emit('server_logs', {
+            this.emit(WsFrames.SERVER_LOGS, {
                 timestamp: entry.timestamp.getTime(),
                 level: entry.level,
                 message: entry.message,
@@ -23,30 +39,13 @@ export class EventsService implements OnModuleInit {
         });
     }
 
-    /** Register WebSocket gateway for native WebSocket broadcasting */
-    registerWsGateway(wsGateway: any) {
-        this.wsGateway = wsGateway;
-    }
-
-    /** Emit an event to all sockets subscribed to the given room. */
-    emit<T = unknown>(name: string, data: T) {
-        // Broadcast via Socket.IO
+    /** Emit a frame to all Socket.IO sockets subscribed to its room. */
+    emit<TFrame extends WebsocketFrame>(name: TFrame, data: WebsocketFrames[TFrame]): void {
         this.gateway.emit(name, data);
-        
-        // Also broadcast via native WebSocket if available
-        if (this.wsGateway && typeof this.wsGateway.emit === 'function') 
-            this.wsGateway.emit(name, data);
     }
 
-    /** Emit an event to a specific user's connected sockets. */
-    emitToUser<T = unknown>(userId: number, name: string, data: T) {
+    /** Emit a frame to every Socket.IO socket of one user. */
+    emitToUser<TFrame extends WebsocketFrame>(userId: number, name: TFrame, data: WebsocketFrames[TFrame]): void {
         this.gateway.emitToUser(userId, name, data);
-        if (this.wsGateway && typeof this.wsGateway.emitToUser === 'function')
-            this.wsGateway.emitToUser(userId, name, data);
-    }
-
-    /** Register a validator for a named event. */
-    registerValidator(name: string, fn: (socket: Socket) => Promise<boolean>) {
-        this.gateway.registerValidator(name, fn);
     }
 }
