@@ -6,13 +6,13 @@ import { GatewayModule } from '../gateway/gateway.module';
 import { FediverseModule } from '../fediverse/fediverse.module';
 
 @Module({
-    imports: [
-        forwardRef(() => UsersModule),
-        forwardRef(() => GatewayModule),
-        forwardRef(() => FediverseModule),
-    ],
-    controllers: [ActivityController],
-    providers: [ActivityService],
-    exports: [ActivityService],
+  imports: [
+    forwardRef(() => UsersModule),
+    forwardRef(() => GatewayModule),
+    forwardRef(() => FediverseModule),
+  ],
+  controllers: [ActivityController],
+  providers: [ActivityService],
+  exports: [ActivityService],
 })
-export class ActivityModule { }
+export class ActivityModule {}

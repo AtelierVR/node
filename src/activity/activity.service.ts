@@ -41,7 +41,7 @@ export class ActivityService {
       }),
     );
 
-    this.events.emit('activity', event);
+    this.events.emit('activity', await activity.sanitize());
     return activity;
   }
 

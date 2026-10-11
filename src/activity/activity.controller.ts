@@ -83,9 +83,7 @@ export class ActivityController {
   @ApiBearerAuth()
   @UseGuards(AdminUserGuard)
   @Post()
-  async create(
-    @Body() body: CreateActivityEventDto,
-  ) {
+  async create(@Body() body: CreateActivityEventDto) {
     if (!body.type || typeof body.type !== 'string')
       throw new ApiException(
         ApiErrorCode.BAD_REQUEST,
