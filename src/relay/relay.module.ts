@@ -20,28 +20,37 @@ import { WsModule } from '../ws/ws.module';
 import { ExternalUsersModule } from '../external/external-users.module';
 
 @Module({
-    imports: [
-        GatewayModule,
-        forwardRef(() => FediverseModule),
-        AppConfigModule,
-        AuthModule,
-        ActivityModule,
-        forwardRef(() => InstancesModule),
-        forwardRef(() => WsModule),
-        ExternalUsersModule,
-    ],
-    controllers: [RelayController],
-    providers: [
-        RelayService, RelayGateway, RelayCreator, InstanceDistributor, InstanceReaper,
-        InstanceLifecycle, RelayLifecycle,
-        DockerRunner, ExternalRunner,
-        {
-            provide: RELAY_RUNNERS,
-            useFactory: (docker: DockerRunner, external: ExternalRunner) => [docker, external],
-            inject: [DockerRunner, ExternalRunner],
-        },
-        RunnerFactory,
-    ],
-    exports: [RelayService, RelayGateway],
+  imports: [
+    GatewayModule,
+    forwardRef(() => FediverseModule),
+    AppConfigModule,
+    AuthModule,
+    ActivityModule,
+    forwardRef(() => InstancesModule),
+    forwardRef(() => WsModule),
+    ExternalUsersModule,
+  ],
+  controllers: [RelayController],
+  providers: [
+    RelayService,
+    RelayGateway,
+    RelayCreator,
+    InstanceDistributor,
+    InstanceReaper,
+    InstanceLifecycle,
+    RelayLifecycle,
+    DockerRunner,
+    ExternalRunner,
+    {
+      provide: RELAY_RUNNERS,
+      useFactory: (docker: DockerRunner, external: ExternalRunner) => [
+        docker,
+        external,
+      ],
+      inject: [DockerRunner, ExternalRunner],
+    },
+    RunnerFactory,
+  ],
+  exports: [RelayService, RelayGateway],
 })
-export class RelayModule { }
+export class RelayModule {}
