@@ -10,9 +10,9 @@ import { PrismaModule } from '../database/prisma.module';
 import { UsersModule } from '../users/users.module';
 
 @Module({
-    imports: [AppConfigModule, PrismaModule, forwardRef(() => UsersModule)],
-    controllers: [WellKnownController, NodeInfoController, ActivityPubController],
-    providers: [FediverseService, WellKnownService, ActivityPubService],
-    exports: [FediverseService, WellKnownService, ActivityPubService],
+  imports: [AppConfigModule, PrismaModule, forwardRef(() => UsersModule)],
+  controllers: [WellKnownController, NodeInfoController, ActivityPubController],
+  providers: [FediverseService, WellKnownService, ActivityPubService],
+  exports: [FediverseService, WellKnownService, ActivityPubService],
 })
 export class FediverseModule {}

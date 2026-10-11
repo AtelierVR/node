@@ -1,20 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import type {
-    NoxEndpoints,
-    NoxGateway,
-    NoxVersions,
-    NoxWellKnown,
-    NodeInfoDocument,
-    NodeInfoLinks,
-    NoxSoftware,
+  NoxWellKnown,
+  NoxSoftware,
 } from './fediverse.types';
-import { FediverseService } from './fediverse.service';
-import { existsSync, mkdir, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
-import { KeyPairKeyObjectResult } from 'node:crypto';
 import { KeyPair, make, compressPublicKey } from 'src/utils/crypto';
 import { AppConfigService } from 'src/config/config.service';
+import { getAssetControllerTypes } from 'src/assets/asset-controller.registry';
 
 /**
  * Builds all /.well-known/* response documents for this Nox instance.
@@ -24,187 +22,227 @@ import { AppConfigService } from 'src/config/config.service';
  */
 @Injectable()
 export class WellKnownService {
-    constructor(
-        private readonly config: AppConfigService
-    ) {
-        try {
-            const pkg = JSON.parse(
-                readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
-            ) as { version?: string };
-            this.version = pkg.version ?? '0.0.1';
-        } catch {
-            this.version = '0.0.1';
-        }
-        this.termsVersion = WellKnownService.readDocVersion('public/api/terms.md').version || "0";
-        this.privacyVersion = WellKnownService.readDocVersion('public/api/privacy.md').version || "0";
-        this.rulesVersion = WellKnownService.readDocVersion('public/api/rules.md').version || "0";
+  constructor(private readonly config: AppConfigService) {
+    try {
+      const pkg = JSON.parse(
+        readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
+      ) as { version?: string };
+      this.version = pkg.version ?? '0.0.1';
+    } catch {
+      this.version = '0.0.1';
     }
+    this.termsVersion =
+      WellKnownService.readDocVersion('public/api/terms.md').version || '0';
+    this.privacyVersion =
+      WellKnownService.readDocVersion('public/api/privacy.md').version || '0';
+    this.rulesVersion =
+      WellKnownService.readDocVersion('public/api/rules.md').version || '0';
+  }
 
-    readonly version: string;
-    readonly termsVersion: string;
-    readonly privacyVersion: string;
-    readonly rulesVersion: string;
+  readonly version: string;
+  readonly termsVersion: string;
+  readonly privacyVersion: string;
+  readonly rulesVersion: string;
 
-    /** Reads the `version` field from a Markdown YAML frontmatter. Returns '1' on failure. */
-    private static readDocVersion(relativePath: string): Record<string, string> {
-        try {
-            const content = readFileSync(join(process.cwd(), relativePath), 'utf8');
-            return Object.fromEntries(
-                /^-+\n([\s\S]+?)\n-+/
-                    .exec(content)?.[1]
-                    .split('\n')
-                    .map((line) => {
-                        const [key, ...rest] = line.split(':');
-                        return [key.trim(), rest.join(':').trim()];
-                    }) ?? []);
-        } catch {
-            return {};
-        }
+  /** Reads the `version` field from a Markdown YAML frontmatter. Returns '1' on failure. */
+  private static readDocVersion(relativePath: string): Record<string, string> {
+    try {
+      const content = readFileSync(join(process.cwd(), relativePath), 'utf8');
+      return Object.fromEntries(
+        /^-+\n([\s\S]+?)\n-+/
+          .exec(content)?.[1]
+          .split('\n')
+          .map((line) => {
+            const [key, ...rest] = line.split(':');
+            return [key.trim(), rest.join(':').trim()];
+          }) ?? [],
+      );
+    } catch {
+      return {};
     }
+  }
 
-    // ── Derived URLs ────────────────────────────────────────────────────────────
+  // ── Derived URLs ────────────────────────────────────────────────────────────
 
-    /** e.g. https://example.com/api/ */
-    async apiBaseUrl(): Promise<string> {
-        return await this.config.get<string>('gateway.api');
-    }
+  /** e.g. https://example.com/api/ */
+  async apiBaseUrl(): Promise<string> {
+    return await this.config.get<string>('gateway.api');
+  }
 
-    /** e.g. wss://example.com/api/ws */
-    async wsBaseUrl(): Promise<string> {
-        return await this.config.get<string>('gateway.ws');
-    }
+  /** e.g. wss://example.com/api/ws */
+  async wsBaseUrl(): Promise<string> {
+    return await this.config.get<string>('gateway.ws');
+  }
 
-    /** e.g. https://example.com/ */
-    async webBaseUrl(): Promise<string> {
-        return await this.config.get<string>('gateway.web');
-    }
+  /** e.g. https://example.com/ */
+  async webBaseUrl(): Promise<string> {
+    return await this.config.get<string>('gateway.web');
+  }
 
-    /** e.g. https://example.com/ap/ — base URL for ActivityPub actor endpoints, customizable independently. */
-    async activityPubUrl(): Promise<string> {
-        return await this.config.get<string>('gateway.activitypub');
-    }
+  /** e.g. https://example.com/ap/ — base URL for ActivityPub actor endpoints, customizable independently. */
+  async activityPubUrl(): Promise<string> {
+    return await this.config.get<string>('gateway.activitypub');
+  }
 
-    async address(): Promise<string> {
-        return await this.config.get<string>('address');
-    }
+  async address(): Promise<string> {
+    return await this.config.get<string>('address');
+  }
 
-    async port(): Promise<number> {
-        return await this.config.get<number>('http.port');
-    }
+  async port(): Promise<number> {
+    return await this.config.get<number>('http.port');
+  }
 
-    async identifier(): Promise<string> {
-        return await this.config.get<string>('identifier');
-    }
+  async identifier(): Promise<string> {
+    return await this.config.get<string>('identifier');
+  }
 
-    get software(): NoxSoftware {
-        return {
-            name: 'nox',
-            version: this.version,
-        };
-    }
+  get software(): NoxSoftware {
+    return {
+      name: 'nox',
+      version: this.version,
+    };
+  }
 
-    get protocols(): string[] {
-        return [
-            'activitypub',
-            'nox'
-        ];
-    }
+  get protocols(): string[] {
+    return ['activitypub', 'nox'];
+  }
 
-    async pairKeys() {
-        let pubpath = await this.config.get<string>('http.public_path');
-        let privpath = await this.config.get<string>('http.private_path');
-        let keyPair: KeyPair;
-        if (!existsSync(pubpath) || !existsSync(privpath)) {
-            keyPair = await make();
-            let parent = dirname(pubpath);
-            if (!existsSync(parent))
-                mkdirSync(parent, { recursive: true });
-            parent = dirname(privpath);
-            if (!existsSync(parent))
-                mkdirSync(parent, { recursive: true });
-            writeFileSync(privpath, keyPair.private, 'utf8');
-            writeFileSync(pubpath, keyPair.public, 'utf8');
-        } else keyPair = {
-            public: readFileSync(pubpath, 'utf8'),
-            private: readFileSync(privpath, 'utf8'),
-        };
-        return keyPair;
-    }
-    // ── Document builders ───────────────────────────────────────────────────────
+  /** Whether the instance accepts new accounts (`instance.registration`). */
+  async openRegistrations(): Promise<boolean> {
+    return await this.config.get<boolean>('instance.registration');
+  }
 
-    async noxWellKnown(): Promise<NoxWellKnown> {
-        const rawIcons = await this.config.getOptional<Record<string, string>>('instance.icons');
-        const icon: string | Record<string, string> | null =
-            rawIcons && Object.keys(rawIcons).length === 1 ? Object.values(rawIcons)[0]
-            : rawIcons && Object.keys(rawIcons).length > 1 ? rawIcons
-            : null;
+  async pairKeys() {
+    const pubpath = await this.config.get<string>('http.public_path');
+    const privpath = await this.config.get<string>('http.private_path');
+    let keyPair: KeyPair;
+    if (!existsSync(pubpath) || !existsSync(privpath)) {
+      keyPair = await make();
+      let parent = dirname(pubpath);
+      if (!existsSync(parent)) mkdirSync(parent, { recursive: true });
+      parent = dirname(privpath);
+      if (!existsSync(parent)) mkdirSync(parent, { recursive: true });
+      writeFileSync(privpath, keyPair.private, 'utf8');
+      writeFileSync(pubpath, keyPair.public, 'utf8');
+    } else
+      keyPair = {
+        public: readFileSync(pubpath, 'utf8'),
+        private: readFileSync(privpath, 'utf8'),
+      };
+    return keyPair;
+  }
+  // ── Document builders ───────────────────────────────────────────────────────
 
-        return {
-            id: await this.identifier(),
-            status: 'online',
-            address: await this.address(),
-            public: compressPublicKey((await this.pairKeys()).public),
-            port: await this.port(),
-            software: this.software,
-            started: new Date(Date.now() - Math.floor(process.uptime() * 1000)).getTime(),
-            gateway: {
-                web: await this.webBaseUrl(),
-                ws: await this.wsBaseUrl(),
-                api: await this.apiBaseUrl(),
-            },
-            endpoints: {
-                wellknown: new URL(`.well-known/nox`, await this.webBaseUrl()).toString(),
-                webfinger: new URL(`.well-known/webfinger?resource={uri}`, await this.webBaseUrl()).toString(),
-                nodeinfo: new URL(`.well-known/nodeinfo`, await this.webBaseUrl()).toString(),
-                hostmeta: new URL(`.well-known/host-meta`, await this.webBaseUrl()).toString(),
-                terms: new URL(`terms.md`, await this.apiBaseUrl()).toString(),
-                privacy: new URL(`privacy.md`, await this.apiBaseUrl()).toString(),
-                rules: new URL(`rules.md`, await this.apiBaseUrl()).toString(),
-                configs: new URL(`configs`, await this.apiBaseUrl()).toString(),
-            },
-            versions: {
-                node: process.version.replace(/^v/, ''),
-                terms: this.termsVersion,
-                privacy: this.privacyVersion,
-                rules: this.rulesVersion,
-            },
-            metadata: {
-                title: await this.config.get<string | Record<string, string>>('instance.name'),
-                description: await this.config.getOptional<string | Record<string, string>>('instance.description') ?? null,
-                icon,
-                contact: await this.config.getOptional<string>('instance.contact') ?? null,
-                socials: (await this.config.getOptional<Record<string, string | string[]>>('instance.socials')) ?? {},
-            },
-            features: await this.instanceFeatures(),
-            capabilities: [
-                ...this.protocols,
-                'webfinger',
-                'nodeinfo',
-                'hostmeta',
-                ...await this.instanceCapabilities(),
-            ],
-            maintenance: null
-        };
-    }
+  async noxWellKnown(): Promise<NoxWellKnown> {
+    const rawIcons =
+      await this.config.getOptional<Record<string, string>>('instance.icons');
+    const icon: string | Record<string, string> | null =
+      rawIcons && Object.keys(rawIcons).length === 1
+        ? Object.values(rawIcons)[0]
+        : rawIcons && Object.keys(rawIcons).length > 1
+          ? rawIcons
+          : null;
 
-    // ── Private helpers ─────────────────────────────────────────────────────────
+    return {
+      id: await this.identifier(),
+      status: 'online',
+      address: await this.address(),
+      public: compressPublicKey((await this.pairKeys()).public),
+      port: await this.port(),
+      software: this.software,
+      started: new Date(
+        Date.now() - Math.floor(process.uptime() * 1000),
+      ).getTime(),
+      gateway: {
+        web: await this.webBaseUrl(),
+        ws: await this.wsBaseUrl(),
+        api: await this.apiBaseUrl(),
+      },
+      endpoints: {
+        wellknown: new URL(
+          `.well-known/nox`,
+          await this.webBaseUrl(),
+        ).toString(),
+        webfinger: new URL(
+          `.well-known/webfinger?resource={uri}`,
+          await this.webBaseUrl(),
+        ).toString(),
+        nodeinfo: new URL(
+          `.well-known/nodeinfo`,
+          await this.webBaseUrl(),
+        ).toString(),
+        hostmeta: new URL(
+          `.well-known/host-meta`,
+          await this.webBaseUrl(),
+        ).toString(),
+        terms: new URL(`terms.md`, await this.apiBaseUrl()).toString(),
+        privacy: new URL(`privacy.md`, await this.apiBaseUrl()).toString(),
+        rules: new URL(`rules.md`, await this.apiBaseUrl()).toString(),
+        configs: new URL(`configs`, await this.apiBaseUrl()).toString(),
+      },
+      versions: {
+        node: process.version.replace(/^v/, ''),
+        terms: this.termsVersion,
+        privacy: this.privacyVersion,
+        rules: this.rulesVersion,
+      },
+      metadata: {
+        title: await this.config.get<string | Record<string, string>>(
+          'instance.name',
+        ),
+        description:
+          (await this.config.getOptional<string | Record<string, string>>(
+            'instance.description',
+          )) ?? null,
+        icon,
+        contact:
+          (await this.config.getOptional<string>('instance.contact')) ?? null,
+        socials:
+          (await this.config.getOptional<Record<string, string | string[]>>(
+            'instance.socials',
+          )) ?? {},
+      },
+      features: await this.instanceFeatures(),
+      capabilities: [
+        ...this.protocols,
+        'webfinger',
+        'nodeinfo',
+        'hostmeta',
+        ...(await this.instanceCapabilities()),
+      ],
+      maintenance: null,
+    };
+  }
 
-    /** Parses the comma-separated 'instance.features' config value. */
-    private async instanceFeatures(): Promise<string[]> {
-        const raw = await this.config.get<string>('instance.features');
-        return raw.split(',').map((f) => f.trim()).filter(Boolean);
-    }
+  // ── Private helpers ─────────────────────────────────────────────────────────
 
-    /** Builds capability flags from instance permission config. */
-    private async instanceCapabilities(): Promise<string[]> {
-        const caps: string[] = [];
-        if (await this.config.get<boolean>('instance.registration')) caps.push('allow_user_registration');
-        if (await this.config.get<boolean>('instance.instanceCreation')) caps.push('allow_instance_creation');
-        if (await this.config.get<boolean>('instance.instanceCreationByExternal')) caps.push('allow_instance_creation_by_external');
-        if (await this.config.get<boolean>('instance.worldCreation')) caps.push('allow_world_creation');
-        if (await this.config.get<boolean>('instance.worldCreationByExternal')) caps.push('allow_world_creation_by_external');
-        if (await this.config.get<boolean>('instance.avatarCreation')) caps.push('allow_avatar_creation');
-        if (await this.config.get<boolean>('instance.avatarCreationByExternal')) caps.push('allow_avatar_creation_by_external');
-        return caps;
-    }
+  /** Parses the comma-separated 'instance.features' config value. */
+  private async instanceFeatures(): Promise<string[]> {
+    const raw = await this.config.get<string>('instance.features');
+    const configuredFeatures = raw
+      .split(',')
+      .map((feature) => feature.trim())
+      .filter(Boolean);
+    return [...new Set([...configuredFeatures, ...getAssetControllerTypes()])];
+  }
+
+  /** Builds capability flags from instance permission config. */
+  private async instanceCapabilities(): Promise<string[]> {
+    const caps: string[] = [];
+    if (await this.config.get<boolean>('instance.registration'))
+      caps.push('allow_user_registration');
+    if (await this.config.get<boolean>('instance.instanceCreation'))
+      caps.push('allow_instance_creation');
+    if (await this.config.get<boolean>('instance.instanceCreationByExternal'))
+      caps.push('allow_instance_creation_by_external');
+    if (await this.config.get<boolean>('instance.worldCreation'))
+      caps.push('allow_world_creation');
+    if (await this.config.get<boolean>('instance.worldCreationByExternal'))
+      caps.push('allow_world_creation_by_external');
+    if (await this.config.get<boolean>('instance.avatarCreation'))
+      caps.push('allow_avatar_creation');
+    if (await this.config.get<boolean>('instance.avatarCreationByExternal'))
+      caps.push('allow_avatar_creation_by_external');
+    return caps;
+  }
 }
