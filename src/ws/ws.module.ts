@@ -8,15 +8,15 @@ import { AppConfigModule } from '../config/config.module';
 import { GatewayModule } from '../gateway/gateway.module';
 
 @Module({
-    imports: [
-        AppConfigModule,
-        GatewayModule,
-        forwardRef(() => UsersModule),
-        forwardRef(() => RelayModule),
-    ],
-    providers: [WsGateway, WsService, SessionService],
-    // `WsGateway` stays available for the relay protocol (request/reply), which is not
-    // client-facing event traffic; domain services should inject `WsService` instead.
-    exports: [WsService, WsGateway],
+  imports: [
+    AppConfigModule,
+    GatewayModule,
+    forwardRef(() => UsersModule),
+    forwardRef(() => RelayModule),
+  ],
+  providers: [WsGateway, WsService, SessionService],
+  // `WsGateway` stays available for the relay protocol (request/reply), which is not
+  // client-facing event traffic; domain services should inject `WsService` instead.
+  exports: [WsService, WsGateway],
 })
-export class WsModule { }
+export class WsModule {}

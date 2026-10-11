@@ -3,7 +3,10 @@ import { EventsGateway } from './events.gateway';
 import LoggerStore from '../utils/logger';
 import { OnWebsocketEventRegister } from '../events/websocket-event.decorator';
 import { WsFrames } from '../events/websocket-frames';
-import type { WebsocketFrame, WebsocketFrames } from '../events/websocket-frames';
+import type {
+  WebsocketFrame,
+  WebsocketFrames,
+} from '../events/websocket-frames';
 import type { Socket } from 'socket.io';
 
 /**
@@ -18,34 +21,40 @@ import type { Socket } from 'socket.io';
  */
 @Injectable()
 export class EventsService implements OnModuleInit {
+  constructor(private readonly gateway: EventsGateway) {}
 
-    constructor(private readonly gateway: EventsGateway) { }
+  @OnWebsocketEventRegister(WsFrames.SERVER_LOGS)
+  @OnWebsocketEventRegister(WsFrames.ACTIVITY)
+  private _register(socket: Socket): Promise<boolean> {
+    return Promise.resolve(!!socket.data?.user?.isAdmin?.());
+  }
 
-    @OnWebsocketEventRegister(WsFrames.SERVER_LOGS)
-    @OnWebsocketEventRegister(WsFrames.ACTIVITY)
-    private _register(socket: Socket): Promise<boolean> {
-        return Promise.resolve(!!socket.data?.user?.isAdmin?.());
-    }
+  onModuleInit() {
+    // Register callback to broadcast server logs in real-time
+    LoggerStore.onLogPush((entry) => {
+      this.emit(WsFrames.SERVER_LOGS, {
+        timestamp: entry.timestamp.getTime(),
+        level: entry.level,
+        message: entry.message,
+        tag: entry.tag,
+      });
+    });
+  }
 
-    onModuleInit() {
-        // Register callback to broadcast server logs in real-time
-        LoggerStore.onLogPush((entry) => {
-            this.emit(WsFrames.SERVER_LOGS, {
-                timestamp: entry.timestamp.getTime(),
-                level: entry.level,
-                message: entry.message,
-                tag: entry.tag,
-            });
-        });
-    }
+  /** Emit a frame to all Socket.IO sockets subscribed to its room. */
+  emit<TFrame extends WebsocketFrame>(
+    name: TFrame,
+    data: WebsocketFrames[TFrame],
+  ): void {
+    this.gateway.emit(name, data);
+  }
 
-    /** Emit a frame to all Socket.IO sockets subscribed to its room. */
-    emit<TFrame extends WebsocketFrame>(name: TFrame, data: WebsocketFrames[TFrame]): void {
-        this.gateway.emit(name, data);
-    }
-
-    /** Emit a frame to every Socket.IO socket of one user. */
-    emitToUser<TFrame extends WebsocketFrame>(userId: number, name: TFrame, data: WebsocketFrames[TFrame]): void {
-        this.gateway.emitToUser(userId, name, data);
-    }
+  /** Emit a frame to every Socket.IO socket of one user. */
+  emitToUser<TFrame extends WebsocketFrame>(
+    userId: number,
+    name: TFrame,
+    data: WebsocketFrames[TFrame],
+  ): void {
+    this.gateway.emitToUser(userId, name, data);
+  }
 }

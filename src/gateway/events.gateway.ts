@@ -1,12 +1,12 @@
 import {
-    WebSocketGateway,
-    WebSocketServer,
-    SubscribeMessage,
-    MessageBody,
-    ConnectedSocket,
-    OnGatewayInit,
-    OnGatewayConnection,
-    OnGatewayDisconnect,
+  WebSocketGateway,
+  WebSocketServer,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
+  OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Logger, Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
@@ -15,140 +15,142 @@ import { UsersService } from '../users/users.service';
 import { WebsocketGuardRegistry } from '../events/websocket-guard.service';
 
 @WebSocketGateway({ cors: { origin: '*' } })
-export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class EventsGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
+  @WebSocketServer()
+  server: Server;
 
-    @WebSocketServer()
-    server: Server;
+  private readonly logger = new Logger(EventsGateway.name);
 
-    private readonly logger = new Logger(EventsGateway.name);
+  constructor(
+    private readonly sessions: SessionService,
+    private readonly guards: WebsocketGuardRegistry,
+    @Inject(forwardRef(() => UsersService))
+    private readonly users: UsersService,
+  ) {}
 
-    constructor(
-        private readonly sessions: SessionService,
-        private readonly guards: WebsocketGuardRegistry,
-        @Inject(forwardRef(() => UsersService))
-        private readonly users: UsersService,
-    ) { }
+  afterInit() {
+    this.logger.log('WebSocket gateway initialized');
+  }
 
-    afterInit() {
-        this.logger.log('WebSocket gateway initialized');
+  async handleConnection(socket: Socket) {
+    const token = this.extractToken(socket);
+    socket.data.user = null;
+    socket.data.session = null;
+
+    if (!token) return;
+
+    const session = await this.sessions.findSessionByToken(token);
+    if (!session || new Date(session.expires) < new Date()) return;
+
+    const user = await this.users.findById(session.userId);
+    if (!user) return;
+
+    socket.data.user = user;
+    socket.data.session = session;
+
+    // Join the user's personal room for targeted events
+    void socket.join(`user:${user.id}`);
+
+    socket.emit('user_connected', {
+      id: user.id,
+      username: user.username,
+      display: user.display,
+    });
+
+    this.logger.debug(`User "${user.username}" connected (${socket.id})`);
+  }
+
+  handleDisconnect(socket: Socket) {
+    const user = socket.data?.user;
+    if (user) this.logger.debug(`User "${user.username}" disconnected`);
+  }
+
+  @SubscribeMessage('ping')
+  handlePing(@MessageBody() data: { time?: number }) {
+    return { time: Date.now(), received: data?.time ?? 0 };
+  }
+
+  @SubscribeMessage('subscribe')
+  async handleSubscribe(
+    @MessageBody() data: { events: string[] },
+    @ConnectedSocket() client: Socket,
+  ) {
+    if (!Array.isArray(data?.events))
+      return { success: false, error: 'events must be an array' };
+
+    const subscribed: string[] = [];
+    const denied: string[] = [];
+
+    for (const event of data.events) {
+      if (typeof event !== 'string' || event.length === 0) continue;
+      // Access comes from the `@OnWebsocketEventRegister` guards collected by WsService.
+      if (!(await this.guards.canSubscribe(event, client))) {
+        denied.push(event);
+        continue;
+      }
+      await client.join(event);
+      subscribed.push(event);
     }
 
-    async handleConnection(socket: Socket) {
-        const token = this.extractToken(socket);
-        socket.data.user = null;
-        socket.data.session = null;
+    return { success: true, subscribed, ...(denied.length ? { denied } : {}) };
+  }
 
-        if (!token) return;
+  @SubscribeMessage('unsubscribe')
+  async handleUnsubscribe(
+    @MessageBody() data: { events: string[] },
+    @ConnectedSocket() client: Socket,
+  ) {
+    if (!Array.isArray(data?.events))
+      return { success: false, error: 'events must be an array' };
 
-        const session = await this.sessions.findSessionByToken(token);
-        if (!session || new Date(session.expires) < new Date()) return;
-
-        const user = await this.users.findById(session.userId);
-        if (!user) return;
-
-        socket.data.user = user;
-        socket.data.session = session;
-
-        // Join the user's personal room for targeted events
-        void socket.join(`user:${user.id}`);
-
-        socket.emit('user_connected', {
-            id: user.id,
-            username: user.username,
-            display: user.display,
-        });
-
-        this.logger.debug(`User "${user.username}" connected (${socket.id})`);;
+    const unsubscribed: string[] = [];
+    for (const event of data.events) {
+      if (typeof event !== 'string') continue;
+      client.leave(event);
+      unsubscribed.push(event);
     }
 
-    handleDisconnect(socket: Socket) {
-        const user = socket.data?.user;
-        if (user) this.logger.debug(`User "${user.username}" disconnected`);
+    return { success: true, unsubscribed };
+  }
+
+  /** Emit an event to all sockets subscribed to the given room. */
+  emit<T = unknown>(name: string, data: T) {
+    if (!this.server) return;
+    this.server.to(name).emit(`event:${name}`, data);
+  }
+
+  /** Emit an event to a specific user's sockets via their personal room. */
+  emitToUser<T = unknown>(userId: number, name: string, data: T) {
+    if (!this.server) return;
+    this.server.to(`user:${userId}`).emit(`event:${name}`, data);
+  }
+
+  private extractToken(socket: Socket): string | null {
+    // 1. socket.io auth object: { token: '...' }
+    const auth = socket.handshake.auth?.token;
+    if (auth && typeof auth === 'string') return auth;
+
+    // 2. Authorization header  (Bearer <token>)
+    const header = socket.handshake.headers.authorization;
+    if (header) {
+      if (header.toLowerCase().startsWith('bearer '))
+        return header.slice(7).trim();
+      return header;
     }
 
-    @SubscribeMessage('ping')
-    handlePing(@MessageBody() data: { time?: number }) {
-        return { time: Date.now(), received: data?.time ?? 0 };
+    // 3. ?auth= query param
+    const query = socket.handshake.query.auth;
+    if (query && typeof query === 'string') return query;
+
+    // 4. _uid cookie (same as _node/)
+    const cookie = socket.handshake.headers.cookie;
+    if (cookie) {
+      const match = cookie.match(/(?:^|;\s*)_uid=([^;]+)/);
+      if (match) return decodeURIComponent(match[1]);
     }
 
-    @SubscribeMessage('subscribe')
-    async handleSubscribe(
-        @MessageBody() data: { events: string[] },
-        @ConnectedSocket() client: Socket,
-    ) {
-        if (!Array.isArray(data?.events))
-            return { success: false, error: 'events must be an array' };
-
-        const subscribed: string[] = [];
-        const denied: string[] = [];
-
-        for (const event of data.events) {
-            if (typeof event !== 'string' || event.length === 0) continue;
-            // Access comes from the `@OnWebsocketEventRegister` guards collected by WsService.
-            if (!(await this.guards.canSubscribe(event, client))) {
-                denied.push(event);
-                continue;
-            }
-            await client.join(event);
-            subscribed.push(event);
-        }
-
-        return { success: true, subscribed, ...(denied.length ? { denied } : {}) };
-    }
-
-    @SubscribeMessage('unsubscribe')
-    async handleUnsubscribe(
-        @MessageBody() data: { events: string[] },
-        @ConnectedSocket() client: Socket,
-    ) {
-        if (!Array.isArray(data?.events))
-            return { success: false, error: 'events must be an array' };
-
-        const unsubscribed: string[] = [];
-        for (const event of data.events) {
-            if (typeof event !== 'string') continue;
-            client.leave(event);
-            unsubscribed.push(event);
-        }
-
-        return { success: true, unsubscribed };
-    }
-
-    /** Emit an event to all sockets subscribed to the given room. */
-    emit<T = unknown>(name: string, data: T) {
-        if (!this.server) return;
-        this.server.to(name).emit(`event:${name}`, data);
-    }
-
-    /** Emit an event to a specific user's sockets via their personal room. */
-    emitToUser<T = unknown>(userId: number, name: string, data: T) {
-        if (!this.server) return;
-        this.server.to(`user:${userId}`).emit(`event:${name}`, data);
-    }
-
-    private extractToken(socket: Socket): string | null {
-        // 1. socket.io auth object: { token: '...' }
-        const auth = socket.handshake.auth?.token;
-        if (auth && typeof auth === 'string') return auth;
-
-        // 2. Authorization header  (Bearer <token>)
-        const header = socket.handshake.headers.authorization;
-        if (header) {
-            if (header.toLowerCase().startsWith('bearer ')) return header.slice(7).trim();
-            return header;
-        }
-
-        // 3. ?auth= query param
-        const query = socket.handshake.query.auth;
-        if (query && typeof query === 'string') return query;
-
-        // 4. _uid cookie (same as _node/)
-        const cookie = socket.handshake.headers.cookie;
-        if (cookie) {
-            const match = cookie.match(/(?:^|;\s*)_uid=([^;]+)/);
-            if (match) return decodeURIComponent(match[1]);
-        }
-
-        return null;
-    }
+    return null;
+  }
 }

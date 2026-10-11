@@ -4,7 +4,10 @@ import { forwardRef, Inject, Injectable } from '@nestjs/common';
 // stays internal to the websocket layer.
 import { WsGateway } from './ws.gateway';
 import { EventsService } from '../gateway/events.service';
-import type { WebsocketFrame, WebsocketFrames } from '../events/websocket-frames';
+import type {
+  WebsocketFrame,
+  WebsocketFrames,
+} from '../events/websocket-frames';
 
 /**
  * Public façade for client-facing events.
@@ -28,50 +31,57 @@ import type { WebsocketFrame, WebsocketFrames } from '../events/websocket-frames
  */
 @Injectable()
 export class WsService {
-    constructor(
-        // The gateway is the native transport this service fans out to; it also injects WsService
-        // to send presence frames, hence the forwardRef.
-        @Inject(forwardRef(() => WsGateway))
-        private readonly gateway: WsGateway,
-        private readonly socketIo: EventsService,
-    ) { }
+  constructor(
+    // The gateway is the native transport this service fans out to; it also injects WsService
+    // to send presence frames, hence the forwardRef.
+    @Inject(forwardRef(() => WsGateway))
+    private readonly gateway: WsGateway,
+    private readonly socketIo: EventsService,
+  ) {}
 
-    /**
-     * Send a frame to every client subscribed to its room, on both transports.
-     * Clients receive: `{ type: "event", payload: { name, data } }`
-     */
-    emit<TFrame extends WebsocketFrame>(name: TFrame, data: WebsocketFrames[TFrame]): void {
-        this.gateway.emit(name, data);
-        this.socketIo.emit(name, data);
-    }
+  /**
+   * Send a frame to every client subscribed to its room, on both transports.
+   * Clients receive: `{ type: "event", payload: { name, data } }`
+   */
+  emit<TFrame extends WebsocketFrame>(
+    name: TFrame,
+    data: WebsocketFrames[TFrame],
+  ): void {
+    this.gateway.emit(name, data);
+    this.socketIo.emit(name, data);
+  }
 
-    /**
-     * Broadcast a raw frame to ALL connected clients (regardless of room).
-     *
-     * Reserved for protocol-level frames (relay requests, hello/pong): it bypasses room
-     * subscriptions, so it is never used for domain data.
-     */
-    broadcast<T = unknown>(type: string, payload: T): void {
-        this.gateway.broadcast(type, payload);
-    }
+  /**
+   * Broadcast a raw frame to ALL connected clients (regardless of room).
+   *
+   * Reserved for protocol-level frames (relay requests, hello/pong): it bypasses room
+   * subscriptions, so it is never used for domain data.
+   */
+  broadcast<T = unknown>(type: string, payload: T): void {
+    this.gateway.broadcast(type, payload);
+  }
 
-    /** Send a frame to every socket of one user, whatever their subscriptions. */
-    emitToUser<TFrame extends WebsocketFrame>(userId: number, name: TFrame, data: WebsocketFrames[TFrame]): void {
-        this.gateway.emitToUser(userId, name, data);
-        this.socketIo.emitToUser(userId, name, data);
-    }
+  /** Send a frame to every socket of one user, whatever their subscriptions. */
+  emitToUser<TFrame extends WebsocketFrame>(
+    userId: number,
+    name: TFrame,
+    data: WebsocketFrames[TFrame],
+  ): void {
+    this.gateway.emitToUser(userId, name, data);
+    this.socketIo.emitToUser(userId, name, data);
+  }
 
-    /**
-     * Check if a user has at least one active WebSocket connection.
-     */
-    isUserConnected(userId: number): boolean {
-        return this.gateway.isUserConnected(userId);
-    }
+  /**
+   * Check if a user has at least one active WebSocket connection.
+   */
+  isUserConnected(userId: number): boolean {
+    return this.gateway.isUserConnected(userId);
+  }
 
-    /**
-     * Check if a specific session has at least one active WebSocket connection.
-     */
-    isSessionConnected(sessionId: string): boolean {
-        return this.gateway.isSessionConnected(sessionId);
-    }
+  /**
+   * Check if a specific session has at least one active WebSocket connection.
+   */
+  isSessionConnected(sessionId: string): boolean {
+    return this.gateway.isSessionConnected(sessionId);
+  }
 }
