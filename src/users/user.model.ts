@@ -2,8 +2,18 @@ import { UserModel } from 'src/generated/prisma/models/User';
 import { UsersService } from './users.service';
 import { NoxIdentifier } from '../common/identifier';
 import { Tags } from '../common/tags';
-import { ApiUser as ApiUser, ApiCurrentUser, ApiUserRelations, PRESENCE_TO_API, PRESENCE_VISIBILITY } from './users.types';
-import { ensureImageSize, IMAGE_PRESETS } from '../storage/image-resize.constants';
+import {
+  ApiUser as ApiUser,
+  ApiCurrentUser,
+  ApiUserRelations,
+  PRESENCE_TO_API,
+  PRESENCE_VISIBILITY,
+  canSeeLocation,
+} from './users.types';
+import {
+  ensureImageSize,
+  IMAGE_PRESETS,
+} from '../storage/image-resize.constants';
 import type { WebFingerDocument } from '../fediverse/fediverse.types';
 import type { APActor } from '../fediverse/activitypub/activitypub.types';
 import { AP_CONTEXT } from '../fediverse/activitypub/activitypub.types';
@@ -50,7 +60,10 @@ export class User {
    * Apply updates to this user, then invalidate cache and notify connected
    * clients via WebSocket. Returns the updated UserWithMethods.
    */
-  async update(this: UserWithMethods, data: Partial<UserModel>): Promise<UserWithMethods> {
+  async update(
+    this: UserWithMethods,
+    data: Partial<UserModel>,
+  ): Promise<UserWithMethods> {
     const manager = this.manager;
     const updated = await manager.prisma.users.update({
       where: { id: this.id },
@@ -60,7 +73,9 @@ export class User {
     // Invalidate cache
     try {
       await manager.cache.del(`user:${this.id}`);
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
 
     const wrapped = User.attach(updated, manager);
 
@@ -69,14 +84,19 @@ export class User {
       const sanitized = await wrapped.sanitizeCurrent();
       manager.wsGateway.emitToUser(this.id, 'user:update', sanitized);
     } catch (err) {
-      manager.logger.warn(`Failed to emit user:update for user ${this.id}: ${(err as Error).message}`);
+      manager.logger.warn(
+        `Failed to emit user:update for user ${this.id}: ${(err as Error).message}`,
+      );
     }
 
     return wrapped;
   }
 
   // Note: `this` will be the underlying model after attach
-  async sanitize(this: UserWithMethods, viewer?: NoxIdentifier | null): Promise<ApiUser> {
+  async sanitize(
+    this: UserWithMethods,
+    viewer?: NoxIdentifier | null,
+  ): Promise<ApiUser> {
     const user = this as UserModel;
     const manager = this.manager;
     const tags = user.tags ?? [];
@@ -85,7 +105,9 @@ export class User {
       if (!val) return null;
       try {
         const file = await manager.storage.get(val);
-        return preset !== undefined ? ensureImageSize(file.url, preset) : file.url.toString();
+        return preset !== undefined
+          ? ensureImageSize(file.url, preset)
+          : file.url.toString();
       } catch {
         return null;
       }
@@ -98,29 +120,24 @@ export class User {
 
     // Determine if this viewer can see the location based on the user's current status
     const status = PRESENCE_TO_API[user.presence] ?? 'online';
-    const visibility = PRESENCE_VISIBILITY[status] ?? PRESENCE_VISIBILITY['online'];
+    const visibility =
+      PRESENCE_VISIBILITY[status] ?? PRESENCE_VISIBILITY['online'];
     const rawLocations = manager.wsGateway?.getLocationsForUser(user.id) ?? [];
-    let visibleLocation: string[] | null = null;
+    let visibleLocations: NoxIdentifier[] | null = null;
 
-    const isSelf = viewer !== null && viewer !== undefined
-      && viewer.id === String(user.id);
-    const isAuthenticated = viewer !== null && viewer !== undefined;
-    const isFriend = viewerRelations?.out === 'follow' && viewerRelations?.in === 'follow';
-    const isFollower = viewerRelations?.out === 'follow';  // viewer follows the user
-    const isFollowing = viewerRelations?.in === 'follow';  // the user follows the viewer
+    const isSelf =
+      viewer !== null && viewer !== undefined && viewer.id === String(user.id);
+    const isFriend =
+      viewerRelations?.out === 'follow' && viewerRelations?.in === 'follow';
 
-    const canSeeLocation =
-      isSelf ||
-      visibility.visible_everyone ||
-      (isAuthenticated && visibility.visible_other) ||
-      (isFriend && visibility.visible_friends) ||
-      (isFollower && visibility.visible_followers) ||
-      (isFollowing && visibility.visible_following);
+    const canSee = canSeeLocation(visibility, { isFriend });
 
-    if (canSeeLocation) {
-      // Return the list (may be empty if user is not in any instance)
-      visibleLocation = rawLocations;
-    }
+    if (canSee)
+      visibleLocations = isSelf
+        ? rawLocations
+        : manager.filterPrivateLocations(rawLocations);
+
+    const domain = await manager.wellKnown.address();
 
     return {
       id: user.id,
@@ -128,42 +145,59 @@ export class User {
       display: user.display,
       bio: user.bio ?? null,
       pronoun: user.pronoun ?? null,
-      server: await manager.wellKnown.address(),
+      server: domain,
       tags: tags,
-      thumbnail: await makePublic(user.thumbnail ?? null, IMAGE_PRESETS.USER_THUMBNAIL),
+      thumbnail: await makePublic(
+        user.thumbnail ?? null,
+        IMAGE_PRESETS.USER_THUMBNAIL,
+      ),
       banner: await makePublic(user.banner ?? null, IMAGE_PRESETS.USER_BANNER),
       links: manager.parseLinks(user.links),
       relations: viewerRelations,
       public: manager.compactPublicKey(Buffer.from(user.public)),
-      followers: !this.isHideFollowers()
-        ? await this.followers()
-        : -1,
-      following: !this.isHideFollowing()
-        ? await this.following()
-        : -1,
+      followers: !this.isHideFollowers() ? await this.followers() : -1,
+      following: !this.isHideFollowing() ? await this.following() : -1,
       presence: {
         status,
         text: user.presenceStatus ?? null,
-        locations: visibleLocation, // string[] | null
+        locations:
+          visibleLocations !== null
+            ? visibleLocations.map((i) => i.toString(domain))
+            : null,
       },
       alias: [
-        { key: 'api', value: `${await manager.wellKnown.apiBaseUrl()}users/${user.id}` },
-        { key: 'iid', value: `${user.id}@${await manager.wellKnown.address()}` },
-        { key: 'uid', value: `${user.username}@${await manager.wellKnown.address()}` },
+        {
+          key: 'api',
+          value: `${await manager.wellKnown.apiBaseUrl()}users/${user.id}`,
+        },
+        {
+          key: 'iid',
+          value: `${user.id}@${await manager.wellKnown.address()}`,
+        },
+        {
+          key: 'uid',
+          value: `${user.username}@${await manager.wellKnown.address()}`,
+        },
       ],
-      created_at: user.createdAt.getTime()
+      created_at: user.createdAt.getTime(),
     };
   }
 
   async sanitizeCurrent(this: UserWithMethods): Promise<ApiCurrentUser> {
     const user = this as UserModel;
-    var base = await this.sanitize(this.identifier());
-    const hasPasskey = (await this.manager.prisma.passkeys.count({ where: { userId: user.id } })) > 0;
+    const base = await this.sanitize(this.identifier());
+    const hasPasskey =
+      (await this.manager.prisma.passkeys.count({
+        where: { userId: user.id },
+      })) > 0;
     return {
       ...base,
       email: user.email ?? null,
-      home: user.homeRef && NoxIdentifier.parse(user.homeRef).toString(base.server),
-      avatar: user.avatarRef && NoxIdentifier.parse(user.avatarRef).toString(base.server),
+      home:
+        user.homeRef && NoxIdentifier.parse(user.homeRef).toString(base.server),
+      avatar:
+        user.avatarRef &&
+        NoxIdentifier.parse(user.avatarRef).toString(base.server),
       relations: null,
       methods: {
         email: !user.email
@@ -183,7 +217,10 @@ export class User {
 
   /** True when the user may trigger an external (remote server) fetch. */
   canExternalFetch(this: UserWithMethods): boolean {
-    return this.isAdmin() || Tags.has(this.tags, Tags.MODERATION, 'can_external_fetch');
+    return (
+      this.isAdmin() ||
+      Tags.has(this.tags, Tags.MODERATION, 'can_external_fetch')
+    );
   }
 
   isHideFollowers(this: UserWithMethods): boolean {
@@ -214,7 +251,10 @@ export class User {
     return this.manager.relations.getFollowingCount(this);
   }
 
-  async relationsWith(this: UserWithMethods, viewer: NoxIdentifier): Promise<ApiUserRelations> {
+  async relationsWith(
+    this: UserWithMethods,
+    viewer: NoxIdentifier,
+  ): Promise<ApiUserRelations> {
     return this.manager.relations.getRelationBetween(this, viewer);
   }
 
@@ -249,7 +289,9 @@ export class User {
           type: file.mimetype,
           href: file.url.toString(),
         });
-      } catch { /* omit */ }
+      } catch {
+        /* omit */
+      }
     }
 
     return {
@@ -267,16 +309,28 @@ export class User {
     if (this.thumbnail) {
       try {
         const file = await this.manager.storage.get(this.thumbnail);
-        icon = { type: 'Image', mediaType: file.mimetype, url: file.url.toString() };
-      } catch { /* omit */ }
+        icon = {
+          type: 'Image',
+          mediaType: file.mimetype,
+          url: file.url.toString(),
+        };
+      } catch {
+        /* omit */
+      }
     }
 
     let image: APActor['image'];
     if (this.banner) {
       try {
         const file = await this.manager.storage.get(this.banner);
-        image = { type: 'Image', mediaType: file.mimetype, url: file.url.toString() };
-      } catch { /* omit */ }
+        image = {
+          type: 'Image',
+          mediaType: file.mimetype,
+          url: file.url.toString(),
+        };
+      } catch {
+        /* omit */
+      }
     }
 
     // Map user links to Mastodon-compatible PropertyValue attachments

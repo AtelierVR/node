@@ -12,10 +12,14 @@ import { RelationsModule } from '../relations/relations.module';
 import { ExternalServersModule } from '../external/external-servers.module';
 import { ExternalUsersModule } from '../external/external-users.module';
 import { OptionalServerGuard, ServerGuard } from '../auth/server.guard';
-import { OptionalServerAsUserGuard, ServerAsUserGuard } from '../auth/server-as-user.guard';
+import {
+  OptionalServerAsUserGuard,
+  ServerAsUserGuard,
+} from '../auth/server-as-user.guard';
 import { ActivityModule } from '../activity/activity.module';
 import { WsModule } from '../ws/ws.module';
 import { CacheModule } from '../cache/cache.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -29,6 +33,7 @@ import { CacheModule } from '../cache/cache.module';
     forwardRef(() => ActivityModule),
     forwardRef(() => WsModule),
     CacheModule,
+    forwardRef(() => NotificationsModule),
   ],
   controllers: [UsersController],
   providers: [
@@ -40,14 +45,14 @@ import { CacheModule } from '../cache/cache.module';
     OptionalServerGuard,
     ServerGuard,
     OptionalServerAsUserGuard,
-    ServerAsUserGuard
+    ServerAsUserGuard,
   ],
   exports: [
     UsersService,
     SessionService,
     AuthUserGuard,
     OptionalAuthUserGuard,
-    AdminUserGuard
-  ]
+    AdminUserGuard,
+  ],
 })
-export class UsersModule { }
+export class UsersModule {}

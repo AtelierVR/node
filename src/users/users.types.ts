@@ -1,31 +1,27 @@
-import { $Enums } from "src/generated/prisma/client";
-import { ApiRelationType } from "src/relations/relations.types";
+import { ApiAlias } from '@/common/alias.types';
+import { $Enums } from 'src/generated/prisma/client';
+import { ApiRelationType } from 'src/relations/relations.types';
 
 export interface ApiLink {
-    label: string;
-    value: string;
-}
-
-export interface ApiAlias {
-    key: string;
-    value: string;
+  label: string;
+  value: string;
 }
 
 export interface ApiUserRelations {
-    out: ApiRelationType | null;
-    in: ApiRelationType | null;
+  out: ApiRelationType | null;
+  in: ApiRelationType | null;
 }
 
 export interface IUserPresence {
-    status: string;
-    text: string | null;
-    /**
-     * List of instance iids the user is currently in (e.g. ["42@example.com"]),
-     * or null when the viewer has no permission to see the user's locations.
-     * An empty array means the viewer can see the field but the user
-     * is not in any instance.
-     */
-    locations: string[] | null;
+  status: PresenceStatusApi;
+  text: string | null;
+  /**
+   * List of instance iids the user is currently in (e.g. ["42@example.com"]),
+   * or null when the viewer has no permission to see the user's locations.
+   * An empty array means the viewer can see the field but the user
+   * is not in any instance.
+   */
+  locations: string[] | null;
 }
 
 /**
@@ -33,71 +29,117 @@ export interface IUserPresence {
  * Mirrors the live Nox API response shape.
  */
 export interface ApiUser {
-    id: number;
-    username: string;
-    display: string;
-    bio: string | null;
-    pronoun: string | null;
-    server: string;
-    tags: string[];
-    thumbnail: string | null;
-    banner: string | null;
-    links: ApiLink[];
-    relations: ApiUserRelations | null;
-    /** Compact Ed25519 public key — base64(SPKI DER), ~60 chars */
-    public: string;
-    followers: number;
-    following: number;
-    presence: IUserPresence;
-    alias: ApiAlias[];
-    created_at: number;
+  id: number;
+  username: string;
+  display: string;
+  bio: string | null;
+  pronoun: string | null;
+  server: string;
+  tags: string[];
+  thumbnail: string | null;
+  banner: string | null;
+  links: ApiLink[];
+  relations: ApiUserRelations | null;
+  /** Compact Ed25519 public key — base64(SPKI DER), ~60 chars */
+  public: string;
+  followers: number;
+  following: number;
+  presence: IUserPresence;
+  alias: ApiAlias[];
+  created_at: number;
 }
 
 export interface ApiCurrentUser extends ApiUser {
-    email: string | null;
-    home: string | null;
-    avatar: string | null;
-    relations: null;
-    /**
-     * Authentication methods and their status, keyed by method name:
-     *   email   → "verified" | "unverified" | "disabled"  (disabled = no email set)
-     *   totp    → "enabled"  | "disabled"
-     *   passkey → "enabled"  | "disabled"
-     */
-    methods: Record<string, string>;
+  email: string | null;
+  home: string | null;
+  avatar: string | null;
+  relations: null;
+  /**
+   * Authentication methods and their status, keyed by method name:
+   *   email   → "verified" | "unverified" | "disabled"  (disabled = no email set)
+   *   totp    → "enabled"  | "disabled"
+   *   passkey → "enabled"  | "disabled"
+   */
+  methods: Record<string, string>;
 }
 
-/** Maps DB enum → API status string */
-export const PRESENCE_TO_API: Record<$Enums.PresenceStatus, string> = {
-    [$Enums.PresenceStatus.ONLINE]: 'online',
-    [$Enums.PresenceStatus.BUSY]: 'busy',
-    [$Enums.PresenceStatus.DO_NOT_DISTURB]: 'do_not_disturb',
-    [$Enums.PresenceStatus.STREAM]: 'stream',
-    [$Enums.PresenceStatus.OFFLINE]: 'offline',
-};
+/** The API presence statuses, in visibility order (least → most visible). */
+export const PRESENCE_STATUSES = [
+  'offline',
+  'dnd',
+  'stream',
+  'busy',
+  'online',
+  'event',
+  'public',
+] as const;
+
+/** Strict string union of the API presence statuses. */
+export type PresenceStatusApi = (typeof PRESENCE_STATUSES)[number];
 
 /**
- * Visibility rules for the `location` field per presence status.
+ * Maps the DB enum → the short status string exposed by the API / WebSocket.
  *
- * - `visible_everyone`  : anyone, including unauthenticated viewers
- * - `visible_other`     : any authenticated viewer (no relation required)
- * - `visible_friends`   : mutual follow (viewer follows user AND user follows viewer)
- * - `visible_followers` : viewers who follow the user
- * - `visible_following` : viewers the user follows back
+ * `DO_NOT_DISTURB` is exposed as `dnd` (the value the DTO validates and the front
+ * expects).
  */
-export interface PresenceStatusVisibility {
-    visible_everyone: boolean;
-    visible_friends: boolean;
-    visible_following: boolean;
-    visible_followers: boolean;
-    visible_other: boolean;
+export const PRESENCE_TO_API: Record<$Enums.PresenceStatus, PresenceStatusApi> =
+  {
+    [$Enums.PresenceStatus.OFFLINE]: 'offline',
+    [$Enums.PresenceStatus.DO_NOT_DISTURB]: 'dnd',
+    [$Enums.PresenceStatus.STREAM]: 'stream',
+    [$Enums.PresenceStatus.BUSY]: 'busy',
+    [$Enums.PresenceStatus.ONLINE]: 'online',
+    [$Enums.PresenceStatus.EVENT]: 'event',
+    [$Enums.PresenceStatus.PUBLIC]: 'public',
+  };
+
+/**
+ * Bit flags describing who may see a user's `presence.locations`.
+ *
+ * ```
+ * 0b00  NONE     — hidden (only the user themself)
+ * 0b01  FRIENDS  — mutual follow (viewer follows user AND user follows viewer)
+ * 0b10  EVERYONE — anyone, guests included
+ * ```
+ */
+export enum PresenceVisibility {
+  NONE = 0b00,
+  FRIENDS = 0b01,
+  EVERYONE = 0b10,
 }
 
-export const PRESENCE_VISIBILITY: Record<string, PresenceStatusVisibility> = {
-    //                         everyone  friends  following  followers  other
-    online: { visible_everyone: false, visible_friends: true, visible_following: true, visible_followers: true, visible_other: false },
-    busy: { visible_everyone: false, visible_friends: true, visible_following: false, visible_followers: false, visible_other: false },
-    do_not_disturb: { visible_everyone: false, visible_friends: false, visible_following: false, visible_followers: false, visible_other: false },
-    stream: { visible_everyone: true, visible_friends: true, visible_following: true, visible_followers: true, visible_other: true },
-    offline: { visible_everyone: false, visible_friends: false, visible_following: false, visible_followers: false, visible_other: false },
+/**
+ * Who may see `presence.locations`, per API status.
+ *
+ * - `online` → mutual-follow friends only
+ * - `event` / `public` → everyone (guests included)
+ * - `offline` / `dnd` / `stream` / `busy` → hidden
+ *
+ * A location whose identifier carries a `private` flag (`?private` or
+ * `?private=true`) is never revealed to others — only the user themself sees it.
+ */
+export const PRESENCE_VISIBILITY: Record<string, PresenceVisibility> = {
+  offline: PresenceVisibility.NONE,
+  dnd: PresenceVisibility.NONE,
+  stream: PresenceVisibility.NONE,
+  busy: PresenceVisibility.NONE,
+  online: PresenceVisibility.FRIENDS,
+  event: PresenceVisibility.EVERYONE,
+  public: PresenceVisibility.EVERYONE,
 };
+
+/** The viewer's relationship bits, used to evaluate {@link PRESENCE_VISIBILITY}. */
+export interface PresenceViewer {
+  /** Mutual follow (viewer follows the user AND the user follows the viewer). */
+  isFriend: boolean;
+}
+
+/** Whether `visibility` grants `viewer` access to the user's locations. */
+export function canSeeLocation(
+  visibility: PresenceVisibility,
+  viewer: PresenceViewer,
+): boolean {
+  if (visibility & PresenceVisibility.EVERYONE) return true;
+  return viewer.isFriend && (visibility & PresenceVisibility.FRIENDS) !== 0;
+}

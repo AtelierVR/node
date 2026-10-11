@@ -1,13 +1,53 @@
-import { Controller, Get, HttpStatus, Param, Req, UseGuards, Query, Post, Delete, Body, UseInterceptors, UploadedFile, Res } from '@nestjs/common';
+import {
+    Controller,
+    Get,
+    HttpStatus,
+    Param,
+    Req,
+    UseGuards,
+    Query,
+    Post,
+    Delete,
+    Body,
+    UseInterceptors,
+    UploadedFile,
+    Res,
+} from '@nestjs/common';
 import type { Request, Express, Response } from 'express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
-import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiWrappedSuccessResponse, ApiErrorResponse, ApiOptionalBearerAuth, ApiOptionalChallenge } from '../api/swagger';
-import { ApiCurrentUserDto, ApiUserDto, ApiRelationDto, ApiRelationListResponseDto, ApiDeviceDto, ApiSessionListItemDto, ApiSessionListResponseDto, ApiDeleteSessionResponseDto } from './dto/user-response.dto';
+import {
+    ApiTags,
+    ApiOperation,
+    ApiResponse,
+    ApiBearerAuth,
+    ApiSecurity,
+    ApiBody,
+    ApiExtraModels,
+} from '@nestjs/swagger';
+import {
+    ApiWrappedResponse,
+    ApiWrappedArrayResponse,
+    ApiWrappedSuccessResponse,
+    ApiErrorResponse,
+    ApiOptionalBearerAuth,
+    ApiOptionalChallenge,
+} from '../api/swagger';
+import {
+    ApiCurrentUserDto,
+    ApiUserDto,
+    ApiRelationDto,
+    ApiRelationListResponseDto,
+    ApiDeviceDto,
+    ApiSessionListItemDto,
+    ApiSessionListResponseDto,
+    ApiDeleteSessionResponseDto,
+} from './dto/user-response.dto';
 import { UserSearchResponseDto } from './dto/user-search-response.dto';
 import { UsersService } from './users.service';
-import { UserWithMethods } from './user.model';
 import { StorageService } from '../storage/storage.service';
-import { IMAGE_PRESETS, ensureImageSize } from '../storage/image-resize.constants';
+import {
+    IMAGE_PRESETS,
+    ensureImageSize,
+} from '../storage/image-resize.constants';
 import { RelationsService } from '../relations/relations.service';
 import { ExternalServersService } from '../external/external-servers.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -19,14 +59,34 @@ import { NoxIdentifier } from '../common/identifier';
 import { ApiErrorCode } from '../api/api-error.factory';
 import { ApiException } from 'src/api/api-exception';
 import { ApiUser } from './users.types';
-import { UserAuthenticatedRequest, AuthUserGuard, OptionalAuthUserGuard, OptionalUserAuthenticatedRequest } from '../auth/auth.guard';
+import {
+    UserAuthenticatedRequest,
+    AuthUserGuard,
+    OptionalAuthUserGuard,
+    OptionalUserAuthenticatedRequest,
+} from '../auth/auth.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { DeleteUserDto } from './dto/delete-user.dto';
-import { OptionalServerAsUserAuthenticatedRequest, OptionalServerAsUserGuard } from 'src/auth/server-as-user.guard';
+import {
+    OptionalServerAsUserAuthenticatedRequest,
+    OptionalServerAsUserGuard,
+} from 'src/auth/server-as-user.guard';
 import { OptionalAuthOrServerAsUserGuard } from 'src/auth/auth-or-server-as-user.guard';
 import { SessionService } from '../auth/session.service';
 import { WsService } from '../ws/ws.service';
 import { Session, type SessionWithMethods } from '../auth/session.model';
+import {
+    LOCATION_EXPIRATION,
+    REQUEST_EXAMPLES,
+    REQUEST_TYPES,
+    REQUEST_TYPES_LIST,
+    RequestDto,
+    RequestFollowDataDto,
+    RequestLocationInviteDataDto,
+    RequestLocationRequestDataDto,
+    RequestPingDataDto,
+} from './dto/request.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @ApiTags('Users')
 @Controller('users')
@@ -38,18 +98,22 @@ export class UsersController {
         private readonly externalServers: ExternalServersService,
         private readonly sessions: SessionService,
         private readonly ws: WsService,
+        private readonly notifications: NotificationsService,
     ) { }
 
     /**
      * GET /api/users/@me
-     * 
+     *
      * Returns the current authenticated user, based on the session cookie or bearer token.
      * Requires authentication.
-     * 
+     *
      * @param req Request, with user and session added by AuthUserGuard
      * @returns Current user data, sanitized
      */
-    @ApiOperation({ summary: 'Get current user', description: 'Return the authenticated user profile.' })
+    @ApiOperation({
+        summary: 'Get current user',
+        description: 'Return the authenticated user profile.',
+    })
     @ApiWrappedResponse(ApiCurrentUserDto)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiBearerAuth()
@@ -59,7 +123,10 @@ export class UsersController {
         return await req.user.sanitizeCurrent();
     }
 
-    @ApiOperation({ summary: 'Update current user', description: 'Update profile fields for the authenticated user.' })
+    @ApiOperation({
+        summary: 'Update current user',
+        description: 'Update profile fields for the authenticated user.',
+    })
     @ApiWrappedResponse(ApiCurrentUserDto)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
@@ -68,92 +135,168 @@ export class UsersController {
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
     @Post('@me')
-    async updateCurrent(@Req() req: Request & UserAuthenticatedRequest, @Body() body: UpdateUserDto) {
+    async updateCurrent(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @Body() body: UpdateUserDto,
+    ) {
         const updated = await this.users.updateUser(req.user.id, body);
         return await updated.sanitizeCurrent();
     }
 
-    @ApiOperation({ summary: 'Delete current user', description: 'Permanently delete the authenticated account and all its data. Requires verification (factor_code).' })
+    @ApiOperation({
+        summary: 'Delete current user',
+        description:
+            'Permanently delete the authenticated account and all its data. Requires verification (factor_code).',
+    })
     @ApiWrappedSuccessResponse(HttpStatus.OK)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
-    @ApiErrorResponse(HttpStatus.FORBIDDEN, 'The main administrator account cannot be deleted.')
-    @ApiErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, 'Verification required or invalid factor code.')
+    @ApiErrorResponse(
+        HttpStatus.FORBIDDEN,
+        'The main administrator account cannot be deleted.',
+    )
+    @ApiErrorResponse(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'Verification required or invalid factor code.',
+    )
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
     @Delete('@me')
-    async deleteCurrent(@Req() req: Request & UserAuthenticatedRequest, @Body() body: DeleteUserDto, @Res({ passthrough: true }) res: Response) {
+    async deleteCurrent(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @Body() body: DeleteUserDto,
+        @Res({ passthrough: true }) res: Response,
+    ) {
         await this.users.deleteUser(req.user.id, body.factor_code);
         res.clearCookie('_uid');
         return { success: true };
     }
 
-    @ApiOperation({ summary: 'Upload profile thumbnail', description: 'Upload an image (multipart/form-data, field: file) as the current user thumbnail.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the uploaded thumbnail URL.' })
+    @ApiOperation({
+        summary: 'Upload profile thumbnail',
+        description:
+            'Upload an image (multipart/form-data, field: file) as the current user thumbnail.',
+    })
+    @ApiResponse({
+        status: HttpStatus.FOUND,
+        description: 'Redirect to the uploaded thumbnail URL.',
+    })
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
-    @UseInterceptors(FileInterceptor('file', {
-        storage: diskStorage({
-            destination: tmpdir(),
-            filename: (_req, file, cb) => {
-                const uid = randomBytes(6).toString('hex');
-                const name = `${Date.now()}-${uid}${extname(file.originalname)}`;
-                cb(null, name);
-            },
+    @UseInterceptors(
+        FileInterceptor('file', {
+            storage: diskStorage({
+                destination: tmpdir(),
+                filename: (_req, file, cb) => {
+                    const uid = randomBytes(6).toString('hex');
+                    const name = `${Date.now()}-${uid}${extname(file.originalname)}`;
+                    cb(null, name);
+                },
+            }),
         }),
-    }))
+    )
     @Post('@me/thumbnail')
-    async uploadThumbnail(@Req() req: Request & UserAuthenticatedRequest, @UploadedFile() file: Express.Multer.File | undefined, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
+    async uploadThumbnail(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @UploadedFile() file: Express.Multer.File | undefined,
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const fn = file ? { thumbnail: [file] } : undefined;
-        const updated = await this.users.updateUser(req.user.id, {} as UpdateUserDto, fn);
+        const updated = await this.users.updateUser(
+            req.user.id,
+            {} as UpdateUserDto,
+            fn,
+        );
         const thumb = updated.thumbnail;
-        if (!thumb) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
+        if (!thumb)
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
         const fileInfo = await this.storage.get(thumb);
-        return res.redirect(302, ensureImageSize(fileInfo.url, IMAGE_PRESETS.USER_THUMBNAIL, size, unoptimized));
+        return res.redirect(
+            302,
+            ensureImageSize(
+                fileInfo.url,
+                IMAGE_PRESETS.USER_THUMBNAIL,
+                size,
+                unoptimized,
+            ),
+        );
     }
 
-    @ApiOperation({ summary: 'Upload profile banner', description: 'Upload an image (multipart/form-data, field: file) as the current user banner.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the uploaded banner URL.' })
+    @ApiOperation({
+        summary: 'Upload profile banner',
+        description:
+            'Upload an image (multipart/form-data, field: file) as the current user banner.',
+    })
+    @ApiResponse({
+        status: HttpStatus.FOUND,
+        description: 'Redirect to the uploaded banner URL.',
+    })
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
-    @UseInterceptors(FileInterceptor('file', {
-        storage: diskStorage({
-            destination: tmpdir(),
-            filename: (_req, file, cb) => {
-                const uid = randomBytes(6).toString('hex');
-                const name = `${Date.now()}-${uid}${extname(file.originalname)}`;
-                cb(null, name);
-            },
+    @UseInterceptors(
+        FileInterceptor('file', {
+            storage: diskStorage({
+                destination: tmpdir(),
+                filename: (_req, file, cb) => {
+                    const uid = randomBytes(6).toString('hex');
+                    const name = `${Date.now()}-${uid}${extname(file.originalname)}`;
+                    cb(null, name);
+                },
+            }),
         }),
-    }))
+    )
     @Post('@me/banner')
-    async uploadBanner(@Req() req: Request & UserAuthenticatedRequest, @UploadedFile() file: Express.Multer.File | undefined, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
+    async uploadBanner(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @UploadedFile() file: Express.Multer.File | undefined,
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const fn = file ? { banner: [file] } : undefined;
-        const updated = await this.users.updateUser(req.user.id, {} as UpdateUserDto, fn);
+        const updated = await this.users.updateUser(
+            req.user.id,
+            {} as UpdateUserDto,
+            fn,
+        );
         const banner = updated.banner;
         if (!banner) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Banner');
         const fileInfo = await this.storage.get(banner);
-        return res.redirect(302, ensureImageSize(fileInfo.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized));
+        return res.redirect(
+            302,
+            ensureImageSize(
+                fileInfo.url,
+                IMAGE_PRESETS.USER_BANNER,
+                size,
+                unoptimized,
+            ),
+        );
     }
 
     /**
      * GET /api/users/@admin
-     * 
-     * Returns the main admin user (id defined in config, default 1). 
+     *
+     * Returns the main admin user (id defined in config, default 1).
      * This is used by the frontend to display the instance owner in the about page.
-     * 
+     *
      * @returns Admin user data, sanitized
      */
-    @ApiOperation({ summary: 'Get admin user', description: 'Return the main admin user profile (instance owner).' })
+    @ApiOperation({
+        summary: 'Get admin user',
+        description: 'Return the main admin user profile (instance owner).',
+    })
     @ApiWrappedResponse(ApiUserDto)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @Get('@admin')
     async getAdmin() {
         const admin = await this.users.findById(await this.users.mainAdminId());
-        if (!admin) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Admin user');
+        if (!admin)
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Admin user');
         return await admin.sanitize();
     }
 
@@ -166,7 +309,10 @@ export class UsersController {
      *  - offset: page offset (default 0)
      *  - id: single id or repeated param for id list (numeric or username)
      */
-    @ApiOperation({ summary: 'Search users', description: 'Paginated full-text search for users, or fetch by IDs.' })
+    @ApiOperation({
+        summary: 'Search users',
+        description: 'Paginated full-text search for users, or fetch by IDs.',
+    })
     @ApiWrappedResponse(UserSearchResponseDto)
     @ApiOptionalBearerAuth()
     @UseGuards(OptionalAuthUserGuard)
@@ -181,25 +327,40 @@ export class UsersController {
     ) {
         if (s) {
             if (!req.user)
-                throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+                throw new ApiException(
+                    ApiErrorCode.UNAUTHORIZED,
+                    null,
+                    'Authentication required for remote fetch',
+                );
             if (!req.user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
             const server = await this.externalServers.findOrDiscover(s);
-            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${s})`);
+            if (!server)
+                throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${s})`);
             const params = new URLSearchParams();
             if (query) params.set('query', query);
             if (limit) params.set('limit', limit);
             if (offset) params.set('offset', offset);
-            if (id) (Array.isArray(id) ? id : [id]).forEach(v => params.append('id', v));
+            if (id)
+                (Array.isArray(id) ? id : [id]).forEach((v) => params.append('id', v));
             const qs = params.toString();
-            const resp = await server.fetch<any>(`/users${qs ? '?' + qs : ''}`, { user: req.user });
-            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.EXTERNAL_SERVER_ERROR, null, `Server (${s})`);
+            const resp = await server.fetch<any>(`/users${qs ? '?' + qs : ''}`, {
+                user: req.user,
+            });
+            if (resp.error || !resp.data)
+                throw new ApiException(
+                    ApiErrorCode.EXTERNAL_SERVER_ERROR,
+                    null,
+                    `Server (${s})`,
+                );
             return resp.data;
         }
 
         // validate and normalize paging
-        if (!limit || typeof limit !== 'string' || !/^\d+$/.test(limit)) limit = '10';
-        if (!offset || typeof offset !== 'string' || !/^\d+$/.test(offset)) offset = '0';
+        if (!limit || typeof limit !== 'string' || !/^\d+$/.test(limit))
+            limit = '10';
+        if (!offset || typeof offset !== 'string' || !/^\d+$/.test(offset))
+            offset = '0';
         let ilimit = parseInt(limit, 10);
         let ioffset = parseInt(offset, 10);
         if (ilimit > 100) ilimit = 100;
@@ -207,7 +368,11 @@ export class UsersController {
         if (ioffset < 0) ioffset = 0;
 
         // normalize ids
-        const idsParam: string[] | undefined = id ? (Array.isArray(id) ? id : [id]) : undefined;
+        const idsParam: string[] | undefined = id
+            ? Array.isArray(id)
+                ? id
+                : [id]
+            : undefined;
         let ids: Array<number | string> | undefined = undefined;
         if (idsParam && idsParam.length > 0) {
             ids = [];
@@ -222,7 +387,8 @@ export class UsersController {
                 }
         }
 
-        const opts = ids && ids.length > 0 ? { ids } : { query: query ?? undefined };
+        const opts =
+            ids && ids.length > 0 ? { ids } : { query: query ?? undefined };
         const results = await this.users.searchUsers(opts, ilimit, ioffset);
 
         return {
@@ -236,126 +402,281 @@ export class UsersController {
     }
 
     /** Serve current user's thumbnail (authenticated) */
-    @ApiOperation({ summary: 'Get own thumbnail', description: 'Redirect to the current user thumbnail URL.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the thumbnail URL.' })
+    @ApiOperation({
+        summary: 'Get own thumbnail',
+        description: 'Redirect to the current user thumbnail URL.',
+    })
+    @ApiResponse({
+        status: HttpStatus.FOUND,
+        description: 'Redirect to the thumbnail URL.',
+    })
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
     @Get('@me/thumbnail')
-    async serveMyThumbnail(@Req() req: Request & UserAuthenticatedRequest, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
+    async serveMyThumbnail(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const thumb = req.user.thumbnail;
-        if (!thumb) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
-        let file = await this.storage.get(thumb);
-        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_THUMBNAIL, size, unoptimized));
+        if (!thumb)
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
+        const file = await this.storage.get(thumb);
+        return res.redirect(
+            302,
+            ensureImageSize(
+                file.url,
+                IMAGE_PRESETS.USER_THUMBNAIL,
+                size,
+                unoptimized,
+            ),
+        );
     }
 
     /** Serve admin user's thumbnail (public) */
-    @ApiOperation({ summary: 'Get admin thumbnail', description: 'Redirect to the admin user thumbnail URL.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the thumbnail URL.' })
+    @ApiOperation({
+        summary: 'Get admin thumbnail',
+        description: 'Redirect to the admin user thumbnail URL.',
+    })
+    @ApiResponse({
+        status: HttpStatus.FOUND,
+        description: 'Redirect to the thumbnail URL.',
+    })
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @Get('@admin/thumbnail')
-    async serveAdminThumbnail(@Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
+    async serveAdminThumbnail(
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const admin = await this.users.findById(await this.users.mainAdminId());
-        if (!admin) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Admin user');
+        if (!admin)
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Admin user');
 
         const thumb = admin.thumbnail;
-        if (!thumb) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
-        let file = await this.storage.get(thumb);
-        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_THUMBNAIL, size, unoptimized));
+        if (!thumb)
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
+        const file = await this.storage.get(thumb);
+        return res.redirect(
+            302,
+            ensureImageSize(
+                file.url,
+                IMAGE_PRESETS.USER_THUMBNAIL,
+                size,
+                unoptimized,
+            ),
+        );
     }
 
     /** Serve a user's thumbnail file (local files) or redirect to external URL */
-    @ApiOperation({ summary: 'Get user thumbnail', description: 'Redirect to a user thumbnail URL. Fetches from remote server if the ID is not local.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the thumbnail URL.' })
+    @ApiOperation({
+        summary: 'Get user thumbnail',
+        description:
+            'Redirect to a user thumbnail URL. Fetches from remote server if the ID is not local.',
+    })
+    @ApiResponse({
+        status: HttpStatus.FOUND,
+        description: 'Redirect to the thumbnail URL.',
+    })
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.FORBIDDEN)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @ApiOptionalBearerAuth()
     @UseGuards(OptionalAuthUserGuard)
     @Get(':id/thumbnail')
-    async serveThumbnail(@Param('id') id: string, @Req() req: Request & OptionalUserAuthenticatedRequest, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
+    async serveThumbnail(
+        @Param('id') id: string,
+        @Req() req: Request & OptionalUserAuthenticatedRequest,
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const identifier = NoxIdentifier.parse(id);
         if (!identifier.isLocal(await this.users.domain())) {
-            if (!req.user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+            if (!req.user)
+                throw new ApiException(
+                    ApiErrorCode.UNAUTHORIZED,
+                    null,
+                    'Authentication required for remote fetch',
+                );
             if (!req.user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
-            const server = await this.externalServers.findOrDiscover(identifier.server!);
-            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
+            const server = await this.externalServers.findOrDiscover(
+                identifier.server!,
+            );
+            if (!server)
+                throw new ApiException(
+                    ApiErrorCode.NOT_FOUND,
+                    null,
+                    `Server (${identifier.server})`,
+                );
             const wk = await server.wellKnown();
-            return res.redirect(302, new URL(`/api/users/${identifier.toString()}/thumbnail`, wk.data.gateway.api).toString());
+            return res.redirect(
+                302,
+                new URL(
+                    `/api/users/${identifier.toString()}/thumbnail`,
+                    wk.data.gateway.api,
+                ).toString(),
+            );
         }
 
         const user = await this.users.findByIdentifier(identifier);
-        if (!user) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);
+        if (!user)
+            throw new ApiException(
+                ApiErrorCode.NOT_FOUND,
+                null,
+                `User (${identifier.toString()})`,
+            );
 
         const thumb = user.thumbnail;
-        if (!thumb) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
-        let file = await this.storage.get(thumb);
-        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_THUMBNAIL, size, unoptimized));
+        if (!thumb)
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Thumbnail');
+        const file = await this.storage.get(thumb);
+        return res.redirect(
+            302,
+            ensureImageSize(
+                file.url,
+                IMAGE_PRESETS.USER_THUMBNAIL,
+                size,
+                unoptimized,
+            ),
+        );
     }
 
-    @ApiOperation({ summary: 'Get own banner', description: 'Redirect to the current user banner URL.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the banner URL.' })
+    @ApiOperation({
+        summary: 'Get own banner',
+        description: 'Redirect to the current user banner URL.',
+    })
+    @ApiResponse({
+        status: HttpStatus.FOUND,
+        description: 'Redirect to the banner URL.',
+    })
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
     @Get('@me/banner')
-    async serveMyBanner(@Req() req: Request & UserAuthenticatedRequest, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
+    async serveMyBanner(
+        @Req() req: Request & UserAuthenticatedRequest,
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const banner = req.user.banner;
         if (!banner) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Banner');
-        let file = await this.storage.get(banner);
-        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized));
+        const file = await this.storage.get(banner);
+        return res.redirect(
+            302,
+            ensureImageSize(file.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized),
+        );
     }
 
-    @ApiOperation({ summary: 'Get admin banner', description: 'Redirect to the admin user banner URL.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the banner URL.' })
+    @ApiOperation({
+        summary: 'Get admin banner',
+        description: 'Redirect to the admin user banner URL.',
+    })
+    @ApiResponse({
+        status: HttpStatus.FOUND,
+        description: 'Redirect to the banner URL.',
+    })
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @Get('@admin/banner')
-    async serveAdminBanner(@Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
+    async serveAdminBanner(
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const admin = await this.users.findById(await this.users.mainAdminId());
-        if (!admin) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Admin user');
+        if (!admin)
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Admin user');
 
         const banner = admin.banner;
         if (!banner) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Banner');
-        let file = await this.storage.get(banner);
-        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized));
+        const file = await this.storage.get(banner);
+        return res.redirect(
+            302,
+            ensureImageSize(file.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized),
+        );
     }
 
     /** Serve a user's banner file (local files) or redirect to external URL */
-    @ApiOperation({ summary: 'Get user banner', description: 'Redirect to a user banner URL. Fetches from remote server if the ID is not local.' })
-    @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirect to the banner URL.' })
+    @ApiOperation({
+        summary: 'Get user banner',
+        description:
+            'Redirect to a user banner URL. Fetches from remote server if the ID is not local.',
+    })
+    @ApiResponse({
+        status: HttpStatus.FOUND,
+        description: 'Redirect to the banner URL.',
+    })
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.FORBIDDEN)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @ApiOptionalBearerAuth()
     @UseGuards(OptionalAuthUserGuard)
     @Get(':id/banner')
-    async serveBanner(@Param('id') id: string, @Req() req: Request & OptionalUserAuthenticatedRequest, @Res() res: Response, @Query('size') size?: string, @Query('unoptimized') unoptimized?: string) {
+    async serveBanner(
+        @Param('id') id: string,
+        @Req() req: Request & OptionalUserAuthenticatedRequest,
+        @Res() res: Response,
+        @Query('size') size?: string,
+        @Query('unoptimized') unoptimized?: string,
+    ) {
         const identifier = NoxIdentifier.parse(id);
         if (!identifier.isLocal(await this.users.domain())) {
-            if (!req.user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+            if (!req.user)
+                throw new ApiException(
+                    ApiErrorCode.UNAUTHORIZED,
+                    null,
+                    'Authentication required for remote fetch',
+                );
             if (!req.user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
-            const server = await this.externalServers.findOrDiscover(identifier.server!);
-            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
+            const server = await this.externalServers.findOrDiscover(
+                identifier.server!,
+            );
+            if (!server)
+                throw new ApiException(
+                    ApiErrorCode.NOT_FOUND,
+                    null,
+                    `Server (${identifier.server})`,
+                );
             const wk = await server.wellKnown();
-            return res.redirect(302, new URL(`/api/users/${identifier.toString()}/banner`, wk.data.gateway.api).toString());
+            return res.redirect(
+                302,
+                new URL(
+                    `/api/users/${identifier.toString()}/banner`,
+                    wk.data.gateway.api,
+                ).toString(),
+            );
         }
 
         const user = await this.users.findByIdentifier(identifier);
-        if (!user) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);
+        if (!user)
+            throw new ApiException(
+                ApiErrorCode.NOT_FOUND,
+                null,
+                `User (${identifier.toString()})`,
+            );
 
         const banner = user.banner;
         if (!banner) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Banner');
-        let file = await this.storage.get(banner);
-        return res.redirect(302, ensureImageSize(file.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized));
+        const file = await this.storage.get(banner);
+        return res.redirect(
+            302,
+            ensureImageSize(file.url, IMAGE_PRESETS.USER_BANNER, size, unoptimized),
+        );
     }
 
     // ── Relations ─────────────────────────────────────────────────────────────────
 
-    @ApiOperation({ summary: 'Get my following', description: 'Return the list of users the current user follows.' })
+    @ApiOperation({
+        summary: 'Get my following',
+        description: 'Return the list of users the current user follows.',
+    })
     @ApiWrappedArrayResponse(ApiRelationDto)
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
@@ -365,16 +686,26 @@ export class UsersController {
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
     ) {
-        const limit = Math.min(Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1), 100);
+        const limit = Math.min(
+            Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1),
+            100,
+        );
         const offset = Math.max(parseInt(rawOffset ?? '0', 10) || 0, 0);
-        const relations = await this.relations.getFollowing(req.user, limit, offset);
+        const relations = await this.relations.getFollowing(
+            req.user,
+            limit,
+            offset,
+        );
         return {
             total: await this.relations.getFollowingCount(req.user),
-            items: await Promise.all(relations.map(r => r.sanitize()))
+            items: await Promise.all(relations.map((r) => r.sanitize())),
         };
     }
 
-    @ApiOperation({ summary: 'Get my followers', description: 'Return the list of users who follow the current user.' })
+    @ApiOperation({
+        summary: 'Get my followers',
+        description: 'Return the list of users who follow the current user.',
+    })
     @ApiWrappedArrayResponse(ApiRelationDto)
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
@@ -384,7 +715,10 @@ export class UsersController {
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
     ) {
-        const limit = Math.min(Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1), 100);
+        const limit = Math.min(
+            Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1),
+            100,
+        );
         const offset = Math.max(parseInt(rawOffset ?? '0', 10) || 0, 0);
 
         const [relations, total] = await Promise.all([
@@ -394,11 +728,15 @@ export class UsersController {
 
         return {
             total,
-            items: await Promise.all(relations.map(r => r.sanitize()))
+            items: await Promise.all(relations.map((r) => r.sanitize())),
         };
     }
 
-    @ApiOperation({ summary: 'Get my friends', description: 'Return a paginated list of mutual follows (friends) for the current user.' })
+    @ApiOperation({
+        summary: 'Get my friends',
+        description:
+            'Return a paginated list of mutual follows (friends) for the current user.',
+    })
     @ApiWrappedResponse(UserSearchResponseDto)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiBearerAuth()
@@ -409,21 +747,34 @@ export class UsersController {
         @Query('limit') rawLimit?: string,
         @Query('offset') rawOffset?: string,
     ) {
-        const limit = Math.min(Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1), 100);
+        const limit = Math.min(
+            Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1),
+            100,
+        );
         const offset = Math.max(parseInt(rawOffset ?? '0', 10) || 0, 0);
-        const { total, items: rawItems } = await this.relations.getFriends(req.user, limit, offset);
+        const { total, items: rawItems } = await this.relations.getFriends(
+            req.user,
+            limit,
+            offset,
+        );
         return {
             total,
             limit,
             offset,
-            items: await Promise.all(rawItems.map(async (item) => ({
-                out: await item.out.sanitize(),
-                in: await item.in.sanitize()
-            })))
+            items: await Promise.all(
+                rawItems.map(async (item) => ({
+                    out: await item.out.sanitize(),
+                    in: await item.in.sanitize(),
+                })),
+            ),
         };
     }
 
-    @ApiOperation({ summary: 'Get user following', description: "Return the list of users that a given user follows (hidden if user set hide_following). Fetches from remote server if the ID is not local." })
+    @ApiOperation({
+        summary: 'Get user following',
+        description:
+            'Return the list of users that a given user follows (hidden if user set hide_following). Fetches from remote server if the ID is not local.',
+    })
     @ApiWrappedArrayResponse(ApiRelationDto)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.FORBIDDEN)
@@ -441,28 +792,54 @@ export class UsersController {
 
         if (!identifier.isLocal(await this.users.domain())) {
             const user = req.user;
-            if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+            if (!user)
+                throw new ApiException(
+                    ApiErrorCode.UNAUTHORIZED,
+                    null,
+                    'Authentication required for remote fetch',
+                );
             if (!user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
-            const server = await this.externalServers.findOrDiscover(identifier.server!);
-            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
+            const server = await this.externalServers.findOrDiscover(
+                identifier.server!,
+            );
+            if (!server)
+                throw new ApiException(
+                    ApiErrorCode.NOT_FOUND,
+                    null,
+                    `Server (${identifier.server})`,
+                );
             const params = new URLSearchParams();
             if (rawLimit) params.set('limit', rawLimit);
             if (rawOffset) params.set('offset', rawOffset);
             const qs = params.toString();
-            const resp = await server.fetch<ApiRelationListResponseDto>(`/users/${identifier.toString()}/following${qs ? '?' + qs : ''}`, { responseClass: ApiRelationListResponseDto, user });
-            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.EXTERNAL_SERVER_ERROR, null, `Server (${identifier.server})`);
+            const resp = await server.fetch<ApiRelationListResponseDto>(
+                `/users/${identifier.toString()}/following${qs ? '?' + qs : ''}`,
+                { responseClass: ApiRelationListResponseDto, user },
+            );
+            if (resp.error || !resp.data)
+                throw new ApiException(
+                    ApiErrorCode.EXTERNAL_SERVER_ERROR,
+                    null,
+                    `Server (${identifier.server})`,
+                );
             return resp.data;
         }
 
         const user = await this.users.findByIdentifier(identifier);
         if (!user)
-            throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);
+            throw new ApiException(
+                ApiErrorCode.NOT_FOUND,
+                null,
+                `User (${identifier.toString()})`,
+            );
 
-        if (user.isHideFollowing())
-            return { total: 0, items: [] };
+        if (user.isHideFollowing()) return { total: 0, items: [] };
 
-        const limit = Math.min(Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1), 100);
+        const limit = Math.min(
+            Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1),
+            100,
+        );
         const offset = Math.max(parseInt(rawOffset ?? '0', 10) || 0, 0);
 
         const [relations, total] = await Promise.all([
@@ -472,11 +849,15 @@ export class UsersController {
 
         return {
             total,
-            items: await Promise.all(relations.map(r => r.sanitize()))
+            items: await Promise.all(relations.map((r) => r.sanitize())),
         };
     }
 
-    @ApiOperation({ summary: 'Get user followers', description: "Return the list of users who follow a given user (hidden if user set hide_followers). Fetches from remote server if the ID is not local." })
+    @ApiOperation({
+        summary: 'Get user followers',
+        description:
+            'Return the list of users who follow a given user (hidden if user set hide_followers). Fetches from remote server if the ID is not local.',
+    })
     @ApiWrappedArrayResponse(ApiRelationDto)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.FORBIDDEN)
@@ -494,28 +875,54 @@ export class UsersController {
 
         if (!identifier.isLocal(await this.users.domain())) {
             const user = req.user;
-            if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+            if (!user)
+                throw new ApiException(
+                    ApiErrorCode.UNAUTHORIZED,
+                    null,
+                    'Authentication required for remote fetch',
+                );
             if (!user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
-            const server = await this.externalServers.findOrDiscover(identifier.server!);
-            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
+            const server = await this.externalServers.findOrDiscover(
+                identifier.server!,
+            );
+            if (!server)
+                throw new ApiException(
+                    ApiErrorCode.NOT_FOUND,
+                    null,
+                    `Server (${identifier.server})`,
+                );
             const params = new URLSearchParams();
             if (rawLimit) params.set('limit', rawLimit);
             if (rawOffset) params.set('offset', rawOffset);
             const qs = params.toString();
-            const resp = await server.fetch<ApiRelationListResponseDto>(`/users/${identifier.toString()}/followers${qs ? '?' + qs : ''}`, { responseClass: ApiRelationListResponseDto, user });
-            if (resp.error || !resp.data) throw new ApiException(ApiErrorCode.EXTERNAL_SERVER_ERROR, null, `Server (${identifier.server})`);
+            const resp = await server.fetch<ApiRelationListResponseDto>(
+                `/users/${identifier.toString()}/followers${qs ? '?' + qs : ''}`,
+                { responseClass: ApiRelationListResponseDto, user },
+            );
+            if (resp.error || !resp.data)
+                throw new ApiException(
+                    ApiErrorCode.EXTERNAL_SERVER_ERROR,
+                    null,
+                    `Server (${identifier.server})`,
+                );
             return resp.data;
         }
 
         const user = await this.users.findByIdentifier(identifier);
         if (!user)
-            throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);
+            throw new ApiException(
+                ApiErrorCode.NOT_FOUND,
+                null,
+                `User (${identifier.toString()})`,
+            );
 
-        if (user.isHideFollowers())
-            return { total: 0, items: [] };
+        if (user.isHideFollowers()) return { total: 0, items: [] };
 
-        const limit = Math.min(Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1), 100);
+        const limit = Math.min(
+            Math.max(parseInt(rawLimit ?? '50', 10) || 50, 1),
+            100,
+        );
         const offset = Math.max(parseInt(rawOffset ?? '0', 10) || 0, 0);
 
         const [relations, total] = await Promise.all([
@@ -525,15 +932,22 @@ export class UsersController {
 
         return {
             total,
-            items: await Promise.all(relations.map(r => r.sanitize()))
+            items: await Promise.all(relations.map((r) => r.sanitize())),
         };
     }
 
-    @ApiOperation({ summary: 'Follow user', description: 'Follow a user or send a follow request if the user requires approval. Fails when the target automatically refuses follow requests.' })
+    @ApiOperation({
+        summary: 'Follow user',
+        description:
+            'Follow a user or send a follow request if the user requires approval. Fails when the target automatically refuses follow requests.',
+    })
     @ApiWrappedResponse(ApiRelationDto, HttpStatus.CREATED)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
-    @ApiErrorResponse(HttpStatus.FORBIDDEN, 'This user does not accept follow requests.')
+    @ApiErrorResponse(
+        HttpStatus.FORBIDDEN,
+        'This user does not accept follow requests.',
+    )
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
@@ -547,7 +961,10 @@ export class UsersController {
         return await rel.sanitize();
     }
 
-    @ApiOperation({ summary: 'Unfollow user', description: 'Remove an existing follow or follow request.' })
+    @ApiOperation({
+        summary: 'Unfollow user',
+        description: 'Remove an existing follow or follow request.',
+    })
     @ApiWrappedSuccessResponse(HttpStatus.CREATED)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
@@ -564,7 +981,11 @@ export class UsersController {
         return { success: true };
     }
 
-    @ApiOperation({ summary: 'Unfollow user (DELETE)', description: 'Remove an existing follow or follow request (REST alias for POST :id/unfollow).' })
+    @ApiOperation({
+        summary: 'Unfollow user (DELETE)',
+        description:
+            'Remove an existing follow or follow request (REST alias for POST :id/unfollow).',
+    })
     @ApiWrappedSuccessResponse(HttpStatus.OK)
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
@@ -581,8 +1002,20 @@ export class UsersController {
         return { success: true };
     }
 
-    @ApiOperation({ summary: 'Respond to follow request', description: 'Accept or reject a pending follow request from another user.' })
+    @ApiOperation({
+        summary: 'Send a request to a user',
+        description: `Send a typed user-to-user request.\nSupported types: ${REQUEST_TYPES_LIST}.`,
+    })
+    @ApiExtraModels(
+        RequestDto,
+        RequestFollowDataDto,
+        RequestLocationRequestDataDto,
+        RequestLocationInviteDataDto,
+        RequestPingDataDto,
+    )
+    @ApiBody({ type: RequestDto, examples: REQUEST_EXAMPLES })
     @ApiWrappedResponse(ApiRelationDto, HttpStatus.CREATED)
+    @ApiWrappedSuccessResponse()
     @ApiErrorResponse(HttpStatus.BAD_REQUEST)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
@@ -592,14 +1025,52 @@ export class UsersController {
     async respondToRequest(
         @Param('id') id: string,
         @Req() req: Request & UserAuthenticatedRequest,
-        @Body('type') type: string,
+        @Body() body: RequestDto,
     ) {
-        if (type !== 'accept' && type !== 'reject')
-            throw new ApiException(ApiErrorCode.BAD_REQUEST, null, '"type" must be "accept" or "reject"');
-
         const initiator = NoxIdentifier.parse(id);
-        const rel = await this.relations.respondToRequest(req.user, initiator, type === 'accept');
-        return await rel.sanitize();
+
+        // ── follow:accept / follow:reject ─────────────────────────────────
+        if (body.type.startsWith('follow:')) {
+            const rel = await this.relations.respondToRequest(
+                req.user,
+                initiator,
+                body.type === 'follow:accept',
+            );
+            return await rel.sanitize();
+        }
+
+        // ── location:request / location:invite ────────────────────────────
+        if (body.type.startsWith('location:')) {
+            const success = await this.notifications.sendNotification({
+                type: body.type,
+                key: body.key || null,
+                data: body.data,
+                by: req.user.identifier(),
+                to: initiator,
+                expiresAt: new Date(Date.now() + LOCATION_EXPIRATION),
+            });
+            return { success };
+        }
+
+        // ── ping (transient, WebSocket-only, immediate expiry) ────────────
+        if (body.type === REQUEST_TYPES.PING) {
+            const data = body.data as RequestPingDataDto | undefined;
+            const success = await this.notifications.sendNotification({
+                type: REQUEST_TYPES.PING,
+                key: body.key || null,
+                data: { title: data?.title ?? null, label: data?.label ?? null },
+                by: req.user.identifier(),
+                to: initiator,
+                expiresAt: null,
+            });
+            return { success };
+        }
+
+        throw new ApiException(
+            ApiErrorCode.BAD_REQUEST,
+            null,
+            '"type" must be ' + Object.values(REQUEST_TYPES).map(e=>`"${e}"`).join(", "),
+        );
     }
 
     /**
@@ -613,16 +1084,20 @@ export class UsersController {
      *   /api/users/hactazia
      *   /api/users/u:42
      *   /api/users/hactazia@example.com  → remote (not yet fetched, 501)
-     * 
-     * Currently only supports local users (server matching instance domain). 
+     *
+     * Currently only supports local users (server matching instance domain).
      * Remote users return 501 Not Implemented until federation is implemented.
-     * 
+     *
      * Returns sanitized user data, or 404 if not found.
-     * 
+     *
      * @param id User identifier in Nox format (e.g. "1", "hactazia", "u:42", "hactazia@example.com")
      * @returns User data, sanitized
      */
-    @ApiOperation({ summary: 'Get user', description: 'Return a single user by NoxIdentifier. Fetches from remote server if the ID is not local.' })
+    @ApiOperation({
+        summary: 'Get user',
+        description:
+            'Return a single user by NoxIdentifier. Fetches from remote server if the ID is not local.',
+    })
     @ApiWrappedResponse(ApiUserDto)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.FORBIDDEN)
@@ -635,7 +1110,9 @@ export class UsersController {
     async getUser(
         @Param('id') id: string,
         @Query('fp') fp: string | undefined,
-        @Req() req: OptionalUserAuthenticatedRequest & OptionalServerAsUserAuthenticatedRequest,
+        @Req()
+        req: OptionalUserAuthenticatedRequest &
+            OptionalServerAsUserAuthenticatedRequest,
     ): Promise<ApiUser> {
         const identifier = NoxIdentifier.parse(id);
         console.log('h', req.headers);
@@ -644,15 +1121,34 @@ export class UsersController {
 
         if (!identifier.isLocal(await this.users.domain())) {
             const user = req.user as OptionalUserAuthenticatedRequest['user'];
-            if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required for remote fetch');
+            if (!user)
+                throw new ApiException(
+                    ApiErrorCode.UNAUTHORIZED,
+                    null,
+                    'Authentication required for remote fetch',
+                );
             if (!user.canExternalFetch())
                 throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'external fetch');
-            const server = await this.externalServers.findOrDiscover(identifier.server!);
-            if (!server) throw new ApiException(ApiErrorCode.NOT_FOUND, null, `Server (${identifier.server})`);
+            const server = await this.externalServers.findOrDiscover(
+                identifier.server!,
+            );
+            if (!server)
+                throw new ApiException(
+                    ApiErrorCode.NOT_FOUND,
+                    null,
+                    `Server (${identifier.server})`,
+                );
             const fpParam = fp ? `?fp=${encodeURIComponent(fp)}` : '';
-            const resp = await server.fetch<ApiUser>(`/users/${identifier.toString()}${fpParam}`, { responseClass: ApiUserDto, user: user });
+            const resp = await server.fetch<ApiUser>(
+                `/users/${identifier.toString()}${fpParam}`,
+                { responseClass: ApiUserDto, user: user },
+            );
             if (resp.error || !resp.data) {
-                this.users.logger.error(`Failed to fetch user ${identifier.toString()} from server ${identifier.server}:`, resp.error?.code, resp.error?.message);
+                this.users.logger.error(
+                    `Failed to fetch user ${identifier.toString()} from server ${identifier.server}:`,
+                    resp.error?.code,
+                    resp.error?.message,
+                );
                 throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${id})`);
             }
             return resp.data;
@@ -660,17 +1156,29 @@ export class UsersController {
 
         const user = await this.users.findByIdentifier(identifier);
         if (!user)
-            throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);
+            throw new ApiException(
+                ApiErrorCode.NOT_FOUND,
+                null,
+                `User (${identifier.toString()})`,
+            );
 
         if (fp) {
             const sessionCount = await this.users.prisma.sessions.count({
-                where: { userId: user.id, fingerprint: fp, expires: { gt: new Date() } },
+                where: {
+                    userId: user.id,
+                    fingerprint: fp,
+                    expires: { gt: new Date() },
+                },
             });
             if (sessionCount === 0)
-                throw new ApiException(ApiErrorCode.NOT_FOUND, null, `User (${identifier.toString()})`);
+                throw new ApiException(
+                    ApiErrorCode.NOT_FOUND,
+                    null,
+                    `User (${identifier.toString()})`,
+                );
         }
 
-        const viewer = await req.user?.identifier() ?? null;
+        const viewer = req.user?.identifier() ?? null;
         return user.sanitize(viewer);
     }
 
@@ -681,7 +1189,10 @@ export class UsersController {
         return Session.attach(s, { ws: this.ws, sessions: this.sessions });
     }
 
-    @ApiOperation({ summary: 'Get current session', description: 'Return the session used for this request.' })
+    @ApiOperation({
+        summary: 'Get current session',
+        description: 'Return the session used for this request.',
+    })
     @ApiWrappedResponse(ApiSessionListItemDto)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiBearerAuth()
@@ -692,11 +1203,16 @@ export class UsersController {
             where: { id: req.session.id },
             include: { devices: { orderBy: { lastSeen: 'desc' } } },
         });
-        if (!session) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Session');
+        if (!session)
+            throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Session');
         return this.wrapSession(session).sanitize(req.session.id);
     }
 
-    @ApiOperation({ summary: 'List current user sessions', description: 'Return the list of all sessions for the authenticated user (paginated). Optionally filter by IP.' })
+    @ApiOperation({
+        summary: 'List current user sessions',
+        description:
+            'Return the list of all sessions for the authenticated user (paginated). Optionally filter by IP.',
+    })
     @ApiWrappedResponse(ApiSessionListResponseDto)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiBearerAuth()
@@ -708,22 +1224,31 @@ export class UsersController {
         @Query('offset') rawOffset?: string,
         @Query('ip') ip?: string,
     ) {
-        const limit = Math.min(Math.max(parseInt(rawLimit ?? '10', 10) || 10, 1), 100);
+        const limit = Math.min(
+            Math.max(parseInt(rawLimit ?? '10', 10) || 10, 1),
+            100,
+        );
         const offset = Math.max(parseInt(rawOffset ?? '0', 10) || 0, 0);
 
         const { sessions: sessionList, total } = await this.sessions.listByUser(
-            req.user.id, limit, offset,
+            req.user.id,
+            limit,
+            offset,
             ip ? { ip } : undefined,
         );
 
         const sessions = await Promise.all(
-            sessionList.map(s => this.wrapSession(s).sanitize(req.session.id)),
+            sessionList.map((s) => this.wrapSession(s).sanitize(req.session.id)),
         );
 
         return { sessions, total, limit, offset };
     }
 
-    @ApiOperation({ summary: 'Delete a specific session', description: 'Delete a session by its ID. If the session is the current one, the client will be logged out.' })
+    @ApiOperation({
+        summary: 'Delete a specific session',
+        description:
+            'Delete a session by its ID. If the session is the current one, the client will be logged out.',
+    })
     @ApiWrappedResponse(ApiDeleteSessionResponseDto)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiErrorResponse(HttpStatus.NOT_FOUND)
@@ -735,7 +1260,9 @@ export class UsersController {
         @Param('id') id: string,
     ) {
         // Verify the session belongs to the current user
-        const session = await this.users.prisma.sessions.findUnique({ where: { id } });
+        const session = await this.users.prisma.sessions.findUnique({
+            where: { id },
+        });
         if (!session || session.userId !== req.user.id)
             throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'Session');
 
@@ -745,14 +1272,21 @@ export class UsersController {
         return { success: deleted, logout: isCurrent };
     }
 
-    @ApiOperation({ summary: 'Delete all sessions (except current)', description: 'Delete all sessions for the authenticated user except the current request session.' })
+    @ApiOperation({
+        summary: 'Delete all sessions (except current)',
+        description:
+            'Delete all sessions for the authenticated user except the current request session.',
+    })
     @ApiWrappedResponse(ApiDeleteSessionResponseDto)
     @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
     @ApiBearerAuth()
     @UseGuards(AuthUserGuard)
     @Delete('@me/sessions')
     async deleteAllMySessions(@Req() req: Request & UserAuthenticatedRequest) {
-        const count = await this.sessions.deleteAllByUser(req.user.id, req.session.id);
+        const count = await this.sessions.deleteAllByUser(
+            req.user.id,
+            req.session.id,
+        );
         return { success: true, logout: false };
     }
 }

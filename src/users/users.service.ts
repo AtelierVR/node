@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { generateKeyPairSync, createHash, randomBytes } from 'node:crypto';
 import { extname } from 'path';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -19,15 +25,16 @@ import { ApiErrorCode } from '../api/api-error.factory';
 import { AppConfigService } from 'src/config/config.service';
 import { StorageService } from '../storage/storage.service';
 import { RelationsService } from '../relations/relations.service';
+import { ExternalServersService } from '../external/external-servers.service';
 import { ActivityService } from '../activity/activity.service';
 import { CacheService } from '../cache/cache.service';
 import type { WsGateway } from '../ws/ws.gateway';
 import type { EmailVerificationService } from '../email/email-verification.service';
 
 export interface Ed25519KeyPair {
-    public: Buffer;
-    private: Buffer;
-    expiresAt: Date;
+  public: Buffer;
+  private: Buffer;
+  expiresAt: Date;
 }
 
 type DiskMulterFile = Express.Multer.File & { path?: string };
@@ -35,472 +42,640 @@ type DiskMulterFile = Express.Multer.File & { path?: string };
 const USER_CACHE_PREFIX = 'user:';
 const USER_CACHE_TTL = 300; // 5 minutes
 
+/** Milliseconds in a day — used for the NodeInfo activity windows. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class UsersService implements OnModuleInit {
+  public readonly logger = new Logger(UsersService.name);
 
-    public readonly logger = new Logger(UsersService.name);
+  constructor(
+    public readonly prisma: PrismaService,
+    private readonly config: AppConfigService,
+    public readonly wellKnown: WellKnownService,
+    private readonly verification: VerificationService,
+    public readonly storage: StorageService,
+    @Inject(forwardRef(() => RelationsService))
+    public readonly relations: RelationsService,
+    private readonly externalServers: ExternalServersService,
+    @Inject(forwardRef(() => ActivityService))
+    public readonly activity: ActivityService,
+    @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
+    public readonly wsGateway: WsGateway,
+    public readonly cache: CacheService,
+    @Inject(
+      forwardRef(
+        () =>
+          require('../email/email-verification.service')
+            .EmailVerificationService,
+      ),
+    )
+    private readonly emailVerification: EmailVerificationService,
+  ) {}
 
-    constructor(
-        public readonly prisma: PrismaService,
-        private readonly config: AppConfigService,
-        public readonly wellKnown: WellKnownService,
-        private readonly verification: VerificationService,
-        public readonly storage: StorageService,
-        @Inject(forwardRef(() => RelationsService))
-        public readonly relations: RelationsService,
-        @Inject(forwardRef(() => ActivityService))
-        public readonly activity: ActivityService,
-        @Inject(forwardRef(() => require('../ws/ws.gateway').WsGateway))
-        public readonly wsGateway: WsGateway,
-        public readonly cache: CacheService,
-        @Inject(forwardRef(() => require('../email/email-verification.service').EmailVerificationService))
-        private readonly emailVerification: EmailVerificationService,
-    ) { }
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.prisma.ready;
+    } catch {
+      this.logger.warn('Database unavailable — skipping admin user bootstrap');
+      return;
+    }
+    await this.ensureAdminUser();
+  }
 
-    async onModuleInit(): Promise<void> {
-        try {
-            await this.prisma.ready;
-        } catch {
-            this.logger.warn('Database unavailable — skipping admin user bootstrap');
-            return;
-        }
-        await this.ensureAdminUser();
+  async domain(): Promise<string> {
+    return await this.wellKnown.address();
+  }
+
+  /**
+   * Activity counters published in the NodeInfo document: how many accounts
+   * exist, and how many were used in the last month / half-year.
+   *
+   * A user counts as **active** when one of their sessions was used during the
+   * window: every authenticated request refreshes the `last_seen` of its device
+   * (see `DeviceService.touchDevice`), so the counters follow real usage and
+   * not just logins.
+   */
+  async usageStatistics(): Promise<{
+    total: number;
+    activeMonth: number;
+    activeHalfyear: number;
+  }> {
+    const activeSince = (days: number) => ({
+      sessions: {
+        some: {
+          devices: {
+            some: { lastSeen: { gte: new Date(Date.now() - days * DAY_MS) } },
+          },
+        },
+      },
+    });
+
+    const [total, activeMonth, activeHalfyear] = await Promise.all([
+      this.prisma.users.count(),
+      this.prisma.users.count({ where: activeSince(30) }),
+      this.prisma.users.count({ where: activeSince(180) }),
+    ]);
+
+    return { total, activeMonth, activeHalfyear };
+  }
+
+  async mainAdminId(): Promise<number> {
+    return await this.config.get<number>('admin.id');
+  }
+
+  /**
+   * Upserts the built-in admin user, matching the _node Database.whenReady() approach:
+   *
+   * - Config vars: ADMIN_ID (default 1), ADMIN_USERNAME (default 'admin'),
+   *                ADMIN_DISPLAY (default 'Admin'), ADMIN_PASSWORD (default '')
+   * - Upsert by id, not username.
+   * - Create: writes all fields including a fresh Ed25519 cert.
+   * - Update: ONLY merges the admin tag (default `sys:admin`) — does NOT overwrite
+   *           display name, password, or username.
+   * - The cert is only ever written at creation time.
+   */
+  async ensureAdminUser(): Promise<void> {
+    try {
+      const id = await this.mainAdminId();
+      const username =
+        (await this.config.get<string>('admin.username')) ?? 'admin';
+      const display =
+        (await this.config.get<string>('admin.display')) ?? 'Admin';
+      const password = (await this.config.get<string>('admin.password')) ?? '';
+
+      // Read existing tags so the admin tag is merged, not replaced.
+      const existing = await this.users.findFirst({
+        where: { id: id },
+        select: { tags: true } as Record<string, boolean>,
+      });
+      const existingTags: string[] =
+        (existing as unknown as { tags?: string[] })?.tags ?? [];
+      const mergedTags = Tags.has(existingTags, Tags.MODERATION, 'admin')
+        ? existingTags
+        : [...existingTags, Tags.build(Tags.SYSTEM, 'admin')];
+
+      // Fresh cert — only used in the create branch.
+      const kp = await this.generateKeyPair();
+      const passwordHash = await hashPassword(password);
+
+      await this.users.upsert({
+        where: { id: id },
+        create: {
+          id: id,
+          username: username,
+          display: display,
+          bio: null,
+          pronoun: null,
+          email: null,
+          emailVerified: false,
+          password: passwordHash,
+          rank: 100,
+          tags: [Tags.build(Tags.SYSTEM, 'admin')],
+          thumbnail: null,
+          banner: null,
+          links: [],
+          presence: $Enums.PresenceStatus.ONLINE,
+          presenceStatus: null,
+          public: Buffer.from(kp.public),
+          private: Buffer.from(kp.private),
+          expiresKey: kp.expiresAt,
+        },
+        update: {
+          // Merge the sys:admin tag without touching other fields.
+          tags: mergedTags,
+          // Re-sync password only when an explicit password is set in config —
+          // prevents clearing a password that was changed via the API.
+          ...(password ? { password: passwordHash } : {}),
+        },
+      });
+
+      const fp = createHash('sha255')
+        .update(kp.public)
+        .digest('hex')
+        .slice(0, 16);
+      this.logger.log(
+        existing
+          ? `Admin user updated (id=${id})`
+          : `Admin user created (id=${id}) — cert fp: ${fp}`,
+      );
+
+      this.activity
+        .create({
+          type: 'node.ready',
+          message: existing
+            ? 'Node started'
+            : 'Node started (admin user created)',
+          details: { admin_id: id },
+        })
+        .catch(() => {});
+    } catch (err) {
+      this.logger.warn(
+        `Could not ensure admin user: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  // ── Certificate helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Generates a fresh Ed25519 keypair valid for 1 year.
+   * Public key: SPKI DER  (~44 bytes → ~60 chars base64)
+   * Private key: PKCS#8 DER (~48 bytes)
+   */
+  async generateKeyPair(): Promise<Ed25519KeyPair> {
+    const expirate = await this.config.get<number>('session.expiration');
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
+      publicKeyEncoding: { type: 'spki', format: 'der' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'der' },
+    });
+    return {
+      public: Buffer.from(publicKey),
+      private: Buffer.from(privateKey),
+      expiresAt: new Date(Date.now() + expirate),
+    };
+  }
+
+  /** Compact representation: base64(SPKI DER) — ~60 chars, Ed25519 */
+  compactPublicKey(certPub: Buffer): string {
+    return certPub.toString('base64');
+  }
+
+  /**
+   * Drop the locations whose identifier carries a `private` flag (`?private`
+   * empty or `?private=true`). A private location is only ever shown to the
+   * user themself, whatever their presence status. Used by the REST sanitizer.
+   */
+  filterPrivateLocations(locations: NoxIdentifier[]): NoxIdentifier[] {
+    return locations.filter((identifier) => !identifier.hasFlag('private'));
+  }
+
+  // ── Lookup ───────────────────────────────────────────────────────────────────
+
+  async findById(id: number): Promise<UserWithMethods | null> {
+    const cacheKey = `${USER_CACHE_PREFIX}${id}`;
+
+    const cached = await this.cache.get<any>(cacheKey);
+    if (cached) return User.attach(cached, this);
+
+    const model = await this.users.findFirst({ where: { id } });
+    if (!model) return null;
+
+    await this.cache.set(cacheKey, model, USER_CACHE_TTL);
+    return User.attach(model, this);
+  }
+
+  async findByUsername(username: string): Promise<UserWithMethods | null> {
+    const model = await this.users.findFirst({
+      where: { username: username.toLowerCase() },
+    });
+    if (!model) return null;
+    return User.attach(model, this);
+  }
+
+  /** Look up a user by their (unique) email address. Case-insensitive. */
+  async findByEmail(email: string): Promise<UserWithMethods | null> {
+    const model = await this.users.findFirst({
+      where: { email: { equals: email.trim(), mode: 'insensitive' } },
+    });
+    if (!model) return null;
+    return User.attach(model, this);
+  }
+
+  /**
+   * Resolves a user from a parsed NoxIdentifier.
+   * Returns null for remote identifiers (not yet federated).
+   */
+  async findByIdentifier(
+    identifier: NoxIdentifier,
+  ): Promise<UserWithMethods | null> {
+    if (!identifier.isLocal(await this.wellKnown.address())) return null;
+    const numeric = identifier.numericId;
+    if (numeric !== null) return this.findById(numeric);
+    return this.findByUsername(identifier.id);
+  }
+
+  public parseLinks(raw: unknown): ApiLink[] {
+    if (!Array.isArray(raw)) return [];
+    return (raw as unknown[])
+      .filter(
+        (e): e is ApiLink =>
+          typeof e === 'object' && e !== null && 'value' in e,
+      )
+      .map((e: any) => ({
+        label: (e.label ?? e.key ?? '').toString(),
+        value: e.value.toString(),
+      }));
+  }
+
+  // ── Delegate shortcut ────────────────────────────────────────────────────────
+
+  private get users(): UserDelegate {
+    return this.prisma.users as UserDelegate;
+  }
+
+  /**
+   * Search users by numeric ids, usernames or free-text query.
+   * Returns a paginated list and total count.
+   */
+  async searchUsers(
+    opts: { ids?: Array<number | string>; query?: string },
+    limit = 10,
+    offset = 0,
+  ): Promise<{ users: UserWithMethods[]; total: number }> {
+    // Build where clause: support ids OR free-text query. When neither is provided
+    // we list all users (empty where => all rows), matching _node behavior.
+    const where: any = {};
+
+    if (opts.ids && opts.ids.length > 0) {
+      const numericIds = opts.ids.filter((v) => typeof v === 'number');
+      const names = opts.ids.filter((v) => typeof v === 'string');
+
+      const clauses: any[] = [];
+      if (numericIds.length > 0) clauses.push({ id: { in: numericIds } });
+      if (names.length > 0) clauses.push({ username: { in: names } });
+
+      if (clauses.length === 1) Object.assign(where, clauses[0]);
+      else where.OR = clauses;
+    } else {
+      const q = opts.query && opts.query.length > 0 ? opts.query : undefined;
+      if (q) {
+        where.OR = [
+          { username: { contains: q, mode: 'insensitive' } },
+          { display: { contains: q, mode: 'insensitive' } },
+        ];
+      } else {
+        // no filters: leave `where` empty to return all users
+      }
     }
 
-    async domain(): Promise<string> {
-        return await this.wellKnown.address();
+    const total = await this.users.count({ where });
+    const users = await this.users.findMany({
+      where,
+      take: limit,
+      skip: offset,
+      orderBy: { id: 'asc' },
+    });
+    const wrapped = users.map((u) => User.attach(u, this));
+    return { users: wrapped, total };
+  }
+
+  /** Follow-request policy encoded by a user's tags. Auto-accept by default. */
+  private static followPolicy(
+    tags: string[],
+  ): 'auto_accept' | 'manual_accept' | 'auto_reject' {
+    if (tags.includes(Tags.build(Tags.USER, 'manual_follow')))
+      return 'manual_accept';
+    if (tags.includes(Tags.build(Tags.USER, 'auto_reject_follow')))
+      return 'auto_reject';
+    return 'auto_accept';
+  }
+
+  /** Update a user by id with the provided fields. Returns wrapped updated user. */
+  async updateUser(
+    userId: number,
+    input: UpdateUserDto,
+    files?: {
+      thumbnail?: Express.Multer.File[];
+      banner?: Express.Multer.File[];
+    },
+  ): Promise<UserWithMethods> {
+    const model = await this.users.findFirst({ where: { id: userId } });
+    if (!model) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');
+
+    let sensitive = false;
+    const updates: any = {};
+
+    // Username
+    if (input.username && input.username !== model.username) {
+      const existing = await this.users.findFirst({
+        where: { username: input.username.toLowerCase() },
+      });
+      if (existing && existing.id !== model.id)
+        throw new ApiException(ApiErrorCode.CONFLICT, null, 'Username');
+      updates.username = input.username.toLowerCase();
+      sensitive = true;
     }
 
-    async mainAdminId(): Promise<number> {
-        return await this.config.get<number>('admin.id');
+    // Basic fields
+    if (input.display !== undefined)
+      updates.display = input.display ?? model.display;
+    if (input.bio !== undefined) updates.bio = input.bio ?? null;
+    if (input.pronoun !== undefined) updates.pronoun = input.pronoun ?? null;
+
+    // Links
+    if (input.links !== undefined) {
+      const normalized = Array.isArray(input.links)
+        ? input.links.map((l: any) => ({
+            label: (l.label ?? l.key ?? '').trim(),
+            value: (l.value || '').trim(),
+          }))
+        : [];
+      updates.links = normalized as JsonValue;
     }
 
-    /**
-     * Upserts the built-in admin user, matching the _node Database.whenReady() approach:
-     *
-     * - Config vars: ADMIN_ID (default 1), ADMIN_USERNAME (default 'admin'),
-     *                ADMIN_DISPLAY (default 'Admin'), ADMIN_PASSWORD (default '')
-     * - Upsert by id, not username.
-     * - Create: writes all fields including a fresh Ed25519 cert.
-     * - Update: ONLY merges the admin tag (default `sys:admin`) — does NOT overwrite
-     *           display name, password, or username.
-     * - The cert is only ever written at creation time.
-     */
-    async ensureAdminUser(): Promise<void> {
-        try {
-            const id = await this.mainAdminId();
-            const username = await this.config.get<string>('admin.username') ?? 'admin';
-            const display = await this.config.get<string>('admin.display') ?? 'Admin';
-            const password = await this.config.get<string>('admin.password') ?? '';
-
-            // Read existing tags so the admin tag is merged, not replaced.
-            const existing = await this.users.findFirst({
-                where: { id: id },
-                select: { tags: true } as Record<string, boolean>,
-            });
-            const existingTags: string[] = (existing as unknown as { tags?: string[] })?.tags ?? [];
-            const mergedTags = Tags.has(existingTags, Tags.MODERATION, 'admin')
-                ? existingTags
-                : [...existingTags, Tags.build(Tags.SYSTEM, 'admin')];
-
-            // Fresh cert — only used in the create branch.
-            const kp = await this.generateKeyPair();
-            const passwordHash = await hashPassword(password);
-
-            await this.users.upsert({
-                where: { id: id },
-                create: {
-                    id: id,
-                    username: username,
-                    display: display,
-                    bio: null,
-                    pronoun: null,
-                    email: null,
-                    emailVerified: false,
-                    password: passwordHash,
-                    rank: 100,
-                    tags: [Tags.build(Tags.SYSTEM, 'admin')],
-                    thumbnail: null,
-                    banner: null,
-                    links: [],
-                    presence: $Enums.PresenceStatus.ONLINE,
-                    presenceStatus: null,
-                    public: Buffer.from(kp.public),
-                    private: Buffer.from(kp.private),
-                    expiresKey: kp.expiresAt,
-                },
-                update: {
-                    // Merge the sys:admin tag without touching other fields.
-                    tags: mergedTags,
-                    // Re-sync password only when an explicit password is set in config —
-                    // prevents clearing a password that was changed via the API.
-                    ...(password ? { password: passwordHash } : {}),
-                },
-            });
-
-            const fp = createHash('sha256').update(kp.public).digest('hex').slice(0, 16);
-            this.logger.log(
-                existing
-                    ? `Admin user updated (id=${id})`
-                    : `Admin user created (id=${id}) — cert fp: ${fp}`,
-            );
-
-            this.activity.create({
-                type: 'node.ready',
-                message: existing
-                    ? 'Node started'
-                    : 'Node started (admin user created)',
-                details: { admin_id: id }
-            }).catch(() => { });
-        } catch (err) {
-            this.logger.warn(`Could not ensure admin user: ${(err as Error).message}`);
-        }
+    // Tags: keep only usr:* tags provided, merge non-usr from existing
+    if (input.tags !== undefined) {
+      const newUsrTags = Array.isArray(input.tags)
+        ? Tags.withPrefix([...new Set(input.tags)], Tags.USER)
+        : [];
+      const nonUsr = Tags.withoutPrefix(model.tags, Tags.USER);
+      updates.tags = [...newUsrTags, ...nonUsr];
     }
 
-    // ── Certificate helpers ──────────────────────────────────────────────────────
+    // Thumbnails / banners: if a file was uploaded, store it and set the URL;
+    // otherwise honor explicit JSON `thumbnail`/`banner` in the body (string or null).
+    if (files?.thumbnail && files.thumbnail.length > 0) {
+      const f = files.thumbnail[0] as DiskMulterFile;
+      const ok = await this.storage.store({
+        source: f.path,
+        mimetype: f.mimetype,
+      });
+      if (ok) updates.thumbnail = ok.key;
+      else
+        this.logger.warn(
+          `Failed to store uploaded thumbnail for user ${model.id}`,
+        );
+    } else if (input.thumbnail !== undefined)
+      updates.thumbnail = input.thumbnail ?? null;
 
-    /**
-     * Generates a fresh Ed25519 keypair valid for 1 year.
-     * Public key: SPKI DER  (~44 bytes → ~60 chars base64)
-     * Private key: PKCS#8 DER (~48 bytes)
-     */
-    async generateKeyPair(): Promise<Ed25519KeyPair> {
-        const expirate = await this.config.get<number>('session.expiration');
-        const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
-            publicKeyEncoding: { type: 'spki', format: 'der' },
-            privateKeyEncoding: { type: 'pkcs8', format: 'der' },
-        });
-        return {
-            public: Buffer.from(publicKey),
-            private: Buffer.from(privateKey),
-            expiresAt: new Date(Date.now() + expirate)
-        };
-    }
+    if (files?.banner && files.banner.length > 0) {
+      const f = files.banner[0] as DiskMulterFile;
+      const ok = await this.storage.store({
+        source: f.path,
+        mimetype: f.mimetype,
+      });
+      if (ok) updates.banner = ok.key;
+      else
+        this.logger.warn(
+          `Failed to store uploaded banner for user ${model.id}`,
+        );
+    } else if (input.banner !== undefined)
+      updates.banner = input.banner ?? null;
 
-    /** Compact representation: base64(SPKI DER) — ~60 chars, Ed25519 */
-    compactPublicKey(certPub: Buffer): string {
-        return certPub.toString('base64');
-    }
-
-    // ── Lookup ───────────────────────────────────────────────────────────────────
-
-    async findById(id: number): Promise<UserWithMethods | null> {
-        const cacheKey = `${USER_CACHE_PREFIX}${id}`;
-
-        const cached = await this.cache.get<any>(cacheKey);
-        if (cached) return User.attach(cached, this);
-
-        const model = await this.users.findFirst({ where: { id } });
-        if (!model) return null;
-
-        await this.cache.set(cacheKey, model, USER_CACHE_TTL);
-        return User.attach(model, this);
-    }
-
-    async findByUsername(username: string): Promise<UserWithMethods | null> {
-        const model = await this.users.findFirst({ where: { username: username.toLowerCase() } });
-        if (!model) return null;
-        return User.attach(model, this);
-    }
-
-    /** Look up a user by their (unique) email address. Case-insensitive. */
-    async findByEmail(email: string): Promise<UserWithMethods | null> {
-        const model = await this.users.findFirst({
-            where: { email: { equals: email.trim(), mode: 'insensitive' } },
-        });
-        if (!model) return null;
-        return User.attach(model, this);
-    }
-
-    /**
-     * Resolves a user from a parsed NoxIdentifier.
-     * Returns null for remote identifiers (not yet federated).
-     */
-    async findByIdentifier(identifier: NoxIdentifier): Promise<UserWithMethods | null> {
-        if (!identifier.isLocal(await this.wellKnown.address())) return null;
-        const numeric = identifier.numericId;
-        if (numeric !== null) return this.findById(numeric);
-        return this.findByUsername(identifier.id);
-    }
-
-
-    public parseLinks(raw: unknown): ApiLink[] {
-        if (!Array.isArray(raw)) return [];
-        return (raw as unknown[])
-            .filter((e): e is ApiLink => typeof e === 'object' && e !== null && 'value' in e)
-            .map((e: any) => ({ label: (e.label ?? e.key ?? '').toString(), value: e.value.toString() }));
-    }
-
-    // ── Delegate shortcut ────────────────────────────────────────────────────────
-
-    private get users(): UserDelegate {
-        return this.prisma.users as UserDelegate;
-    }
-
-    /**
-     * Search users by numeric ids, usernames or free-text query.
-     * Returns a paginated list and total count.
-     */
-    async searchUsers(
-        opts: { ids?: Array<number | string>; query?: string },
-        limit = 10,
-        offset = 0,
-    ): Promise<{ users: UserWithMethods[]; total: number }> {
-        // Build where clause: support ids OR free-text query. When neither is provided
-        // we list all users (empty where => all rows), matching _node behavior.
-        const where: any = {};
-
-        if (opts.ids && opts.ids.length > 0) {
-            const numericIds = opts.ids.filter((v) => typeof v === 'number') as number[];
-            const names = opts.ids.filter((v) => typeof v === 'string') as string[];
-
-            const clauses: any[] = [];
-            if (numericIds.length > 0) clauses.push({ id: { in: numericIds } });
-            if (names.length > 0) clauses.push({ username: { in: names } });
-
-            if (clauses.length === 1) Object.assign(where, clauses[0]);
-            else where.OR = clauses;
+    // Home identifier
+    if (input.home !== undefined)
+      if (input.home === null) updates.homeRef = null;
+      else if (typeof input.home === 'string' && input.home.length > 0) {
+        const ni = NoxIdentifier.parse(input.home);
+        if (ni.type && ni.type !== 'w')
+          throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'home');
+        let homeStr: string;
+        if (ni.isLocal(await this.wellKnown.address())) {
+          const clean = new NoxIdentifier(null, ni.id, undefined, ni.query);
+          homeStr = clean.toString();
         } else {
-            const q = opts.query && opts.query.length > 0 ? opts.query : undefined;
-            if (q) {
-                where.OR = [
-                    { username: { contains: q, mode: 'insensitive' } },
-                    { display: { contains: q, mode: 'insensitive' } },
-                ];
-            } else {
-                // no filters: leave `where` empty to return all users
-            }
+          homeStr = ni.toString();
         }
+        updates.homeRef = homeStr;
+      }
 
-        const total = await this.users.count({ where });
-        const users = await this.users.findMany({ where, take: limit, skip: offset, orderBy: { id: 'asc' } });
-        const wrapped = users.map(u => User.attach(u, this));
-        return { users: wrapped, total };
+    // Avatar identifier
+    if (input.avatar !== undefined)
+      if (input.avatar === null) updates.avatarRef = null;
+      else if (typeof input.avatar === 'string' && input.avatar.length > 0) {
+        const ni = NoxIdentifier.parse(input.avatar);
+        let avatarStr: string;
+        if (ni.isLocal(await this.wellKnown.address())) {
+          const clean = new NoxIdentifier(null, ni.id, undefined, ni.query);
+          avatarStr = clean.toString();
+        } else avatarStr = ni.toString();
+        updates.avatarRef = avatarStr;
+      }
+
+    // Presence
+    if (input.presence !== undefined) {
+      const map: Record<string, $Enums.PresenceStatus> = {
+        offline: $Enums.PresenceStatus.OFFLINE,
+        dnd: $Enums.PresenceStatus.DO_NOT_DISTURB,
+        stream: $Enums.PresenceStatus.STREAM,
+        busy: $Enums.PresenceStatus.BUSY,
+        online: $Enums.PresenceStatus.ONLINE,
+        event: $Enums.PresenceStatus.EVENT,
+        public: $Enums.PresenceStatus.PUBLIC,
+      };
+      const p = map[input.presence];
+      if (!p)
+        throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'presence');
+      updates.presence = p as any;
     }
 
-    /** Follow-request policy encoded by a user's tags. */
-    private static followPolicy(tags: string[]): 'auto_accept' | 'manual_accept' | 'auto_reject' {
-        if (tags.includes(Tags.build(Tags.USER, 'manual_follow'))) return 'manual_accept';
-        if (tags.includes(Tags.build(Tags.USER, 'auto_reject_follow'))) return 'auto_reject';
-        return 'auto_accept';
+    if (input.presence_status !== undefined)
+      updates.presenceStatus = input.presence_status?.trim() || null;
+
+    // Password change
+    if (input.password !== undefined) {
+      if (!input.current_password)
+        throw new ApiException(
+          ApiErrorCode.VALIDATION_ERROR,
+          {
+            field: 'current_password',
+            message: 'Current password is required to change password',
+          },
+          'Current password is required to change password',
+        );
+      if (
+        !model.password ||
+        !(await verifyPassword(model.password, input.current_password))
+      )
+        throw new ApiException(
+          ApiErrorCode.VALIDATION_ERROR,
+          {
+            field: 'current_password',
+            message: 'Current password is incorrect',
+          },
+          'Current password is incorrect',
+        );
+      updates.password = await hashPassword(input.password);
+      sensitive = true;
     }
 
-    /** Update a user by id with the provided fields. Returns wrapped updated user. */
-    async updateUser(userId: number, input: UpdateUserDto, files?: { thumbnail?: Express.Multer.File[]; banner?: Express.Multer.File[] }): Promise<UserWithMethods> {
-        const model = await this.users.findFirst({ where: { id: userId } });
-        if (!model) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');
+    // If sensitive changes require verification
+    if (sensitive && (await this.verification.isVerificationRequired(model))) {
+      const wrappedModel = User.attach(model, this);
+      if (input.factor_code) {
+        const verifyResult = await this.verification.verifyFactorCode(
+          wrappedModel,
+          input.factor_code,
+        );
+        if (!verifyResult.success)
+          throw new ApiException(
+            ApiErrorCode.VALIDATION_ERROR,
+            { field: 'factor_code', message: verifyResult.message },
+            verifyResult.message,
+          );
+      } else {
+        const methods =
+          await this.verification.getAvailableVerificationMethods(wrappedModel);
+        throw new ApiException(
+          ApiErrorCode.VERIFICATION_REQUIRED,
+          { verification_required: true, methods },
+          'Verification required',
+        );
+      }
+    }
 
-        let sensitive = false;
-        const updates: any = {};
+    // Apply update via the model's own method (handles DB, cache, WebSocket)
+    const wrapped = await User.attach(model, this).update(updates);
 
-        // Username
-        if (input.username && input.username !== model.username) {
-            const existing = await this.users.findFirst({ where: { username: input.username.toLowerCase() } });
-            if (existing && existing.id !== model.id) throw new ApiException(ApiErrorCode.CONFLICT, null, 'Username');
-            updates.username = input.username.toLowerCase();
-            sensitive = true;
-        }
+    // Cleanup old files: if we changed thumbnail/banner and the previous value
+    // was a local provider URL (file://...), delete the old file.
+    try {
+      if (updates.thumbnail !== undefined) {
+        const oldThumb = model.thumbnail;
+        const newThumb = updates.thumbnail ?? null;
+        if (oldThumb && oldThumb !== newThumb)
+          await this.storage.delete(oldThumb);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete old thumbnail for user ${model.id}: ${(err as Error).message}`,
+      );
+    }
 
-        // Basic fields
-        if (input.display !== undefined) updates.display = input.display ?? model.display;
-        if (input.bio !== undefined) updates.bio = input.bio ?? null;
-        if (input.pronoun !== undefined) updates.pronoun = input.pronoun ?? null;
+    try {
+      if (updates.banner !== undefined) {
+        const oldBanner = model.banner;
+        const newBanner = updates.banner ?? null;
+        if (oldBanner && oldBanner !== newBanner)
+          await this.storage.delete(oldBanner);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete old banner for user ${model.id}: ${(err as Error).message}`,
+      );
+    }
 
-        // Links
-        if (input.links !== undefined) {
-            const normalized = Array.isArray(input.links)
-                ? input.links.map((l: any) => ({ label: (l.label ?? l.key ?? '').trim(), value: (l.value || '').trim() }))
-                : [];
-            updates.links = normalized as JsonValue;
-        }
-
-        // Tags: keep only usr:* tags provided, merge non-usr from existing
-        if (input.tags !== undefined) {
-            const newUsrTags = Array.isArray(input.tags)
-                ? Tags.withPrefix([...new Set(input.tags)], Tags.USER)
-                : [];
-            const nonUsr = Tags.withoutPrefix(model.tags, Tags.USER);
-            updates.tags = [...newUsrTags, ...nonUsr];
-        }
-
-        // Thumbnails / banners: if a file was uploaded, store it and set the URL;
-        // otherwise honor explicit JSON `thumbnail`/`banner` in the body (string or null).
-        if (files?.thumbnail && files.thumbnail.length > 0) {
-            const f = files.thumbnail[0] as DiskMulterFile;
-            const ok = await this.storage.store({ source: f.path!, mimetype: f.mimetype });
-            if (ok) updates.thumbnail = ok.key;
-            else this.logger.warn(`Failed to store uploaded thumbnail for user ${model.id}`);
-        } else if (input.thumbnail !== undefined)
-            updates.thumbnail = input.thumbnail ?? null;
-
-        if (files?.banner && files.banner.length > 0) {
-            const f = files.banner[0] as DiskMulterFile;
-            const ok = await this.storage.store({ source: f.path!, mimetype: f.mimetype });
-            if (ok) updates.banner = ok.key;
-            else this.logger.warn(`Failed to store uploaded banner for user ${model.id}`);
-        } else if (input.banner !== undefined)
-            updates.banner = input.banner ?? null;
-
-        // Home identifier
-        if (input.home !== undefined)
-            if (input.home === null) updates.homeRef = null;
-            else if (typeof input.home === 'string' && input.home.length > 0) {
-                const ni = NoxIdentifier.parse(input.home);
-                if (ni.type && ni.type !== 'w') 
-                    throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'home');
-                let homeStr: string;
-                if (ni.isLocal(await this.wellKnown.address())) {
-                    const clean = new NoxIdentifier(null, ni.id, undefined, ni.query);
-                    homeStr = clean.toString();
-                } else {
-                    homeStr = ni.toString();
-                }
-                updates.homeRef = homeStr;
-            }
-
-        // Avatar identifier
-        if (input.avatar !== undefined)
-            if (input.avatar === null) updates.avatarRef = null;
-            else if (typeof input.avatar === 'string' && input.avatar.length > 0) {
-                const ni = NoxIdentifier.parse(input.avatar);
-                let avatarStr: string;
-                if (ni.isLocal(await this.wellKnown.address())) {
-                    const clean = new NoxIdentifier(null, ni.id, undefined, ni.query);
-                    avatarStr = clean.toString();
-                } else avatarStr = ni.toString();
-                updates.avatarRef = avatarStr;
-            }
-
-        // Presence
-        if (input.presence !== undefined) {
-            const map: Record<string, $Enums.PresenceStatus> = {
-                online: $Enums.PresenceStatus.ONLINE,
-                busy: $Enums.PresenceStatus.BUSY,
-                do_not_disturb: $Enums.PresenceStatus.DO_NOT_DISTURB,
-                stream: $Enums.PresenceStatus.STREAM,
-                offline: $Enums.PresenceStatus.OFFLINE,
-            } as any;
-            const p = map[input.presence];
-            if (!p) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'presence');
-            updates.presence = p as any;
-        }
-
-        if (input.presence_status !== undefined)
-            updates.presenceStatus = (input.presence_status?.trim() || null);
-
-        // Password change
-        if (input.password !== undefined) {
-            if (!input.current_password) throw new ApiException(ApiErrorCode.VALIDATION_ERROR, { field: 'current_password', message: 'Current password is required to change password' }, 'Current password is required to change password');
-            if (!model.password || !(await verifyPassword(model.password, input.current_password)))
-                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, { field: 'current_password', message: 'Current password is incorrect' }, 'Current password is incorrect');
-            updates.password = await hashPassword(input.password);
-            sensitive = true;
-        }
-            
-        // If sensitive changes require verification
-        if (sensitive && await this.verification.isVerificationRequired(model)) {
-            const wrappedModel = User.attach(model, this);
-            if (input.factor_code) {
-                const verifyResult = await this.verification.verifyFactorCode(wrappedModel, input.factor_code);
-                if (!verifyResult.success)
-                    throw new ApiException(ApiErrorCode.VALIDATION_ERROR, { field: 'factor_code', message: verifyResult.message }, verifyResult.message);
-            } else {
-                const methods = await this.verification.getAvailableVerificationMethods(wrappedModel);
-                throw new ApiException(ApiErrorCode.VERIFICATION_REQUIRED, { verification_required: true, methods }, 'Verification required');
-            }
-        }
-
-        // Apply update via the model's own method (handles DB, cache, WebSocket)
-        const wrapped = await User.attach(model, this).update(updates);
-
-        // Cleanup old files: if we changed thumbnail/banner and the previous value
-        // was a local provider URL (file://...), delete the old file.
+    // Follow policy: switching to auto-accept / auto-refuse also resolves the
+    // pending follow requests (best-effort).
+    if (updates.tags !== undefined) {
+      const policy = UsersService.followPolicy(updates.tags as string[]);
+      if (policy !== 'manual_accept')
         try {
-            if (updates.thumbnail !== undefined) {
-                const oldThumb = model.thumbnail;
-                const newThumb = updates.thumbnail ?? null;
-                if (oldThumb && oldThumb !== newThumb)
-                    await this.storage.delete(oldThumb);
-            }
+          const resolved = await this.relations.applyFollowPolicy(
+            wrapped,
+            policy === 'auto_accept' ? 'accept' : 'refuse',
+          );
+          if (resolved > 0)
+            this.logger.log(
+              `Follow policy "${policy}": resolved ${resolved} pending request(s) for user ${model.id}`,
+            );
         } catch (err) {
-            this.logger.warn(`Failed to delete old thumbnail for user ${model.id}: ${(err as Error).message}`);
+          this.logger.warn(
+            `Failed to apply follow policy for user ${model.id}: ${(err as Error).message}`,
+          );
         }
-
-        try {
-            if (updates.banner !== undefined) {
-                const oldBanner = model.banner;
-                const newBanner = updates.banner ?? null;
-                if (oldBanner && oldBanner !== newBanner)
-                    await this.storage.delete(oldBanner);
-            }
-        } catch (err) {
-            this.logger.warn(`Failed to delete old banner for user ${model.id}: ${(err as Error).message}`);
-        }
-
-        // Follow policy: switching to auto-accept / auto-refuse also resolves the
-        // pending follow requests (best-effort).
-        if (updates.tags !== undefined) {
-            const policy = UsersService.followPolicy(updates.tags as string[]);
-            if (policy !== 'manual_accept')
-                try {
-                    const resolved = await this.relations.applyFollowPolicy(
-                        wrapped,
-                        policy === 'auto_accept' ? 'accept' : 'refuse',
-                    );
-                    if (resolved > 0)
-                        this.logger.log(`Follow policy "${policy}": resolved ${resolved} pending request(s) for user ${model.id}`);
-                } catch (err) {
-                    this.logger.warn(`Failed to apply follow policy for user ${model.id}: ${(err as Error).message}`);
-                }
-        }
-
-        return wrapped;
     }
 
-    /**
-     * Permanently delete a user account and everything attached to it.
-     *
-     * Irreversible, so a `factor_code` is required: the caller must first answer the
-     * `VERIFICATION_REQUIRED` handshake (unless the account has no method at all).
-     * Related rows (sessions, verifications, passkeys, user tables, devices) are
-     * removed by DB cascades; relations (string refs) and stored profile images are
-     * cleaned up here.
-     */
-    async deleteUser(userId: number, factorCode?: string): Promise<void> {
-        const model = await this.users.findFirst({ where: { id: userId } });
-        if (!model) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');
+    return wrapped;
+  }
 
-        if (userId === await this.mainAdminId())
-            throw new ApiException(ApiErrorCode.FORBIDDEN, null, 'The main administrator account cannot be deleted');
+  /**
+   * Permanently delete a user account and everything attached to it.
+   *
+   * Irreversible, so a `factor_code` is required: the caller must first answer the
+   * `VERIFICATION_REQUIRED` handshake (unless the account has no method at all).
+   * Related rows (sessions, verifications, passkeys, user tables, devices) are
+   * removed by DB cascades; relations (string refs) and stored profile images are
+   * cleaned up here.
+   */
+  async deleteUser(userId: number, factorCode?: string): Promise<void> {
+    const model = await this.users.findFirst({ where: { id: userId } });
+    if (!model) throw new ApiException(ApiErrorCode.NOT_FOUND, null, 'User');
 
-        // Require a fresh verification when the account has any method available.
-        const wrapped = User.attach(model, this);
-        if (await this.verification.isVerificationRequired(wrapped)) {
-            if (factorCode) {
-                const verifyResult = await this.verification.verifyFactorCode(wrapped, factorCode);
-                if (!verifyResult.success)
-                    throw new ApiException(ApiErrorCode.VALIDATION_ERROR, { field: 'factor_code', message: verifyResult.message }, verifyResult.message);
-            } else {
-                const methods = await this.verification.getAvailableVerificationMethods(wrapped);
-                throw new ApiException(ApiErrorCode.VERIFICATION_REQUIRED, { verification_required: true, methods }, 'Verification required');
-            }
-        }
+    if (userId === (await this.mainAdminId()))
+      throw new ApiException(
+        ApiErrorCode.FORBIDDEN,
+        null,
+        'The main administrator account cannot be deleted',
+      );
 
-        // Relations are stored by NoxIdentifier string refs (no FK) — drop both
-        // directions and notify the affected users so their lists update live.
-        await this.relations.purgeUserRelations(userId);
-
-        // Best-effort: remove stored profile images.
-        for (const ref of [model.thumbnail, model.banner]) {
-            if (!ref) continue;
-            try { await this.storage.delete(ref); } 
-            catch { /* ignore */ }
-        }
-
-        // Sessions, verifications, passkeys, user tables and devices cascade with the user.
-        await this.users.delete({ where: { id: userId } });
-
-        try { await this.cache.del(`${USER_CACHE_PREFIX}${userId}`); } 
-        catch { /* best-effort */ }
+    // Require a fresh verification when the account has any method available.
+    const wrapped = User.attach(model, this);
+    if (await this.verification.isVerificationRequired(wrapped)) {
+      if (factorCode) {
+        const verifyResult = await this.verification.verifyFactorCode(
+          wrapped,
+          factorCode,
+        );
+        if (!verifyResult.success)
+          throw new ApiException(
+            ApiErrorCode.VALIDATION_ERROR,
+            { field: 'factor_code', message: verifyResult.message },
+            verifyResult.message,
+          );
+      } else {
+        const methods =
+          await this.verification.getAvailableVerificationMethods(wrapped);
+        throw new ApiException(
+          ApiErrorCode.VERIFICATION_REQUIRED,
+          { verification_required: true, methods },
+          'Verification required',
+        );
+      }
     }
+
+    // Relations are stored by NoxIdentifier string refs (no FK) — drop both
+    // directions and notify the affected users so their lists update live.
+    await this.relations.purgeUserRelations(userId);
+
+    // Best-effort: remove stored profile images.
+    for (const ref of [model.thumbnail, model.banner]) {
+      if (!ref) continue;
+      try {
+        await this.storage.delete(ref);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Sessions, verifications, passkeys, user tables and devices cascade with the user.
+    await this.users.delete({ where: { id: userId } });
+
+    try {
+      await this.cache.del(`${USER_CACHE_PREFIX}${userId}`);
+    } catch {
+      /* best-effort */
+    }
+  }
 }
