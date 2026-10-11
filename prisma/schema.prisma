@@ -31,7 +31,7 @@ model Device {
   sessionId String   @map("session_id")
   session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   ip        String
-  userAgent String   @map("user_agent")
+  userAgent String?  @map("user_agent")
   lastSeen  DateTime @default(now()) @map("last_seen")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -42,23 +42,23 @@ model Device {
 /// WebAuthn / passkey credential registered by a user.
 /// A user can have several (one per device / authenticator).
 model Passkey {
-  id     String @id @default(uuid())
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId Int    @map("user_id")
+  id           String    @id @default(uuid())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       Int       @map("user_id")
   /// base64url-encoded credential ID (unique across all users)
-  credentialId String   @unique @map("credential_id")
+  credentialId String    @unique @map("credential_id")
   /// base64url-encoded COSE public key
-  publicKey    String   @map("public_key")
+  publicKey    String    @map("public_key")
   /// Signature counter — used to detect cloned authenticators
-  counter      BigInt   @default(0)
+  counter      BigInt    @default(0)
   /// Authenticator transports (usb, nfc, ble, internal, hybrid…)
-  transports   String[] @default([])
+  transports   String[]  @default([])
   /// Resident/discoverable key — enables usernameless login
-  discoverable Boolean  @default(false) @map("discoverable")
+  discoverable Boolean   @default(false) @map("discoverable")
   /// "singleDevice" | "multiDevice"
-  deviceType   String   @default("singleDevice") @map("device_type")
+  deviceType   String    @default("singleDevice") @map("device_type")
   /// Whether the credential is synced/backed up (multi-device)
-  backedUp     Boolean  @default(false) @map("backed_up")
+  backedUp     Boolean   @default(false) @map("backed_up")
   /// Authenticator AAGUID (identifies the authenticator model)
   aaguid       String?
   /// User-provided label (e.g. "My laptop")
@@ -75,14 +75,28 @@ datasource db {
 }
 
 /// Short presence statuses exposed on user profiles.
+/// Who may see the `locations` field per status is driven by the bit flags in
+/// `PresenceVisibility` (see `src/users/users.types.ts`). Visibility ladder
+/// (least → most): offline > dnd/stream > busy > online/event > public.
 enum PresenceStatus {
-  ONLINE // green  — visible to followers
-  BUSY // orange — no location broadcast
-  DO_NOT_DISTURB // red    — DND
-  STREAM // purple — streaming
+  ONLINE // green  — location shared with relations (friends/followers/following)
+  BUSY // orange — location shared with mutual friends
+  DO_NOT_DISTURB // red    — DND, location hidden
+  STREAM // purple — streaming, location hidden (same as DND)
   OFFLINE // grey   — no location, no status
+  EVENT // yellow — online during an event, same visibility as ONLINE
+  PUBLIC // cyan   — location shared with everyone (aka join_all)
 
   @@map("presence_status")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+
+  @@map("ticket_status")
 }
 
 /// User account with Ed25519 identity certificate.
@@ -194,6 +208,26 @@ model Verification {
   @@map("verifications")
 }
 
+/// Generic notification between users (requests, invites, alerts, etc.).
+/// Persisted so the receiver can process it later (even if offline at send time).
+model Notification {
+  id           Int      @id @default(autoincrement())
+  type         String
+  key          String?
+  data         Json?
+  by           String?
+  to           String
+  expiresAt    DateTime @map("expires_at")
+  isReceived   Boolean  @default(false)
+  delivered    Boolean  @default(false)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([by])
+  @@index([to])
+  @@map("notifications")
+}
+
 model ExternalServer {
   id        Int            @id @default(autoincrement())
   rank      Float          @default(0)
@@ -223,105 +257,101 @@ model ExternalUser {
   @@map("external_users")
 }
 
-/// An avatar model hosted on the node
-model Avatar {
-  id              Int           @id @default(autoincrement())
-  /// Short unique name [a-z0-9-_.]{3,8}, used as human-readable identifier. Nullable.
-  name            String?       @unique
-  title           String
-  description     String?
-  thumbnail       String?
-  tags            String[]
-  /// NoxIdentifier of the owner user (e.g. "1@::" or "1@example.com")
-  ownerRef        String        @map("owner_ref")
-  /// NoxIdentifier list of contributor users (e.g. ["2@::", "3@example.com"])
-  contributorRefs String[]      @default([]) @map("contributor_refs")
-  /// Recommended version to download. null = auto-detect latest uploaded version.
-  release         Int?
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  assets          AvatarAsset[]
+/// Provider-independent metadata for an asset.
+/// Provider-specific runtime context is hydrated from the cache.
+model Asset {
+  /// Auto-incremented id, unique **per type**: the primary key is `(type, id)`.
+  id Int @default(autoincrement())
 
-  @@map("avatars")
+  releases AssetRelease[]
+
+  provider String
+  type     String
+
+  name        String?
+  title       String?
+  description String?
+  tags        String[] @default([])
+
+  owner       String   @map("owner_ref")
+  contributor String[] @default([]) @map("contributor_refs")
+
+  metadata Json @default("{}")
+  /// Ordered list of asset images: `[{ key?, url?, alt?, priority? }]`.
+  /// Local images reference a stored file; the file metadata (dimensions, …) is
+  /// persisted by the storage provider alongside the file itself.
+  images   Json @default("[]")
+
+  /// Preferred release id exposed by the API. `null` = auto (the latest release).
+  release Int?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@id([type, id])
+  @@unique([type, provider, name])
+  @@map("assets")
 }
 
-/// A compiled asset bundle variant for an Avatar (engine × platform × version).
-model AvatarAsset {
-  id          Int      @id @default(autoincrement())
-  /// Semantic version number (ushort 0-65535)
-  version     Int
-  /// e.g. "unity"
-  engine      String
-  /// e.g. "windows", "linux", "macos", "android", "ios", "visionos"
-  platform    String
-  /// External URL or local storage key
-  url         String?
-  /// SHA-256 hex digest of the uploaded file
-  hash        String?
-  /// File size in bytes
-  size        Int?
-  features    String[] @default([])
-  /// NoxIdentifier of the user who last uploaded the file
-  uploaderRef String?  @map("uploader_ref")
-  avatarId    Int      @map("avatar_id")
-  avatar      Avatar   @relation(fields: [avatarId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+/// A published version mirrored from an asset provider.
+model AssetRelease {
+  /// Auto-incremented id, unique **per asset**: the primary key is `(assetType, assetId, id)`.
+  id Int @default(autoincrement())
 
-  @@unique([avatarId, version, engine, platform])
-  @@map("avatar_assets")
+  assetType String      @map("asset_type")
+  assetId   Int         @map("asset_id")
+  asset     Asset       @relation(fields: [assetType, assetId], references: [type, id], onDelete: Cascade)
+  files     AssetFile[]
+
+  name      String?
+  title     String?
+  changelog String?
+  channel   AssetReleaseChannel
+
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@id([assetType, assetId, id])
+  @@unique([assetType, assetId, name])
+  @@map("asset_releases")
 }
 
-/// A virtual world hosted on the node
-model World {
-  id              Int          @id @default(autoincrement())
-  /// Short unique name [a-z0-9-_.]{3,8}, used as human-readable identifier. Nullable.
-  name            String?      @unique
-  title           String
-  description     String?
-  thumbnail       String?
-  tags            String[]
-  capacity        Int
-  /// NoxIdentifier of the owner user (e.g. "1@::" or "1@example.com")
-  ownerRef        String       @map("owner_ref")
-  /// NoxIdentifier list of contributor users (e.g. ["2@::", "3@example.com"])
-  contributorRefs String[]     @default([]) @map("contributor_refs")
-  /// Recommended version to download. null = auto-detect latest uploaded version.
-  release         Int?
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
-  assets          WorldAsset[]
+enum AssetReleaseChannel {
+  stable
+  candidate
+  nightly
 
-  @@map("worlds")
+  @@map("asset_release_channel")
 }
 
-/// A compiled asset bundle variant for a World (engine × platform × version).
-model WorldAsset {
-  id          Int      @id @default(autoincrement())
-  /// Semantic version number (ushort 0-65535)
-  version     Int
-  /// e.g. "unity"
-  engine      String
-  /// e.g. "windows", "linux", "macos", "android", "ios", "visionos"
-  platform    String
-  /// External URL or local storage key (file://{hash})
-  url         String?
-  /// SHA-256 hex digest of the uploaded file
-  hash        String?
-  /// File size in bytes
-  size        Int?
-  /// ModIdentifier references (e.g. ["1?v=1@::", "2@example.com"])
-  modRefs     String[] @default([]) @map("mod_refs")
-  features    String[] @default([])
-  /// NoxIdentifier of the user who last uploaded the file
-  uploaderRef String?  @map("uploader_ref")
-  worldId     Int      @map("world_id")
-  world       World    @relation(fields: [worldId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+/// Downloadable file advertised by a release.
+model AssetFile {
+  id Int @id @default(autoincrement())
 
-  @@unique([worldId, version, engine, platform])
-  @@map("world_assets")
+  releaseAssetType String       @map("release_asset_type")
+  releaseAssetId   Int          @map("release_asset_id")
+  releaseId        Int          @map("release_id")
+  release          AssetRelease @relation(fields: [releaseAssetType, releaseAssetId, releaseId], references: [assetType, assetId, id], onDelete: Cascade)
+
+  name   String?
+  url    String
+  size   BigInt
+  mime   String
+  /// Free-form attributes (`[{ key, value }]`), e.g. platform/engine.
+  attributes Json @default("[]")
+  hashes String[] @default([])
+
+  uploader String? @map("uploader_ref")
+
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([releaseAssetType, releaseAssetId, releaseId, name])
+  @@map("asset_files")
 }
 
 /// Server-side activity/audit log.
@@ -341,22 +371,41 @@ model ActivityEvent {
   @@map("activity_events")
 }
 
+/// Retained for compatibility with the existing tickets table and migrations.
+model Ticket {
+  id          Int          @id @default(autoincrement())
+  title       String
+  description String
+  status      TicketStatus @default(OPEN)
+  priority    String       @default("medium")
+  category    String       @default("other")
+  email       String
+  assigneeId  Int?         @map("assignee_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([email])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
 /// A relay server connected to this node to host world instances.
 model Relay {
-  id              Int             @id @default(autoincrement())
+  id         Int             @id @default(autoincrement())
   /// Human-readable label for this relay (e.g. "EU-West #1")
-  label           String?
+  label      String?
   /// Runner provider type: "docker" | "external" | "kubernetes" | "proxmox"
-  provider        String          @default("docker")
+  provider   String          @default("docker")
   /// Provider-specific resource identifier (e.g. Docker container ID)
-  providerId      String?         @map("provider_id")
+  providerId String?         @map("provider_id")
   /// Maximum number of instances this relay can host (updated at runtime by the relay binary)
-  maxLink         Int             @default(3) @map("max_link")
-  token           RelayToken?
-  tags            String[]        @default([])
-  links           RelayInstance[]
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  maxLink    Int             @default(3) @map("max_link")
+  token      RelayToken?
+  tags       String[]        @default([])
+  links      RelayInstance[]
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
 
   @@map("relays")
 }
