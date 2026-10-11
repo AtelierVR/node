@@ -408,7 +408,7 @@ export class InstancesController {
       );
     const f = file as Express.Multer.File & { path?: string };
     const stored = await this.instances.storage.store({
-      source: f.path!,
+      source: f.path,
       mimetype: f.mimetype,
     });
     const oldThumb = instance.thumbnail;
