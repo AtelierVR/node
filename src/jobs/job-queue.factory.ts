@@ -13,31 +13,33 @@ export const JOB_QUEUES = Symbol('JOB_QUEUES');
  */
 @Injectable()
 export class JobQueueFactory {
-    private readonly logger = new Logger(JobQueueFactory.name);
-    private readonly providers: Map<string, IJobQueue>;
+  private readonly logger = new Logger(JobQueueFactory.name);
+  private readonly providers: Map<string, IJobQueue>;
 
-    constructor(
-        @Inject(JOB_QUEUES) providers: IJobQueue[],
-        private readonly config: AppConfigService,
-    ) {
-        this.providers = new Map(providers.map(p => [p.name.toLowerCase(), p]));
-    }
+  constructor(
+    @Inject(JOB_QUEUES) providers: IJobQueue[],
+    private readonly config: AppConfigService,
+  ) {
+    this.providers = new Map(providers.map((p) => [p.name.toLowerCase(), p]));
+  }
 
-    /**
-     * Get the active queue provider.
-     * Controlled by queue.provider config (default: "sync").
-     */
-    async get(): Promise<IJobQueue> {
-        const name = (await this.config.get<string>('queue.provider')).toLowerCase();
-        const provider = this.providers.get(name);
-        if (provider) return provider;
+  /**
+   * Get the active queue provider.
+   * Controlled by queue.provider config (default: "sync").
+   */
+  async get(): Promise<IJobQueue> {
+    const name = (
+      await this.config.get<string>('queue.provider')
+    ).toLowerCase();
+    const provider = this.providers.get(name);
+    if (provider) return provider;
 
-        this.logger.warn(`Unknown queue provider "${name}", falling back to sync`);
-        return this.providers.get('sync')!;
-    }
+    this.logger.warn(`Unknown queue provider "${name}", falling back to sync`);
+    return this.providers.get('sync')!;
+  }
 
-    /** Return all registered provider names. */
-    availableProviders(): string[] {
-        return [...this.providers.keys()];
-    }
+  /** Return all registered provider names. */
+  availableProviders(): string[] {
+    return [...this.providers.keys()];
+  }
 }

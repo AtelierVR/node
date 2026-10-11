@@ -20,26 +20,26 @@ import { PrismaService } from '../database/prisma.service';
  *   constructor(private readonly search: SearchService) {}
  */
 @Module({
-    imports: [AppConfigModule, PrismaModule],
-    providers: [
-        PostgresSearchProvider,
-        NoopSearchProvider,
-        {
-            provide: SEARCH_PROVIDERS,
-            useFactory: (postgres: PostgresSearchProvider, noop: NoopSearchProvider) => [postgres, noop],
-            inject: [PostgresSearchProvider, NoopSearchProvider],
-        },
-        SearchFactory,
-        SearchService,
-    ],
-    exports: [SearchService],
+  imports: [AppConfigModule, PrismaModule],
+  providers: [
+    PostgresSearchProvider,
+    NoopSearchProvider,
+    {
+      provide: SEARCH_PROVIDERS,
+      useFactory: (
+        postgres: PostgresSearchProvider,
+        noop: NoopSearchProvider,
+      ) => [postgres, noop],
+      inject: [PostgresSearchProvider, NoopSearchProvider],
+    },
+    SearchFactory,
+    SearchService,
+  ],
+  exports: [SearchService],
 })
 export class SearchModule {
-    constructor(
-        postgres: PostgresSearchProvider,
-        prisma: PrismaService,
-    ) {
-        // Wire PrismaService into the Postgres provider (avoids circular deps)
-        postgres.setPrisma(prisma);
-    }
+  constructor(postgres: PostgresSearchProvider, prisma: PrismaService) {
+    // Wire PrismaService into the Postgres provider (avoids circular deps)
+    postgres.setPrisma(prisma);
+  }
 }

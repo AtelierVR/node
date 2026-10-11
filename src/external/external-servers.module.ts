@@ -5,18 +5,9 @@ import { FediverseModule } from 'src/fediverse/fediverse.module';
 import { CacheModule } from '../cache/cache.module';
 
 @Module({
-    imports: [
-        forwardRef(() => FediverseModule),
-        CacheModule
-    ],
-    controllers: [
-        ServersController
-    ],
-    providers: [
-        ExternalServersService
-    ],
-    exports: [
-        ExternalServersService
-    ],
+  imports: [forwardRef(() => FediverseModule), CacheModule],
+  controllers: [ServersController],
+  providers: [ExternalServersService],
+  exports: [ExternalServersService],
 })
-export class ExternalServersModule { }
+export class ExternalServersModule {}

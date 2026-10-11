@@ -6,9 +6,9 @@ import { UsersModule } from '../users/users.module';
 import { FediverseModule } from '../fediverse/fediverse.module';
 
 @Module({
-    imports: [forwardRef(() => UsersModule), forwardRef(() => FediverseModule)],
-    controllers: [EmailController],
-    providers: [EmailService, EmailVerificationService],
-    exports: [EmailService, EmailVerificationService],
+  imports: [forwardRef(() => UsersModule), forwardRef(() => FediverseModule)],
+  controllers: [EmailController],
+  providers: [EmailService, EmailVerificationService],
+  exports: [EmailService, EmailVerificationService],
 })
-export class EmailModule { }
+export class EmailModule {}

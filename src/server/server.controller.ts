@@ -1,14 +1,38 @@
-import { Controller, Get, Post, Req, UseGuards, Query, Body, ParseArrayPipe, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Req,
+  UseGuards,
+  Query,
+  Body,
+  ParseArrayPipe,
+  HttpStatus,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { ApiWrappedResponse, ApiWrappedArrayResponse, ApiErrorResponse } from '../api/swagger';
-import { ServerLogsResponseDto, ServerConfigEntryDto, ConfigPatchResponseDto, InstanceConfigDto } from './dto/server-api-response.dto';
+import {
+  ApiWrappedResponse,
+  ApiWrappedArrayResponse,
+  ApiErrorResponse,
+} from '../api/swagger';
+import {
+  ServerLogsResponseDto,
+  ServerConfigEntryDto,
+  ConfigPatchResponseDto,
+  InstanceConfigDto,
+} from './dto/server-api-response.dto';
 import { UserAuthenticatedRequest } from '../auth/auth.guard';
 import { AdminUserGuard } from '../auth/admin-user.guard';
 import { AppConfigService } from '../config/config.service';
 import { UsersService } from '../users/users.service';
 import Logger from '../utils/logger';
-import { CONFIG_REGISTRY, getLabel, getDescription, getIsRisky } from '../config/config.decorators';
+import {
+  CONFIG_REGISTRY,
+  getLabel,
+  getDescription,
+  getIsRisky,
+} from '../config/config.decorators';
 import { ConfigService } from '@nestjs/config';
 import { ConfigPatchItemDto } from './dto/patch-configs.dto';
 import { ALLOWED_WIDTHS } from '../storage/image-resize.constants';
@@ -22,16 +46,23 @@ export class ServerController {
     private readonly appConfig: AppConfigService,
     private readonly users: UsersService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
-  @ApiOperation({ summary: 'Get server logs', description: 'Return recent in-memory log entries. Admin only.' })
+  @ApiOperation({
+    summary: 'Get server logs',
+    description: 'Return recent in-memory log entries. Admin only.',
+  })
   @ApiWrappedResponse(ServerLogsResponseDto)
   @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
   @ApiErrorResponse(HttpStatus.FORBIDDEN)
   @ApiBearerAuth()
   @UseGuards(AdminUserGuard)
   @Get('logs')
-  async getLogs(@Req() req: Request & UserAuthenticatedRequest, @Query('limit') limit?: string, @Query('after') after?: string) {
+  async getLogs(
+    @Req() req: Request & UserAuthenticatedRequest,
+    @Query('limit') limit?: string,
+    @Query('after') after?: string,
+  ) {
     let ilimit = parseInt(limit ?? '500', 10);
     if (Number.isNaN(ilimit) || ilimit <= 0) ilimit = 500;
     if (ilimit > 1000) ilimit = 1000;
@@ -48,18 +79,36 @@ export class ServerController {
     return { items: logs, total: logs.length };
   }
 
-  @ApiOperation({ summary: 'Instance config', description: 'Return public instance configuration (e.g. registration status).' })
+  @ApiOperation({
+    summary: 'Instance config',
+    description:
+      'Return public instance configuration (e.g. registration status).',
+  })
   @ApiWrappedResponse(InstanceConfigDto)
   @Get('configs')
   async getInstanceConfig() {
     return {
-      allow_user_registration: await this.appConfig.get<boolean>('instance.registration'),
-      allow_instance_creation: await this.appConfig.get<boolean>('instance.instanceCreation'),
-      allow_instance_creation_by_external: await this.appConfig.get<boolean>('instance.instanceCreationByExternal'),
-      allow_world_creation: await this.appConfig.get<boolean>('instance.worldCreation'),
-      allow_world_creation_by_external: await this.appConfig.get<boolean>('instance.worldCreationByExternal'),
-      allow_avatar_creation: await this.appConfig.get<boolean>('instance.avatarCreation'),
-      allow_avatar_creation_by_external: await this.appConfig.get<boolean>('instance.avatarCreationByExternal'),
+      allow_user_registration: await this.appConfig.get<boolean>(
+        'instance.registration',
+      ),
+      allow_instance_creation: await this.appConfig.get<boolean>(
+        'instance.instanceCreation',
+      ),
+      allow_instance_creation_by_external: await this.appConfig.get<boolean>(
+        'instance.instanceCreationByExternal',
+      ),
+      allow_world_creation: await this.appConfig.get<boolean>(
+        'instance.worldCreation',
+      ),
+      allow_world_creation_by_external: await this.appConfig.get<boolean>(
+        'instance.worldCreationByExternal',
+      ),
+      allow_avatar_creation: await this.appConfig.get<boolean>(
+        'instance.avatarCreation',
+      ),
+      allow_avatar_creation_by_external: await this.appConfig.get<boolean>(
+        'instance.avatarCreationByExternal',
+      ),
       regions: await this.appConfig.get<string[]>('instance.regions'),
       allowed_image_widths: [...ALLOWED_WIDTHS],
       support_passkey: await this.passkeyAvailable(),
@@ -78,7 +127,11 @@ export class ServerController {
     return !!rpId?.trim() && origins.split(',').some((o) => o.trim());
   }
 
-  @ApiOperation({ summary: 'List environment', description: 'Return all registered config keys with their current values, environment overrides and metadata. Admin only.' })
+  @ApiOperation({
+    summary: 'List environment',
+    description:
+      'Return all registered config keys with their current values, environment overrides and metadata. Admin only.',
+  })
   @ApiWrappedArrayResponse(ServerConfigEntryDto)
   @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
   @ApiErrorResponse(HttpStatus.FORBIDDEN)
@@ -91,14 +144,20 @@ export class ServerController {
 
     const configs = [] as any[];
     for (const [key, entry] of CONFIG_REGISTRY) {
-      const envRaw = (process.env as Record<string, string | undefined>)[entry.env];
+      const envRaw = (process.env as Record<string, string | undefined>)[
+        entry.env
+      ];
       const isForced = envRaw !== undefined && envRaw.startsWith('!');
-      const envValue = isForced ? envRaw!.slice(1) : (envRaw ?? null);
+      const envValue = isForced ? envRaw.slice(1) : (envRaw ?? null);
       const dbValue = overrideMap.get(key) ?? null;
 
       // Try to read the resolved static config value via ConfigService (fall back to metadata default)
       let defaultValue: any = null;
-      try { defaultValue = this.configService.get(key as any); } catch { defaultValue = null; }
+      try {
+        defaultValue = this.configService.get(key as any);
+      } catch {
+        defaultValue = null;
+      }
 
       configs.push({
         key,
@@ -115,7 +174,11 @@ export class ServerController {
     return { total: configs.length, items: configs };
   }
 
-  @ApiOperation({ summary: 'Patch environment', description: 'Upsert or delete config overrides. Send an array of { key, value } patches; null value removes the override. Admin only.' })
+  @ApiOperation({
+    summary: 'Patch environment',
+    description:
+      'Upsert or delete config overrides. Send an array of { key, value } patches; null value removes the override. Admin only.',
+  })
   @ApiWrappedResponse(ConfigPatchResponseDto, HttpStatus.CREATED)
   @ApiErrorResponse(HttpStatus.UNAUTHORIZED)
   @ApiErrorResponse(HttpStatus.FORBIDDEN)
@@ -124,10 +187,15 @@ export class ServerController {
   @Post('environment')
   async patchConfigs(
     @Req() req: Request & UserAuthenticatedRequest,
-    @Body(new ParseArrayPipe({ items: ConfigPatchItemDto })) items: ConfigPatchItemDto[],
+    @Body(new ParseArrayPipe({ items: ConfigPatchItemDto }))
+    items: ConfigPatchItemDto[],
   ) {
     if (items.length > 100)
-      throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'Too many config patches (max 100)');
+      throw new ApiException(
+        ApiErrorCode.BAD_REQUEST,
+        null,
+        'Too many config patches (max 100)',
+      );
 
     const validKeys = new Set(Array.from(CONFIG_REGISTRY.keys()));
     const results: { key: string; ok: boolean; error?: string }[] = [];
@@ -150,7 +218,11 @@ export class ServerController {
         }
         results.push({ key: item.key, ok: true });
       } catch (err: any) {
-        results.push({ key: item.key, ok: false, error: err?.message ?? String(err) });
+        results.push({
+          key: item.key,
+          ok: false,
+          error: err?.message ?? String(err),
+        });
       }
     }
 

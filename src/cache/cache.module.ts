@@ -15,18 +15,21 @@ import { RedisCacheProvider } from './providers/redis.provider';
  */
 @Global()
 @Module({
-    imports: [AppConfigModule],
-    providers: [
-        MemoryCacheProvider,
-        RedisCacheProvider,
-        {
-            provide: CACHE_PROVIDERS,
-            useFactory: (memory: MemoryCacheProvider, redis: RedisCacheProvider) => [memory, redis],
-            inject: [MemoryCacheProvider, RedisCacheProvider],
-        },
-        CacheFactory,
-        CacheService,
-    ],
-    exports: [CacheService],
+  imports: [AppConfigModule],
+  providers: [
+    MemoryCacheProvider,
+    RedisCacheProvider,
+    {
+      provide: CACHE_PROVIDERS,
+      useFactory: (memory: MemoryCacheProvider, redis: RedisCacheProvider) => [
+        memory,
+        redis,
+      ],
+      inject: [MemoryCacheProvider, RedisCacheProvider],
+    },
+    CacheFactory,
+    CacheService,
+  ],
+  exports: [CacheService],
 })
-export class CacheModule { }
+export class CacheModule {}

@@ -3,7 +3,10 @@ import { PrismaService } from '../database/prisma.service';
 import { WellKnownService } from '../fediverse/well-known.service';
 import { CacheService } from '../cache/cache.service';
 import { ExternalServerDelegate } from 'src/generated/prisma/models';
-import { ExternalServer, ExternalServerWithMethods } from './external-server.model';
+import {
+  ExternalServer,
+  ExternalServerWithMethods,
+} from './external-server.model';
 import { discoverWellKnown } from './discover-well-known';
 
 const SERVER_CACHE_PREFIX = 'extserver:';
@@ -11,130 +14,152 @@ const SERVER_CACHE_TTL = 600; // 10 minutes
 
 @Injectable()
 export class ExternalServersService implements OnModuleInit {
+  public readonly logger = new Logger(ExternalServersService.name);
 
+  constructor(
+    private readonly prisma: PrismaService,
+    public readonly wellKnown: WellKnownService,
+    public readonly cache: CacheService,
+  ) {}
 
-    public readonly logger = new Logger(ExternalServersService.name);
+  async onModuleInit(): Promise<void> {}
 
-    constructor(
-        private readonly prisma: PrismaService,
-        public readonly wellKnown: WellKnownService,
-        public readonly cache: CacheService,
-    ) { }
-
-    async onModuleInit(): Promise<void> { }
-
-    async checkSelfWellKnown(): Promise<void> {
-        const domain = await this.wellKnown.address();
-        try {
-            const server = await this.discover(domain);
-            const wk = await server.wellKnown();
-            const title = typeof wk.data.metadata.title === 'object'
-                ? Object.values(wk.data.metadata.title)[0] ?? '(no title)'
-                : wk.data.metadata.title ?? '(no title)';
-            this.logger.log(`Self well-known OK — '${title}' @ ${wk.data.address} (TTL ${Math.round((wk.expiresAt.getTime() - Date.now()) / 1000)}s remaining)`);
-        } catch (e) {
-            this.logger.error(`Self well-known check failed: ${(e as Error).message}`);
-        }
+  async checkSelfWellKnown(): Promise<void> {
+    const domain = await this.wellKnown.address();
+    try {
+      const server = await this.discover(domain);
+      const wk = await server.wellKnown();
+      const title =
+        typeof wk.data.metadata.title === 'object'
+          ? (Object.values(wk.data.metadata.title)[0] ?? '(no title)')
+          : (wk.data.metadata.title ?? '(no title)');
+      this.logger.log(
+        `Self well-known OK — '${title}' @ ${wk.data.address} (TTL ${Math.round((wk.expiresAt.getTime() - Date.now()) / 1000)}s remaining)`,
+      );
+    } catch (e) {
+      this.logger.error(
+        `Self well-known check failed: ${(e as Error).message}`,
+      );
     }
+  }
 
-    // ── Lookup ───────────────────────────────────────────────────────────────────
+  // ── Lookup ───────────────────────────────────────────────────────────────────
 
-    async findAll(): Promise<ExternalServerWithMethods[]> {
-        const models = await this.externalServers.findMany({ orderBy: { rank: 'desc' } });
-        return models.map((m) => ExternalServer.attach(m, this));
-    }
+  async findAll(): Promise<ExternalServerWithMethods[]> {
+    const models = await this.externalServers.findMany({
+      orderBy: { rank: 'desc' },
+    });
+    return models.map((m) => ExternalServer.attach(m, this));
+  }
 
-    async findAllPaginated(limit: number, offset: number): Promise<ExternalServerWithMethods[]> {
-        const models = await this.externalServers.findMany({
-            orderBy: { rank: 'desc' },
-            take: limit,
-            skip: offset,
-        });
-        return models.map((m) => ExternalServer.attach(m, this));
-    }
+  async findAllPaginated(
+    limit: number,
+    offset: number,
+  ): Promise<ExternalServerWithMethods[]> {
+    const models = await this.externalServers.findMany({
+      orderBy: { rank: 'desc' },
+      take: limit,
+      skip: offset,
+    });
+    return models.map((m) => ExternalServer.attach(m, this));
+  }
 
-    async findByAddress(address: string): Promise<ExternalServerWithMethods | null> {
-        const cacheKey = `${SERVER_CACHE_PREFIX}${address.toLowerCase()}`;
+  async findByAddress(
+    address: string,
+  ): Promise<ExternalServerWithMethods | null> {
+    const cacheKey = `${SERVER_CACHE_PREFIX}${address.toLowerCase()}`;
 
-        const cached = await this.cache.get<any>(cacheKey);
-        if (cached) return ExternalServer.attach(cached, this);
+    const cached = await this.cache.get<any>(cacheKey);
+    if (cached) return ExternalServer.attach(cached, this);
 
-        const model = await this.externalServers.findFirst({ where: { address } });
-        if (!model) return null;
+    const model = await this.externalServers.findFirst({ where: { address } });
+    if (!model) return null;
 
-        await this.cache.set(cacheKey, model, SERVER_CACHE_TTL);
-        return ExternalServer.attach(model, this);
-    }
+    await this.cache.set(cacheKey, model, SERVER_CACHE_TTL);
+    return ExternalServer.attach(model, this);
+  }
 
-    async findById(id: number): Promise<ExternalServerWithMethods | null> {
-        const model = await this.externalServers.findUnique({ where: { id: id } });
-        if (!model) return null;
-        return ExternalServer.attach(model, this);
-    }
+  async findById(id: number): Promise<ExternalServerWithMethods | null> {
+    const model = await this.externalServers.findUnique({ where: { id: id } });
+    if (!model) return null;
+    return ExternalServer.attach(model, this);
+  }
 
-    // ── Discovery ─────────────────────────────────────────────────────────────────
+  // ── Discovery ─────────────────────────────────────────────────────────────────
 
-    /**
-     * Discovers a remote server by address, upserts it in the database,
-     * and returns it as an ExternalServerWithMethods.
-     * Throws if discovery fails or the well-known document lacks a publicKey.
-     */
-    async discover(address: string): Promise<ExternalServerWithMethods> {
-        const discovered = await discoverWellKnown(address);
-        if (!discovered)
-            throw new Error(`Unable to discover /.well-known/nox for "${address}"`);
+  /**
+   * Discovers a remote server by address, upserts it in the database,
+   * and returns it as an ExternalServerWithMethods.
+   * Throws if discovery fails or the well-known document lacks a publicKey.
+   */
+  async discover(address: string): Promise<ExternalServerWithMethods> {
+    const discovered = await discoverWellKnown(address);
+    if (!discovered)
+      throw new Error(`Unable to discover /.well-known/nox for "${address}"`);
 
-        const { public: publicKey } = discovered.data;
-        if (!publicKey)
-            throw new Error(`Well-known document for "${address}" does not expose a publicKey`);
+    const { public: publicKey } = discovered.data;
+    if (!publicKey)
+      throw new Error(
+        `Well-known document for "${address}" does not expose a publicKey`,
+      );
 
-        const publicBytes = Buffer.from(publicKey, 'utf8');
+    const publicBytes = Buffer.from(publicKey, 'utf8');
 
-        // Use the canonical address from the well-known document, not the queried address.
-        // The queried address may be a gateway-alias domain (e.g. _nox TXT redirect) that
-        // resolves to a server whose canonical address differs, causing a unique-key collision
-        // on `public` if that server is already registered under its canonical address.
-        const canonicalAddress = discovered.data.address;
-        if (!canonicalAddress || address !== canonicalAddress) 
-            throw new Error(`Well-known document for "${address}" has an invalid canonical address`);
-        
-        const model = await this.externalServers.upsert({
-            where: { address },
-            create: {
-                address,
-                public: publicBytes,
-                lastSeen: new Date(),
-            },
-            update: {
-                public: publicBytes,
-                lastSeen: new Date(),
-            },
-        });
+    // Use the canonical address from the well-known document, not the queried address.
+    // The queried address may be a gateway-alias domain (e.g. _nox TXT redirect) that
+    // resolves to a server whose canonical address differs, causing a unique-key collision
+    // on `public` if that server is already registered under its canonical address.
+    const canonicalAddress = discovered.data.address;
+    if (!canonicalAddress || address !== canonicalAddress)
+      throw new Error(
+        `Well-known document for "${address}" has an invalid canonical address`,
+      );
 
-        const server = ExternalServer.attach(model, this);
-        // Cache the well-known document in Redis so list endpoints can read it
-        const ttl = Math.max(60, Math.floor(discovered.ttlMs / 1000));
-        await this.cache.set(`wk:${canonicalAddress}`, {
-            data: discovered.data,
-            fetchedAt: new Date(),
-            expiresAt: new Date(Date.now() + discovered.ttlMs),
-        }, ttl);
-        return server;
-    }
+    const model = await this.externalServers.upsert({
+      where: { address },
+      create: {
+        address,
+        public: publicBytes,
+        lastSeen: new Date(),
+      },
+      update: {
+        public: publicBytes,
+        lastSeen: new Date(),
+      },
+    });
 
-    async findOrDiscover(address: string): Promise<ExternalServerWithMethods | null> {
-        let server = await this.findByAddress(address);
-        if (!server)
-            try {
-                server = await this.discover(address);
-            } catch (e) {
-                this.logger.warn(`Discovery failed for "${address}": ${(e as Error).message}`);
-                return null;
-            }
-        return server;
-    }
+    const server = ExternalServer.attach(model, this);
+    // Cache the well-known document in Redis so list endpoints can read it
+    const ttl = Math.max(60, Math.floor(discovered.ttlMs / 1000));
+    await this.cache.set(
+      `wk:${canonicalAddress}`,
+      {
+        data: discovered.data,
+        fetchedAt: new Date(),
+        expiresAt: new Date(Date.now() + discovered.ttlMs),
+      },
+      ttl,
+    );
+    return server;
+  }
 
-    public get externalServers(): ExternalServerDelegate {
-        return this.prisma.externalServers as ExternalServerDelegate;
-    }
+  async findOrDiscover(
+    address: string,
+  ): Promise<ExternalServerWithMethods | null> {
+    let server = await this.findByAddress(address);
+    if (!server)
+      try {
+        server = await this.discover(address);
+      } catch (e) {
+        this.logger.warn(
+          `Discovery failed for "${address}": ${(e as Error).message}`,
+        );
+        return null;
+      }
+    return server;
+  }
+
+  public get externalServers(): ExternalServerDelegate {
+    return this.prisma.externalServers as ExternalServerDelegate;
+  }
 }

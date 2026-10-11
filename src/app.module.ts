@@ -11,11 +11,12 @@ import { UsersModule } from './users/users.module';
 import { ServerModule } from './server/server.module';
 import { StorageModule } from './storage/storage.module';
 import { ExternalServersModule } from './external/external-servers.module';
+import { TunnelModule } from './tunnel/tunnel.module';
 import { ApiInterceptor } from './api/api.interceptor';
 import { RelationsModule } from './relations/relations.module';
-import { WorldsModule } from './worlds/worlds.module';
+import { WorldsModule } from './assets/worlds/worlds.module';
 import { TablesModule } from './tables/tables.module';
-import { AvatarsModule } from './avatars/avatars.module';
+import { AvatarsModule } from './assets/avatars/avatars.module';
 import { ActivityModule } from './activity/activity.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { InstancesModule } from './instances/instances.module';
@@ -25,6 +26,7 @@ import { JobQueueModule } from './jobs/job-queue.module';
 import { CacheModule } from './cache/cache.module';
 import { SearchModule } from './search/search.module';
 import { EmailModule } from './email/email.module';
+import { ModsModule } from './assets/mods/mods.module';
 
 @Module({
   imports: [
@@ -42,8 +44,8 @@ import { EmailModule } from './email/email.module';
     UsersModule,
     ServerModule,
     ExternalServersModule,
+    TunnelModule,
     RelationsModule,
-    WorldsModule,
     TablesModule,
     AvatarsModule,
     ActivityModule,
@@ -55,10 +57,10 @@ import { EmailModule } from './email/email.module';
     CacheModule,
     SearchModule,
     EmailModule,
+    ModsModule,
+    WorldsModule,
   ],
-  providers: [
-    { provide: APP_INTERCEPTOR, useClass: ApiInterceptor },
-  ],
+  providers: [{ provide: APP_INTERCEPTOR, useClass: ApiInterceptor }],
   exports: [],
 })
-export class AppModule { }
+export class AppModule {}

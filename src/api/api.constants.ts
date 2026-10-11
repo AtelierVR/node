@@ -3,10 +3,10 @@
  * These must match the exclude list in main.ts setGlobalPrefix().
  */
 export const ROOT_ONLY_PATHS = [
-    '.well-known/webfinger',
-    '.well-known/nodeinfo',
-    '.well-known/host-meta',
-    '.well-known/nox',
-    'nodeinfo/2.1',
-    'ap',
-]; 
+  '.well-known/webfinger',
+  '.well-known/nodeinfo',
+  '.well-known/host-meta',
+  '.well-known/nox',
+  'nodeinfo/2.1',
+  'ap',
+];

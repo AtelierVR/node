@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { spawn } from 'node:child_process';
-import { PrismaClient } from '../generated/prisma/client';
+import { Prisma, PrismaClient } from '../generated/prisma/client';
 
 /**
  * Wraps the Prisma v7 dynamically generated PrismaClient.
@@ -12,159 +12,173 @@ import { PrismaClient } from '../generated/prisma/client';
  */
 @Injectable()
 export class PrismaService implements OnModuleInit {
+  private readonly logger = new Logger(PrismaService.name);
+  private readonly _client: PrismaClient;
 
-    private readonly logger = new Logger(PrismaService.name);
-    private readonly _client: PrismaClient;
+  private _readyResolve!: () => void;
+  private _readyReject!: (err: unknown) => void;
 
-    private _readyResolve!: () => void;
-    private _readyReject!: (err: unknown) => void;
+  /** Resolves once the database is reachable; rejects if the probe fails. */
+  readonly ready: Promise<void> = new Promise<void>((resolve, reject) => {
+    this._readyResolve = resolve;
+    this._readyReject = reject;
+  });
 
-    /** Resolves once the database is reachable; rejects if the probe fails. */
-    readonly ready: Promise<void> = new Promise<void>(
-        (resolve, reject) => {
-            this._readyResolve = resolve;
-            this._readyReject = reject;
-        },
-    );
+  constructor() {
+    const adapter = new PrismaPg({
+      connectionString: process.env.DATABASE_URL,
+    });
+    this._client = new PrismaClient({ adapter });
+  }
 
-    constructor() {
-        const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-        this._client = new PrismaClient({ adapter });
+  async onModuleInit(): Promise<void> {
+    try {
+      this.logger.log('Connecting to database...');
+      await this._client.$connect();
+      this.logger.log(
+        'Connected to database, applying migrations if needed...',
+      );
+      await this.deploy();
+      this.logger.log('Database is ready');
+      this._readyResolve();
+    } catch (err) {
+      this.logger.error('Database connection failed:', err);
+      this._readyReject(err);
     }
+  }
 
-    async onModuleInit(): Promise<void> {
-        try {
-            this.logger.log("Connecting to database...");
-            await this._client.$connect();
-            this.logger.log("Connected to database, applying migrations if needed...");
-            await this.deploy();
-            this.logger.log("Database is ready");
-            this._readyResolve();
-        } catch (err) {
-            this.logger.error("Database connection failed:", err);
-            this._readyReject(err);
-        }
-    }
+  /**
+   * Apply all pending Prisma migrations by running `prisma migrate deploy`.
+   */
+  private async deploy(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const proc = spawn('npm', ['run', 'prisma:deploy'], {
+        env: process.env,
+        cwd: '/app',
+      });
 
-    /**
-     * Apply all pending Prisma migrations by running `prisma migrate deploy`.
-     */
-    private async deploy(): Promise<boolean> {
-        return new Promise((resolve) => {
-            const proc = spawn(
-                "npm", ["run", "prisma:deploy"],
-                { env: process.env, cwd: '/app' },
-            );
+      const onLine = (line: string, isErr: boolean) => {
+        if (!line.trim()) return;
+        if (isErr) this.logger.warn(`[Migrate] ${line}`);
+        else this.logger.log(`[Migrate] ${line}`);
+      };
 
-            const onLine = (line: string, isErr: boolean) => {
-                if (!line.trim()) return;
-                if (isErr) this.logger.warn(`[Migrate] ${line}`);
-                else this.logger.log(`[Migrate] ${line}`);
-            };
+      proc.stdout.on('data', (data: Buffer) =>
+        data
+          .toString()
+          .split(/\r?\n/)
+          .forEach((l) => onLine(l, false)),
+      );
+      proc.stderr.on('data', (data: Buffer) =>
+        data
+          .toString()
+          .split(/\r?\n/)
+          .forEach((l) => onLine(l, true)),
+      );
 
-            proc.stdout.on("data", (data: Buffer) =>
-                data.toString().split(/\r?\n/).forEach(l => onLine(l, false)));
-            proc.stderr.on("data", (data: Buffer) =>
-                data.toString().split(/\r?\n/).forEach(l => onLine(l, true)));
+      proc.on('close', (code) => {
+        if (code !== 0)
+          this.logger.error(
+            `[Migrate] prisma migrate deploy exited with code ${code}`,
+          );
+        resolve(code === 0);
+      });
 
-            proc.on("close", (code) => {
-                if (code !== 0)
-                    this.logger.error(`[Migrate] prisma migrate deploy exited with code ${code}`);
-                resolve(code === 0);
-            });
+      proc.on('error', (err) => {
+        this.logger.error('[Migrate] Failed to spawn migrate process:', err);
+        resolve(false);
+      });
+    });
+  }
 
-            proc.on("error", (err) => {
-                this.logger.error("[Migrate] Failed to spawn migrate process:", err);
-                resolve(false);
-            });
-        });
-    }
+  // ── Model delegates ───────────────────────────────────────────────────────────
 
-    // ── Model delegates ───────────────────────────────────────────────────────────
+  get configs() {
+    return this._client.config;
+  }
 
-    get configs() {
-        return this._client.config;
-    }
+  get users() {
+    return this._client.user;
+  }
 
-    get users() {
-        return this._client.user;
-    }
+  get sessions() {
+    return this._client.session;
+  }
 
-    get sessions() {
-        return this._client.session;
-    }
+  get devices() {
+    return this._client.device;
+  }
 
-    get devices() {
-        return this._client.device;
-    }
+  get passkeys() {
+    return this._client.passkey;
+  }
 
-    get passkeys() {
-        return this._client.passkey;
-    }
+  get verifications() {
+    return this._client.verification;
+  }
 
-    get verifications() {
-        return this._client.verification;
-    }
+  get externalUsers() {
+    return this._client.externalUser;
+  }
 
-    get externalUsers() {
-        return this._client.externalUser;
-    }
+  get externalServers() {
+    return this._client.externalServer;
+  }
 
-    get externalServers() {
-        return this._client.externalServer;
-    }
+  get userRelations() {
+    return this._client.userRelation;
+  }
 
-    get userRelations() {
-        return this._client.userRelation;
-    }
+  get userTables() {
+    return this._client.userTable;
+  }
 
-    get worlds() {
-        return this._client.world;
-    }
+  get assets() {
+    return this._client.asset;
+  }
 
-    get worldAssets() {
-        return this._client.worldAsset;
-    }
+  get assetReleases() {
+    return this._client.assetRelease;
+  }
 
-    get userTables() {
-        return this._client.userTable;
-    }
+  get assetFiles() {
+    return this._client.assetFile;
+  }
 
-    get avatars() {
-        return this._client.avatar;
-    }
+  get activityEvents() {
+    return this._client.activityEvent;
+  }
 
-    get avatarAssets() {
-        return this._client.avatarAsset;
-    }
+  /** Raw SQL access (passthrough to PrismaClient.$queryRawUnsafe). */
+  $queryRawUnsafe(query: string, ...values: any[]) {
+    return (this._client as any).$queryRawUnsafe(query, ...values);
+  }
 
-    get activityEvents() {
-        return this._client.activityEvent;
-    }
+  /** Typed raw SQL access (passthrough to PrismaClient.$queryRaw). Accepts a tagged template or a composed `Prisma.Sql` (values are always bound). */
+  $queryRaw<T = any>(
+    query: TemplateStringsArray | string | Prisma.Sql,
+    ...values: any[]
+  ): Promise<T> {
+    return (this._client as any).$queryRaw(query, ...values);
+  }
 
-    /** Raw SQL access (passthrough to PrismaClient.$queryRawUnsafe). */
-    $queryRawUnsafe(query: string, ...values: any[]) {
-        return (this._client as any).$queryRawUnsafe(query, ...values);
-    }
+  get instances() {
+    return this._client.instance;
+  }
 
-    /** Typed raw SQL access (passthrough to PrismaClient.$queryRaw). */
-    $queryRaw<T = any>(query: TemplateStringsArray | string, ...values: any[]): Promise<T> {
-        return (this._client as any).$queryRaw(query, ...values);
-    }
+  get relays() {
+    return this._client.relay;
+  }
 
-    get instances() {
-        return this._client.instance;
-    }
+  get relayInstance() {
+    return this._client.relayInstance;
+  }
 
-     get relays() {
-        return this._client.relay;
-    }
+  get relayTokens() {
+    return this._client.relayToken;
+  }
 
-    get relayInstance() {
-        return this._client.relayInstance;
-    }
-
-    get relayTokens() {
-        return this._client.relayToken;
-    }
+  get notifications() {
+    return this._client.notification;
+  }
 }

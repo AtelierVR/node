@@ -45,16 +45,22 @@ function levelBadge(level: LogLevel) {
   };
   const text = displayMap[level];
 
-  const width = Object.values(displayMap).reduce((max, v) => Math.max(max, v.length), 0) + 2;
+  const width =
+    Object.values(displayMap).reduce((max, v) => Math.max(max, v.length), 0) +
+    2;
   const left = Math.floor((width - text.length) / 2);
   const right = width - text.length - left;
   const padded = ' '.repeat(left) + text + ' '.repeat(right);
 
   switch (level) {
-    case 'error': return `${BG_RED}${WHITE}${padded}${RESET}`;
-    case 'warning': return `${BG_YELLOW}${FG_BLACK}${padded}${RESET}`;
-    case 'debug': return `${BG_CYAN}${FG_BLACK}${padded}${RESET}`;
-    default: return `${BG_GREEN}${FG_BLACK}${padded}${RESET}`;
+    case 'error':
+      return `${BG_RED}${WHITE}${padded}${RESET}`;
+    case 'warning':
+      return `${BG_YELLOW}${FG_BLACK}${padded}${RESET}`;
+    case 'debug':
+      return `${BG_CYAN}${FG_BLACK}${padded}${RESET}`;
+    default:
+      return `${BG_GREEN}${FG_BLACK}${padded}${RESET}`;
   }
 }
 
@@ -62,7 +68,11 @@ function levelBadge(level: LogLevel) {
  * Format a console line: time badge tag message
  * If no tag provided, this will try to parse a leading [tag] from the raw message.
  */
-export function formatConsoleLine(level: LogLevel, tag: string | null, raw: string): string {
+export function formatConsoleLine(
+  level: LogLevel,
+  tag: string | null,
+  raw: string,
+): string {
   let parsedTag: string | null = tag ?? null;
   let message = raw;
   if (!parsedTag) {
@@ -83,16 +93,13 @@ export function formatConsoleLine(level: LogLevel, tag: string | null, raw: stri
 }
 
 function fmt(msg: any): string {
-  if (msg instanceof Error)
-    return msg.stack || msg.message;
-  if (msg === undefined)
-    return '<undefined>';
-  if (msg === null)
-    return '<null>';
+  if (msg instanceof Error) return msg.stack || msg.message;
+  if (msg === undefined) return '<undefined>';
+  if (msg === null) return '<null>';
   if (typeof msg === 'object')
     try {
       return JSON.stringify(msg);
-    } catch { }
+    } catch {}
   return String(msg);
 }
 
@@ -111,48 +118,70 @@ class LoggerStore {
         timestamp: new Date(),
         level,
         message,
-        tag: tag ?? null
+        tag: tag ?? null,
       };
       this.logs.push(entry);
       if (this.logs.length > MAX_LOGS)
         this.logs.splice(0, this.logs.length - MAX_LOGS);
-      
+
       // Notify callback if registered
       if (this.logCallback) {
         try {
           this.logCallback(entry);
-        } catch { /* ignore callback errors */ }
+        } catch {
+          /* ignore callback errors */
+        }
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   private static joinParts(parts: any[]): string {
-    return parts.map(p => {
-      if (p instanceof Error)
-        return p.stack || p.message;
-      if (typeof p === 'object')
-        try {
-          return JSON.stringify(p);
-        } catch (e) {
-          return String(p) + ' (circular)';
-        }
-      return String(p);
-    }).join(' ');
+    return parts
+      .map((p) => {
+        if (p instanceof Error) return p.stack || p.message;
+        if (typeof p === 'object')
+          try {
+            return JSON.stringify(p);
+          } catch (e) {
+            return String(p) + ' (circular)';
+          }
+        return String(p);
+      })
+      .join(' ');
   }
 
-  static log(...parts: any[]) { this.push('log', this.joinParts(parts)); }
-  static error(...parts: any[]) { this.push('error', this.joinParts(parts)); }
-  static warn(...parts: any[]) { this.push('warning', this.joinParts(parts)); }
-  static debug(...parts: any[]) { this.push('debug', this.joinParts(parts)); }
+  static log(...parts: any[]) {
+    this.push('log', this.joinParts(parts));
+  }
+  static error(...parts: any[]) {
+    this.push('error', this.joinParts(parts));
+  }
+  static warn(...parts: any[]) {
+    this.push('warning', this.joinParts(parts));
+  }
+  static debug(...parts: any[]) {
+    this.push('debug', this.joinParts(parts));
+  }
 
-  static logTagged(tag: string | null, ...parts: any[]) { this.push('log', this.joinParts(parts), tag); }
-  static errorTagged(tag: string | null, ...parts: any[]) { this.push('error', this.joinParts(parts), tag); }
-  static warnTagged(tag: string | null, ...parts: any[]) { this.push('warning', this.joinParts(parts), tag); }
-  static debugTagged(tag: string | null, ...parts: any[]) { this.push('debug', this.joinParts(parts), tag); }
+  static logTagged(tag: string | null, ...parts: any[]) {
+    this.push('log', this.joinParts(parts), tag);
+  }
+  static errorTagged(tag: string | null, ...parts: any[]) {
+    this.push('error', this.joinParts(parts), tag);
+  }
+  static warnTagged(tag: string | null, ...parts: any[]) {
+    this.push('warning', this.joinParts(parts), tag);
+  }
+  static debugTagged(tag: string | null, ...parts: any[]) {
+    this.push('debug', this.joinParts(parts), tag);
+  }
 
   static getLogs(limit = 500, after?: number) {
     let slice = this.logs;
-    if (after !== undefined) slice = slice.filter(l => l.timestamp.getTime() > after);
+    if (after !== undefined)
+      slice = slice.filter((l) => l.timestamp.getTime() > after);
     if (limit <= 0) return [] as LogEntry[];
     if (slice.length <= limit) return slice.slice();
     return slice.slice(slice.length - limit);
@@ -163,38 +192,83 @@ class LoggerStore {
 export class NestLogger implements LoggerService {
   log(message: any, context?: string) {
     const raw = fmt(message);
-    const cleaned = context && raw.startsWith(`[${context}]`) ? raw.slice(context.length + 2).replace(/^\s*/, '') : raw;
+    const cleaned =
+      context && raw.startsWith(`[${context}]`)
+        ? raw.slice(context.length + 2).replace(/^\s*/, '')
+        : raw;
     LoggerStore.logTagged(context ?? null, cleaned);
-    try { process.stdout.write(formatConsoleLine('log', context ?? null, cleaned) + '\n'); } catch { /* ignore */ }
+    try {
+      process.stdout.write(
+        formatConsoleLine('log', context ?? null, cleaned) + '\n',
+      );
+    } catch {
+      /* ignore */
+    }
   }
 
   error(message: any, trace?: string, context?: string) {
     const raw = fmt(message);
-    const cleaned = context && raw.startsWith(`[${context}]`) ? raw.slice(context.length + 2).replace(/^\s*/, '') : raw;
+    const cleaned =
+      context && raw.startsWith(`[${context}]`)
+        ? raw.slice(context.length + 2).replace(/^\s*/, '')
+        : raw;
     const combined = cleaned + (trace ? '\n' + trace : '');
     LoggerStore.errorTagged(context ?? null, combined);
-    try { process.stderr.write(formatConsoleLine('error', context ?? null, combined) + '\n'); } catch { /* ignore */ }
+    try {
+      process.stderr.write(
+        formatConsoleLine('error', context ?? null, combined) + '\n',
+      );
+    } catch {
+      /* ignore */
+    }
   }
 
   warn(message: any, context?: string) {
     const raw = fmt(message);
-    const cleaned = context && raw.startsWith(`[${context}]`) ? raw.slice(context.length + 2).replace(/^\s*/, '') : raw;
+    const cleaned =
+      context && raw.startsWith(`[${context}]`)
+        ? raw.slice(context.length + 2).replace(/^\s*/, '')
+        : raw;
     LoggerStore.warnTagged(context ?? null, cleaned);
-    try { process.stderr.write(formatConsoleLine('warning', context ?? null, cleaned) + '\n'); } catch { /* ignore */ }
+    try {
+      process.stderr.write(
+        formatConsoleLine('warning', context ?? null, cleaned) + '\n',
+      );
+    } catch {
+      /* ignore */
+    }
   }
 
   debug(message: any, context?: string) {
     const raw = fmt(message);
-    const cleaned = context && raw.startsWith(`[${context}]`) ? raw.slice(context.length + 2).replace(/^\s*/, '') : raw;
+    const cleaned =
+      context && raw.startsWith(`[${context}]`)
+        ? raw.slice(context.length + 2).replace(/^\s*/, '')
+        : raw;
     LoggerStore.debugTagged(context ?? null, cleaned);
-    try { process.stdout.write(formatConsoleLine('debug', context ?? null, cleaned) + '\n'); } catch { /* ignore */ }
+    try {
+      process.stdout.write(
+        formatConsoleLine('debug', context ?? null, cleaned) + '\n',
+      );
+    } catch {
+      /* ignore */
+    }
   }
 
   verbose(message: any, context?: string) {
     const raw = fmt(message);
-    const cleaned = context && raw.startsWith(`[${context}]`) ? raw.slice(context.length + 2).replace(/^\s*/, '') : raw;
+    const cleaned =
+      context && raw.startsWith(`[${context}]`)
+        ? raw.slice(context.length + 2).replace(/^\s*/, '')
+        : raw;
     LoggerStore.debugTagged(context ?? null, cleaned);
-    try { process.stdout.write(formatConsoleLine('log', context ?? null, cleaned) + '\n'); } catch { /* ignore */ }
+    try {
+      process.stdout.write(
+        formatConsoleLine('log', context ?? null, cleaned) + '\n',
+      );
+    } catch {
+      /* ignore */
+    }
   }
 }
 

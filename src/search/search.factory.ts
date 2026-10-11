@@ -13,31 +13,33 @@ export const SEARCH_PROVIDERS = Symbol('SEARCH_PROVIDERS');
  */
 @Injectable()
 export class SearchFactory {
-    private readonly logger = new Logger(SearchFactory.name);
-    private readonly providers: Map<string, ISearchProvider>;
+  private readonly logger = new Logger(SearchFactory.name);
+  private readonly providers: Map<string, ISearchProvider>;
 
-    constructor(
-        @Inject(SEARCH_PROVIDERS) providers: ISearchProvider[],
-        private readonly config: AppConfigService,
-    ) {
-        this.providers = new Map(providers.map(p => [p.name.toLowerCase(), p]));
-    }
+  constructor(
+    @Inject(SEARCH_PROVIDERS) providers: ISearchProvider[],
+    private readonly config: AppConfigService,
+  ) {
+    this.providers = new Map(providers.map((p) => [p.name.toLowerCase(), p]));
+  }
 
-    /**
-     * Get the active search provider.
-     * Controlled by search.provider config (default: "postgres").
-     */
-    async get(): Promise<ISearchProvider> {
-        const name = (await this.config.get<string>('search.provider')).toLowerCase();
-        const provider = this.providers.get(name);
-        if (provider) return provider;
+  /**
+   * Get the active search provider.
+   * Controlled by search.provider config (default: "postgres").
+   */
+  async get(): Promise<ISearchProvider> {
+    const name = (
+      await this.config.get<string>('search.provider')
+    ).toLowerCase();
+    const provider = this.providers.get(name);
+    if (provider) return provider;
 
-        this.logger.warn(`Unknown search provider "${name}", falling back to noop`);
-        return this.providers.get('noop')!;
-    }
+    this.logger.warn(`Unknown search provider "${name}", falling back to noop`);
+    return this.providers.get('noop')!;
+  }
 
-    /** Return all registered provider names. */
-    availableProviders(): string[] {
-        return [...this.providers.keys()];
-    }
+  /** Return all registered provider names. */
+  availableProviders(): string[] {
+    return [...this.providers.keys()];
+  }
 }

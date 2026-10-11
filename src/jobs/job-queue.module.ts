@@ -17,18 +17,21 @@ import { BullMqProvider } from './providers/bull-mq.provider';
  *   constructor(private readonly jobs: JobQueueService) {}
  */
 @Module({
-    imports: [AppConfigModule],
-    providers: [
-        SyncJobProvider,
-        BullMqProvider,
-        {
-            provide: JOB_QUEUES,
-            useFactory: (sync: SyncJobProvider, bullmq: BullMqProvider) => [sync, bullmq],
-            inject: [SyncJobProvider, BullMqProvider],
-        },
-        JobQueueFactory,
-        JobQueueService,
-    ],
-    exports: [JobQueueService],
+  imports: [AppConfigModule],
+  providers: [
+    SyncJobProvider,
+    BullMqProvider,
+    {
+      provide: JOB_QUEUES,
+      useFactory: (sync: SyncJobProvider, bullmq: BullMqProvider) => [
+        sync,
+        bullmq,
+      ],
+      inject: [SyncJobProvider, BullMqProvider],
+    },
+    JobQueueFactory,
+    JobQueueService,
+  ],
+  exports: [JobQueueService],
 })
-export class JobQueueModule { }
+export class JobQueueModule {}

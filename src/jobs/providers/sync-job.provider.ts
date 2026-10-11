@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { IJobQueue, JobInfo, JobOptions, JobHandler } from '../job-queue.interface';
+import type {
+  IJobQueue,
+  JobInfo,
+  JobOptions,
+  JobHandler,
+} from '../job-queue.interface';
 
 /**
  * In-process synchronous job provider.
@@ -10,48 +15,59 @@ import type { IJobQueue, JobInfo, JobOptions, JobHandler } from '../job-queue.in
  */
 @Injectable()
 export class SyncJobProvider implements IJobQueue {
-    readonly name = 'sync';
+  readonly name = 'sync';
 
-    private readonly logger = new Logger(SyncJobProvider.name);
-    private readonly handlers = new Map<string, JobHandler>();
-    private counter = 0;
+  private readonly logger = new Logger(SyncJobProvider.name);
+  private readonly handlers = new Map<string, JobHandler>();
+  private counter = 0;
 
-    async add<T = unknown>(queue: string, data: T, _opts?: JobOptions): Promise<string> {
-        const id = `sync:${queue}:${++this.counter}`;
-        const handler = this.handlers.get(queue);
+  async add<T = unknown>(
+    queue: string,
+    data: T,
+    _opts?: JobOptions,
+  ): Promise<string> {
+    const id = `sync:${queue}:${++this.counter}`;
+    const handler = this.handlers.get(queue);
 
-        if (!handler) {
-            this.logger.warn(`No handler registered for queue "${queue}", job ${id} discarded`);
-            return id;
-        }
-
-        // Fire-and-forget — non-blocking microtask
-        Promise.resolve()
-            .then(() => handler(data))
-            .catch(err => this.logger.error(`Sync job ${id} (${queue}) failed`, err?.stack ?? err));
-
-        return id;
+    if (!handler) {
+      this.logger.warn(
+        `No handler registered for queue "${queue}", job ${id} discarded`,
+      );
+      return id;
     }
 
-    process<T = unknown>(queue: string, handler: JobHandler<T>): void {
-        if (this.handlers.has(queue)) {
-            this.logger.warn(`Handler for queue "${queue}" is being overwritten`);
-        }
-        this.handlers.set(queue, handler as JobHandler);
-        this.logger.debug(`Registered handler for queue "${queue}"`);
-    }
+    // Fire-and-forget — non-blocking microtask
+    Promise.resolve()
+      .then(() => handler(data))
+      .catch((err) =>
+        this.logger.error(
+          `Sync job ${id} (${queue}) failed`,
+          err?.stack ?? err,
+        ),
+      );
 
-    async get(_jobId: string): Promise<JobInfo | null> {
-        // Sync provider does not persist jobs
-        return null;
-    }
+    return id;
+  }
 
-    async isHealthy(): Promise<boolean> {
-        return true;
+  process<T = unknown>(queue: string, handler: JobHandler<T>): void {
+    if (this.handlers.has(queue)) {
+      this.logger.warn(`Handler for queue "${queue}" is being overwritten`);
     }
+    this.handlers.set(queue, handler as JobHandler);
+    this.logger.debug(`Registered handler for queue "${queue}"`);
+  }
 
-    async shutdown(): Promise<void> {
-        this.handlers.clear();
-        this.logger.log('Sync job provider shut down');
-    }
+  async get(_jobId: string): Promise<JobInfo | null> {
+    // Sync provider does not persist jobs
+    return null;
+  }
+
+  async isHealthy(): Promise<boolean> {
+    return true;
+  }
+
+  async shutdown(): Promise<void> {
+    this.handlers.clear();
+    this.logger.log('Sync job provider shut down');
+  }
 }
