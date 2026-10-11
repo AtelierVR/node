@@ -11,8 +11,11 @@ import { ExternalServersService } from './external/external-servers.service';
 import { requestLogger } from './request-logger.middleware';
 
 async function bootstrap() {
-  let logger = new NestLogger();
-  const app = await NestFactory.create(AppModule, { logger: logger, rawBody: true });
+  const logger = new NestLogger();
+  const app = await NestFactory.create(AppModule, {
+    logger: logger,
+    rawBody: true,
+  });
 
   // Parse cookies for authentication middleware and controllers
   app.use(cookieParser());
@@ -43,45 +46,66 @@ async function bootstrap() {
 
   if (prefix)
     app.setGlobalPrefix(prefix, {
-      exclude: ROOT_ONLY_PATHS.flatMap(path => [
+      exclude: ROOT_ONLY_PATHS.flatMap((path) => [
         {
           path,
-          method: RequestMethod.ALL
+          method: RequestMethod.ALL,
         },
         {
           path: `/${path}/(.*)`,
-          method: RequestMethod.ALL
+          method: RequestMethod.ALL,
         },
       ]),
     });
 
   app.useGlobalFilters(new ApiExceptionFilter(prefix, ROOT_ONLY_PATHS));
-  app.useGlobalPipes(new ValidationPipe({
-    // Strip unknown properties ...
-    whitelist: true,
-    // ... and reject requests that contain them instead of silently ignoring them.
-    // This prevents attackers from probing/fuzzing for hidden fields.
-    forbidNonWhitelisted: true,
-    // Reject payloads whose shape does not match any validated DTO at all.
-    forbidUnknownValues: true,
-    // Transform plain objects into DTO instances (needed for @Type()/@Transform()).
-    transform: true,
-    // Do NOT let class-transformer coerce types implicitly — only explicit @Type()
-    // is allowed. Prevents "1" being accepted where a boolean/number is expected.
-    transformOptions: { enableImplicitConversion: false },
-    // Never echo the (untrusted) target object or submitted values back in errors.
-    validationError: { target: false, value: false },
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      // Strip unknown properties ...
+      whitelist: true,
+      // ... and reject requests that contain them instead of silently ignoring them.
+      // This prevents attackers from probing/fuzzing for hidden fields.
+      forbidNonWhitelisted: true,
+      // Reject payloads whose shape does not match any validated DTO at all.
+      forbidUnknownValues: true,
+      // Transform plain objects into DTO instances (needed for @Type()/@Transform()).
+      transform: true,
+      // Do NOT let class-transformer coerce types implicitly — only explicit @Type()
+      // is allowed. Prevents "1" being accepted where a boolean/number is expected.
+      transformOptions: { enableImplicitConversion: false },
+      // Never echo the (untrusted) target object or submitted values back in errors.
+      validationError: { target: false, value: false },
+    }),
+  );
 
   // onModuleInit hooks (including PrismaService DB connect + migrate) are triggered
   // by init(), not by NestFactory.create(). Call it explicitly so the database is
   // ready before we read any config values from it.
-  logger.log("Initializing application modules...");
+  logger.log('Initializing application modules...');
   await app.init();
 
   const config = app.get(AppConfigService);
 
-  logger.log("Starting server...", 'Bootstrap');
+  // When the server runs behind a reverse proxy, the socket address is the
+  // proxy's (e.g. 172.18.0.11) and every session, device and log entry would
+  // record it instead of the client. `trust proxy` makes Express read the
+  // client IP from `X-Forwarded-For` — but only for the declared hops, so a
+  // client cannot spoof it (see http.trust_proxy).
+  const trustProxy = await config.get<boolean | number | string>(
+    'http.trust_proxy',
+  );
+  const express = app.getHttpAdapter().getInstance() as {
+    set: (setting: string, value: unknown) => void;
+  };
+  express.set('trust proxy', trustProxy);
+  logger.log(
+    trustProxy
+      ? `Client IP resolved from the proxy headers (trust proxy = ${String(trustProxy)})`
+      : 'Client IP read from the socket address (no trusted proxy)',
+    'Bootstrap',
+  );
+
+  logger.log('Starting server...', 'Bootstrap');
 
   const port = await config.get<number>('http.port');
   const host = await config.get<string>('http.host');
@@ -89,9 +113,11 @@ async function bootstrap() {
   await app.listen(port, host, () => {
     logger.log(`Server is running on http://${host}:${port}`, 'Bootstrap');
     if (corsEnabled)
-      logger.log(`CORS enabled for origins (credentials: ${corsCredentials}):\n${corsOrigins.map((o) => `  - ${o}`).join('\n')}`, 'Bootstrap');
+      logger.log(
+        `CORS enabled for origins (credentials: ${corsCredentials}):\n${corsOrigins.map((o) => `  - ${o}`).join('\n')}`,
+        'Bootstrap',
+      );
   });
-
 
   // Verify own well-known endpoint is reachable after the server is up
   app.get(ExternalServersService).checkSelfWellKnown();

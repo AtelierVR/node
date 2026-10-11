@@ -12,6 +12,12 @@
 #  port: 8080
   # domain: 'localhost'         # default: localhost:{port}
 #  secure: false                 # true when behind an HTTPS reverse proxy
+  # trust_proxy: 1              # reverse proxies in front of the server (Express `trust proxy`).
+  #                             # Required behind a reverse proxy: without it the client IP of every
+  #                             # request is the proxy's (e.g. 172.18.0.11) and sessions/devices record
+  #                             # it instead of the real client. Use the hop count (1 for a single
+  #                             # nginx), a range ('loopback', '10.0.0.0/8,172.16.0.0/12') or 'true'
+  #                             # (every hop). Defaults to 1 when secure is true, otherwise false.
 #  ssl: false                    # true to enable native HTTPS (requires cert_path + private_path)
   # cert_path: 'certs/certificate.crt'
   # private_path: 'certs/private.key'

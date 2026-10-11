@@ -16,18 +16,18 @@ export type VerificationCodeCharset = 'numeric' | 'alphanumeric' | 'hex';
  */
 export type VerificationInput =
   | {
-    /** Show a code field; it is posted back as `factor_code`. */
-    type: 'code';
-    length: number;
-    /** Character set: 'numeric' (0-9), 'alphanumeric' (0-9 A-Z), 'hex' (0-9 A-F). */
-    charset: VerificationCodeCharset;
-  }
+      /** Show a code field; it is posted back as `factor_code`. */
+      type: 'code';
+      length: number;
+      /** Character set: 'numeric' (0-9), 'alphanumeric' (0-9 A-Z), 'hex' (0-9 A-F). */
+      charset: VerificationCodeCharset;
+    }
   | {
-    /** Run a WebAuthn ceremony instead of typing anything. */
-    type: 'passkey';
-    /** Ceremony endpoints: `${base}/options` then `${base}/verify`. */
-    base: string;
-  };
+      /** Run a WebAuthn ceremony instead of typing anything. */
+      type: 'passkey';
+      /** Ceremony endpoints: `${base}/options` then `${base}/verify`. */
+      base: string;
+    };
 
 export interface VerificationMethod {
   type: string;
@@ -86,7 +86,11 @@ export interface MethodContext {
 }
 
 /** Challenge shape shared by every 6-digit code method. */
-const CODE_6_DIGITS: VerificationInput = { type: 'code', length: 6, charset: 'numeric' };
+const CODE_6_DIGITS: VerificationInput = {
+  type: 'code',
+  length: 6,
+  charset: 'numeric',
+};
 
 /** Ceremony endpoint prefix advertised to clients for the passkey method. */
 const PASSKEY_CEREMONY_BASE = '/auth/passkey/login';
@@ -106,10 +110,10 @@ const VERIFICATION_METHODS: Record<string, MethodDefinition> = {
     type: 'totp',
     name: 'Authenticator App',
     description: 'Use an authenticator app',
-    details: { 
-      sendable: false, 
-      data: () => ({}), 
-      input: () => CODE_6_DIGITS
+    details: {
+      sendable: false,
+      data: () => ({}),
+      input: () => CODE_6_DIGITS,
     },
     available: (user) => !!(user.twofaEnabled && user.twofaSecret),
   },
@@ -132,9 +136,9 @@ const VERIFICATION_METHODS: Record<string, MethodDefinition> = {
       // Nothing to send and no code to type — the client runs a WebAuthn ceremony.
       sendable: false,
       data: () => ({}),
-      input: (_user, ctx) => ({ 
-        type: 'passkey', 
-        base: PASSKEY_CEREMONY_BASE
+      input: (_user, ctx) => ({
+        type: 'passkey',
+        base: PASSKEY_CEREMONY_BASE,
       }),
     },
     available: (_user, ctx) => ctx.hasPasskey,
@@ -151,16 +155,18 @@ export class VerificationService {
     private readonly totp: TotpService,
     private readonly passkeys: PasskeyService,
     private readonly prisma: PrismaService,
-  ) { }
+  ) {}
 
   private methodDisplayName(method: string): string {
     return VERIFICATION_METHODS[method]?.name ?? method;
   }
 
-  async getAvailableVerificationMethods(user: any): Promise<VerificationMethod[]> {
+  async getAvailableVerificationMethods(
+    user: any,
+  ): Promise<VerificationMethod[]> {
     const ctx: MethodContext = {
-      hasPasskey: user?.id 
-        ? await this.passkeys.hasPasskeys(user.id).catch(() => false) 
+      hasPasskey: user?.id
+        ? await this.passkeys.hasPasskeys(user.id).catch(() => false)
         : false,
     };
 
@@ -172,11 +178,13 @@ export class VerificationService {
           name: m.name,
           description: m.description,
           enabled: true,
-          details: m.details ? {
-            sendable: m.details.sendable,
-            data: m.details.data(user),
-            input: m.details.input(user, ctx),
-          } : null,
+          details: m.details
+            ? {
+                sendable: m.details.sendable,
+                data: m.details.data(user),
+                input: m.details.input(user, ctx),
+              }
+            : null,
         };
         return method;
       }),
@@ -191,49 +199,88 @@ export class VerificationService {
 
   // ── Generic method actions ─────────────────────────────────────────────
 
-  async setupMethod(user: UserWithMethods, method: string, body: Record<string, any>): Promise<MethodSetupResult> {
+  async setupMethod(
+    user: UserWithMethods,
+    method: string,
+    body: Record<string, any>,
+  ): Promise<MethodSetupResult> {
     switch (method) {
       case 'totp':
         return this.totp.setup(user.id);
       case 'email':
         // Setup email: just store the email and send verification
-        if (!body.email) throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'email is required');
+        if (!body.email)
+          throw new ApiException(
+            ApiErrorCode.BAD_REQUEST,
+            null,
+            'email is required',
+          );
         await user.update({ email: body.email, emailVerified: false });
         try {
-          await this.email.sendEmailLink(user.id, body.email, user.display, user.username);
+          await this.email.sendEmailLink(
+            user.id,
+            body.email,
+            user.display,
+            user.username,
+          );
         } catch (err) {
-          this.logger.warn(`Failed to send email verification link: ${(err as Error).message}`);
+          this.logger.warn(
+            `Failed to send email verification link: ${(err as Error).message}`,
+          );
         }
         return {};
       default:
-        throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `Unknown method: ${method}`);
+        throw new ApiException(
+          ApiErrorCode.BAD_REQUEST,
+          null,
+          `Unknown method: ${method}`,
+        );
     }
   }
 
-  async enableMethod(user: UserWithMethods | null, method: string, body: Record<string, any>): Promise<MethodActionResult> {
+  async enableMethod(
+    user: UserWithMethods | null,
+    method: string,
+    body: Record<string, any>,
+  ): Promise<MethodActionResult> {
     let result: MethodActionResult;
     switch (method) {
       case 'totp':
-        if (!user) throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'Authentication required');
+        if (!user)
+          throw new ApiException(
+            ApiErrorCode.UNAUTHORIZED,
+            null,
+            'Authentication required',
+          );
         result = await this.totp.enable(user.id, body.secret, body.token);
         break;
       case 'email': {
         // Link token verification (public — user clicks link in email)
         if (!body.token || body.token.length <= 10)
-          throw new ApiException(ApiErrorCode.BAD_REQUEST, null, 'token is required');
+          throw new ApiException(
+            ApiErrorCode.BAD_REQUEST,
+            null,
+            'token is required',
+          );
 
         const emailResult = await this.email.verifyEmailLink(body.token);
         result = { enabled: emailResult.success, message: emailResult.message };
         break;
       }
       default:
-        throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `Unknown method: ${method}`);
+        throw new ApiException(
+          ApiErrorCode.BAD_REQUEST,
+          null,
+          `Unknown method: ${method}`,
+        );
     }
 
     // Security notification: method enabled (only when email is verified)
     if (result.enabled && user?.email && (user as any).emailVerified) {
       this.email.sendSecurityNotification(
-        user.email, user.display, 'method_added',
+        user.email,
+        user.display,
+        'method_added',
         { methodName: this.methodDisplayName(method) },
       );
     }
@@ -241,12 +288,20 @@ export class VerificationService {
     return result;
   }
 
-  async disableMethod(user: UserWithMethods, method: string, factor_code?: string): Promise<MethodActionResult> {
+  async disableMethod(
+    user: UserWithMethods,
+    method: string,
+    factor_code?: string,
+  ): Promise<MethodActionResult> {
     // Require verification
     if (!factor_code) {
       const methods = await this.getAvailableVerificationMethods(user);
       if (methods.length > 0)
-        throw new ApiException(ApiErrorCode.VERIFICATION_REQUIRED, { verification_required: true, methods }, 'Verification required');
+        throw new ApiException(
+          ApiErrorCode.VERIFICATION_REQUIRED,
+          { verification_required: true, methods },
+          'Verification required',
+        );
     }
 
     let result: MethodActionResult;
@@ -259,13 +314,19 @@ export class VerificationService {
         result = { disabled: true, message: 'Email removed successfully' };
         break;
       default:
-        throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `Unknown method: ${method}`);
+        throw new ApiException(
+          ApiErrorCode.BAD_REQUEST,
+          null,
+          `Unknown method: ${method}`,
+        );
     }
 
     // Security notification: method disabled (only when email is verified)
     if (result.disabled && user.email && (user as any).emailVerified) {
       this.email.sendSecurityNotification(
-        user.email, user.display, 'method_removed',
+        user.email,
+        user.display,
+        'method_removed',
         { methodName: this.methodDisplayName(method) },
       );
     }
@@ -273,14 +334,23 @@ export class VerificationService {
     return result;
   }
 
-  async sendFactorCode(user: UserWithMethods, method: string): Promise<boolean> {
+  async sendFactorCode(
+    user: UserWithMethods,
+    method: string,
+  ): Promise<boolean> {
     switch (method) {
       case 'email':
         if (!user.email) return false;
         try {
-          return await this.email.sendEmailCode(user.id, user.email, user.display);
+          return await this.email.sendEmailCode(
+            user.id,
+            user.email,
+            user.display,
+          );
         } catch (err) {
-          this.logger.error(`Failed to send email code: ${(err as Error).message}`);
+          this.logger.error(
+            `Failed to send email code: ${(err as Error).message}`,
+          );
           return false;
         }
       default:
@@ -346,28 +416,37 @@ export class VerificationService {
     return String(randomInt(0, max)).padStart(PASSKEY_CODE_LENGTH, '0');
   }
 
-  async verifyFactorCode(user: UserWithMethods, code: string): Promise<VerificationFactorResult> {
+  async verifyFactorCode(
+    user: UserWithMethods,
+    code: string,
+  ): Promise<VerificationFactorResult> {
     const methods = await this.getAvailableVerificationMethods(user);
-    if (!methods.length) return { success: false, message: 'No verification methods available' };
+    if (!methods.length)
+      return { success: false, message: 'No verification methods available' };
 
     // Passkey — the ceremony already proved the factor, `code` is its one-time code.
-    if (methods.find(m => m.type === 'passkey') && await this.consumePasskeyCode(user.id, code))
-      return { 
-        success: true, 
-        message: 'Verified', 
-        verified_method: 'passkey'
+    if (
+      methods.find((m) => m.type === 'passkey') &&
+      (await this.consumePasskeyCode(user.id, code))
+    )
+      return {
+        success: true,
+        message: 'Verified',
+        verified_method: 'passkey',
       };
 
     // Try email first if available
-    if (methods.find(m => m.type === 'email')) {
+    if (methods.find((m) => m.type === 'email')) {
       const ok = await this.email.verifyEmailCode(user.id, code);
-      if (ok) return { success: true, message: 'Verified', verified_method: 'email' };
+      if (ok)
+        return { success: true, message: 'Verified', verified_method: 'email' };
     }
 
     // Try TOTP
-    if (methods.find(m => m.type === 'totp') && user.twofaSecret) {
+    if (methods.find((m) => m.type === 'totp') && user.twofaSecret) {
       const valid = this.totp.verify(user.twofaSecret, code);
-      if (valid) return { success: true, message: 'Verified', verified_method: 'totp' };
+      if (valid)
+        return { success: true, message: 'Verified', verified_method: 'totp' };
     }
 
     return { success: false, message: 'Invalid verification code' };

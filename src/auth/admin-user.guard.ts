@@ -14,7 +14,11 @@ export class AdminUserGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<UserAuthenticatedRequest>();
     if (!req.user.isAdmin())
-      throw new ApiException(ApiErrorCode.UNAUTHORIZED, null, 'admin access required');
+      throw new ApiException(
+        ApiErrorCode.UNAUTHORIZED,
+        null,
+        'admin access required',
+      );
 
     return true;
   }

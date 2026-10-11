@@ -37,7 +37,10 @@ export class SessionService {
     const session = await this.prisma.sessions.create({ data });
 
     // Cache the newly created session
-    const ttl = Math.max(60, Math.floor((session.expires.getTime() - Date.now()) / 1000));
+    const ttl = Math.max(
+      60,
+      Math.floor((session.expires.getTime() - Date.now()) / 1000),
+    );
     await this.cache.set(`${SESSION_CACHE_PREFIX}${token}`, session, ttl);
 
     return session;
@@ -51,7 +54,7 @@ export class SessionService {
     if (cached) {
       // Refresh TTL on access
       const remainingTtl = await this.cache.ttl(cacheKey);
-      if (remainingTtl > 0 && remainingTtl < 60) 
+      if (remainingTtl > 0 && remainingTtl < 60)
         await this.cache.set(cacheKey, cached, SESSION_CACHE_TTL);
       return cached;
     }
@@ -59,7 +62,10 @@ export class SessionService {
     // Cache miss — query database
     const session = await this.prisma.sessions.findFirst({ where: { token } });
     if (session) {
-      const ttl = Math.max(60, Math.floor((session.expires.getTime() - Date.now()) / 1000));
+      const ttl = Math.max(
+        60,
+        Math.floor((session.expires.getTime() - Date.now()) / 1000),
+      );
       await this.cache.set(cacheKey, session, ttl);
     }
 
@@ -69,7 +75,7 @@ export class SessionService {
   async deleteSessionById(id: string) {
     try {
       const session = await this.prisma.sessions.findUnique({ where: { id } });
-      if (session) 
+      if (session)
         await this.cache.del(`${SESSION_CACHE_PREFIX}${session.token}`);
       await this.prisma.sessions.delete({ where: { id } });
       return true;
@@ -112,9 +118,7 @@ export class SessionService {
     for (const s of sessions)
       await this.cache.del(`${SESSION_CACHE_PREFIX}${s.token}`);
 
-    const where = exceptId
-      ? { userId, id: { not: exceptId } }
-      : { userId };
+    const where = exceptId ? { userId, id: { not: exceptId } } : { userId };
     const result = await this.prisma.sessions.deleteMany({ where });
     return result.count;
   }

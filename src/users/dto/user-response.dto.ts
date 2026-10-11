@@ -1,220 +1,383 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNumber, IsArray, IsOptional } from 'class-validator';
+import { IsString, IsNumber, IsArray, IsOptional, IsIn } from 'class-validator';
 import { ApiAliasDto, ApiLinkResponseDto } from '../../api/dto/shared.dto';
+import { PRESENCE_STATUSES, type PresenceStatusApi } from '../users.types';
 
 export class ApiUserRelationsDto {
-    @ApiPropertyOptional({ type: 'string', description: 'Outgoing relation type from current user to subject, or null', example: 'follow', nullable: true })
-    @IsOptional()
-    @IsString()
-    out!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Outgoing relation type from current user to subject, or null',
+    example: 'follow',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  out!: string | null;
 
-    @ApiPropertyOptional({ type: 'string', description: 'Incoming relation type from subject to current user, or null', example: null, nullable: true })
-    @IsOptional()
-    @IsString()
-    in!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Incoming relation type from subject to current user, or null',
+    example: null,
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  in!: string | null;
 }
 
 export class ApiUserPresenceDto {
-    @ApiProperty({ description: 'Presence status — one of: oja, ojf, online, busy, dnd, stream, offline', example: 'online' })
-    @IsString()
-    status!: string;
+  @ApiProperty({
+    description: 'Presence status',
+    enum: [...PRESENCE_STATUSES],
+    example: 'online',
+  })
+  @IsIn(PRESENCE_STATUSES)
+  status!: PresenceStatusApi;
 
-    @ApiPropertyOptional({ type: 'string', description: 'Custom presence status text, or null', example: null, nullable: true })
-    @IsOptional()
-    @IsString()
-    text!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Custom presence status text, or null',
+    example: 'In a meeting',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  text!: string | null;
 
-    @ApiPropertyOptional({ type: [String], description: 'List of instance iids the user is currently in. null means the viewer has no permission to see this field.', example: [], nullable: true })
-    @IsOptional()
-    locations!: string[] | null;
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'List of instance identifiers the user is currently in (an identifier may carry a `?private` flag). null means the viewer has no permission to see this field.',
+    example: ['42@example.com'],
+    nullable: true,
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  locations!: string[] | null;
 }
 
 export class ApiUserDto {
-    @ApiProperty({ description: 'Internal numeric user ID', example: 1 })
-    @IsNumber()
-    id!: number;
+  @ApiProperty({ description: 'Internal numeric user ID', example: 1 })
+  @IsNumber()
+  id!: number;
 
-    @ApiProperty({ description: 'Unique username (lowercase)', example: 'johndoe' })
-    @IsString()
-    username!: string;
+  @ApiProperty({
+    description: 'Unique username (lowercase)',
+    example: 'johndoe',
+  })
+  @IsString()
+  username!: string;
 
-    @ApiProperty({ description: 'Public display name', example: 'John Doe' })
-    @IsString()
-    display!: string;
+  @ApiProperty({ description: 'Public display name', example: 'John Doe' })
+  @IsString()
+  display!: string;
 
-    @ApiPropertyOptional({ type: 'string', description: 'User biography, or null', example: 'Full-stack developer', nullable: true })
-    @IsOptional()
-    @IsString()
-    bio!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'User biography, or null',
+    example: 'Full-stack developer',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  bio!: string | null;
 
-    @ApiPropertyOptional({ type: 'string', description: 'Pronouns, or null', example: 'he/him', nullable: true })
-    @IsOptional()
-    @IsString()
-    pronoun!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Pronouns, or null',
+    example: 'he/him',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  pronoun!: string | null;
 
-    @ApiProperty({ description: 'Server hostname this user belongs to', example: 'my-server.com' })
-    @IsString()
-    server!: string;
+  @ApiProperty({
+    description: 'Server hostname this user belongs to',
+    example: 'my-server.com',
+  })
+  @IsString()
+  server!: string;
 
-    @ApiProperty({ description: 'User-defined tags', type: [String], example: [] })
-    @IsArray()
-    tags!: string[];
+  @ApiProperty({
+    description: 'User-defined tags',
+    type: [String],
+    example: [],
+  })
+  @IsArray()
+  tags!: string[];
 
-    @ApiPropertyOptional({ type: 'string', description: 'URL to profile thumbnail, or null', example: 'https://cdn.my-server.com/thumb.png', nullable: true })
-    @IsOptional()
-    @IsString()
-    thumbnail!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'URL to profile thumbnail, or null',
+    example: 'https://cdn.my-server.com/thumb.png',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  thumbnail!: string | null;
 
-    @ApiPropertyOptional({ type: 'string', description: 'URL to profile banner, or null', example: null, nullable: true })
-    @IsOptional()
-    @IsString()
-    banner!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'URL to profile banner, or null',
+    example: null,
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  banner!: string | null;
 
-    @ApiProperty({ description: 'External links', type: () => [ApiLinkResponseDto] })
-    @IsArray()
-    links!: ApiLinkResponseDto[];
+  @ApiProperty({
+    description: 'External links',
+    type: () => [ApiLinkResponseDto],
+  })
+  @IsArray()
+  links!: ApiLinkResponseDto[];
 
-    @ApiPropertyOptional({ description: 'Relationship to the requesting user, or null if not applicable', type: () => ApiUserRelationsDto, nullable: true })
-    @IsOptional()
-    relations!: ApiUserRelationsDto | null;
+  @ApiPropertyOptional({
+    description:
+      'Relationship to the requesting user, or null if not applicable',
+    type: () => ApiUserRelationsDto,
+    nullable: true,
+  })
+  @IsOptional()
+  relations!: ApiUserRelationsDto | null;
 
-    @ApiProperty({ description: 'Ed25519 public key (base64 SPKI DER)', example: 'MCow...==' })
-    @IsString()
-    public!: string;
+  @ApiProperty({
+    description: 'Ed25519 public key (base64 SPKI DER)',
+    example: 'MCow...==',
+  })
+  @IsString()
+  public!: string;
 
-    @ApiProperty({ description: 'Number of followers', example: 42 })
-    @IsNumber()
-    followers!: number;
+  @ApiProperty({ description: 'Number of followers', example: 42 })
+  @IsNumber()
+  followers!: number;
 
-    @ApiProperty({ description: 'Number of users this user follows', example: 17 })
-    @IsNumber()
-    following!: number;
+  @ApiProperty({
+    description: 'Number of users this user follows',
+    example: 17,
+  })
+  @IsNumber()
+  following!: number;
 
-    @ApiProperty({ description: 'Current presence status', type: () => ApiUserPresenceDto })
-    presence!: ApiUserPresenceDto;
+  @ApiProperty({
+    description: 'Current presence status',
+    type: () => ApiUserPresenceDto,
+  })
+  presence!: ApiUserPresenceDto;
 
-    @ApiProperty({ description: 'Aliases (NoxIdentifier extras)', type: () => [ApiAliasDto] })
-    @IsArray()
-    alias!: ApiAliasDto[];
+  @ApiProperty({
+    description: 'Aliases (NoxIdentifier extras)',
+    type: () => [ApiAliasDto],
+  })
+  @IsArray()
+  alias!: ApiAliasDto[];
 }
 
 export class ApiCurrentUserDto extends ApiUserDto {
-    @ApiPropertyOptional({ type: 'string', description: 'Email address, or null', example: 'john@example.com', nullable: true })
-    @IsOptional()
-    @IsString()
-    email!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Email address, or null',
+    example: 'john@example.com',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  email!: string | null;
 
-    @ApiProperty({
-        description: 'Authentication methods and their status (email: verified|unverified|disabled, totp: enabled|disabled, passkey: enabled|disabled)',
-        example: { email: 'verified', totp: 'disabled', passkey: 'enabled' },
-        type: 'object',
-        additionalProperties: { type: 'string' },
-    })
-    methods!: Record<string, string>;
+  @ApiProperty({
+    description:
+      'Authentication methods and their status (email: verified|unverified|disabled, totp: enabled|disabled, passkey: enabled|disabled)',
+    example: { email: 'verified', totp: 'disabled', passkey: 'enabled' },
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  })
+  methods!: Record<string, string>;
 
-    @ApiProperty({ description: 'Account creation timestamp (Unix ms)', example: 1680000000000 })
-    created_at!: number;
+  @ApiProperty({
+    description: 'Account creation timestamp (Unix ms)',
+    example: 1680000000000,
+  })
+  created_at!: number;
 
-    @ApiPropertyOptional({ type: 'string', description: 'Home world identifier, or null', example: null, nullable: true })
-    home!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Home world identifier, or null',
+    example: null,
+    nullable: true,
+  })
+  home!: string | null;
 
-    @ApiPropertyOptional({ type: 'string', description: 'Active avatar identifier, or null', example: null, nullable: true })
-    avatar!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description: 'Active avatar identifier, or null',
+    example: null,
+    nullable: true,
+  })
+  avatar!: string | null;
 }
 
 export class ApiSessionDto {
-    @ApiProperty({ description: 'Session bearer token', example: 'tok_abc123' })
-    token!: string;
+  @ApiProperty({ description: 'Session bearer token', example: 'tok_abc123' })
+  token!: string;
 
-    @ApiProperty({ description: 'Session expiry timestamp (Unix ms)', example: 1712000000000 })
-    expires!: number;
+  @ApiProperty({
+    description: 'Session expiry timestamp (Unix ms)',
+    example: 1712000000000,
+  })
+  expires!: number;
 
-    @ApiProperty({ description: 'Session creation timestamp (Unix ms)', example: 1680000000000 })
-    created_at!: number;
+  @ApiProperty({
+    description: 'Session creation timestamp (Unix ms)',
+    example: 1680000000000,
+  })
+  created_at!: number;
 
-    @ApiProperty({ description: 'Authenticated user', type: () => ApiCurrentUserDto })
-    user!: ApiCurrentUserDto;
+  @ApiProperty({
+    description: 'Authenticated user',
+    type: () => ApiCurrentUserDto,
+  })
+  user!: ApiCurrentUserDto;
 }
 
 export class ApiRelationDto {
-    @ApiProperty({ description: 'Relation identifier', example: 'rel_1' })
-    id!: string;
+  @ApiProperty({ description: 'Relation identifier', example: 'rel_1' })
+  id!: string;
 
-    @ApiProperty({ description: 'Relation type (follow, request, block)', example: 'follow' })
-    type!: string;
+  @ApiProperty({
+    description: 'Relation type (follow, request, block)',
+    example: 'follow',
+  })
+  type!: string;
 
-    @ApiProperty({ description: 'Initiator user NoxIdentifier', example: '1@my-server.com' })
-    initiator!: string;
+  @ApiProperty({
+    description: 'Initiator user NoxIdentifier',
+    example: '1@my-server.com',
+  })
+  initiator!: string;
 
-    @ApiProperty({ description: 'Target user NoxIdentifier', example: '2@my-server.com' })
-    target!: string;
+  @ApiProperty({
+    description: 'Target user NoxIdentifier',
+    example: '2@my-server.com',
+  })
+  target!: string;
 
-    @ApiProperty({ description: 'Timestamp when the relation was created (Unix ms)', example: 1680000000000 })
-    created_at!: number;
+  @ApiProperty({
+    description: 'Timestamp when the relation was created (Unix ms)',
+    example: 1680000000000,
+  })
+  created_at!: number;
 }
 
 export class ApiRelationListResponseDto {
-    @ApiProperty({ description: 'Total number of relations for pagination', example: 42 })
-    @IsNumber()
-    total!: number;
+  @ApiProperty({
+    description: 'Total number of relations for pagination',
+    example: 42,
+  })
+  @IsNumber()
+  total!: number;
 
-    @ApiProperty({ description: 'List of relations', type: () => [ApiRelationDto] })
-    @IsArray()
-    items!: ApiRelationDto[];
+  @ApiProperty({
+    description: 'List of relations',
+    type: () => [ApiRelationDto],
+  })
+  @IsArray()
+  items!: ApiRelationDto[];
 }
 
 export class ApiDeviceDto {
-    @ApiProperty({ description: 'User-Agent string', example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...' })
-    user_agent!: string;
+  @ApiProperty({
+    description:
+      'User-Agent string, or `null` when the client sent none (or an empty one).',
+    example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...',
+    nullable: true,
+  })
+  user_agent!: string | null;
 
-    @ApiProperty({ description: 'IP address', example: '203.0.113.42' })
-    ip!: string;
+  @ApiProperty({ description: 'IP address', example: '203.0.113.42' })
+  ip!: string;
 
-    @ApiProperty({ description: 'Last seen timestamp (Unix ms)', example: 1712000000000 })
-    last_seen!: number;
+  @ApiProperty({
+    description: 'Last seen timestamp (Unix ms)',
+    example: 1712000000000,
+  })
+  last_seen!: number;
 }
 
 export class ApiSessionListItemDto {
-    @ApiProperty({ description: 'Session unique ID', example: 'abc-def-123' })
-    id!: string;
+  @ApiProperty({ description: 'Session unique ID', example: 'abc-def-123' })
+  id!: string;
 
-    @ApiProperty({ description: 'Whether this is the current request session', example: false })
-    current!: boolean;
+  @ApiProperty({
+    description: 'Whether this is the current request session',
+    example: false,
+  })
+  current!: boolean;
 
-    @ApiProperty({ description: 'Whether this session has an active WebSocket connection', example: true })
-    active!: boolean;
+  @ApiProperty({
+    description: 'Whether this session has an active WebSocket connection',
+    example: true,
+  })
+  active!: boolean;
 
-    @ApiPropertyOptional({ type: 'string', description: 'Device fingerprint (SHA-256 hex of the Ed25519 public key) if provided during login, or null', example: 'a1b2c3d4e5f6...', nullable: true })
-    fingerprint!: string | null;
+  @ApiPropertyOptional({
+    type: 'string',
+    description:
+      'Device fingerprint (SHA-256 hex of the Ed25519 public key) if provided during login, or null',
+    example: 'a1b2c3d4e5f6...',
+    nullable: true,
+  })
+  fingerprint!: string | null;
 
-    @ApiProperty({ description: 'Session expiry timestamp (Unix ms)', example: 1712000000000 })
-    expires_at!: number;
+  @ApiProperty({
+    description: 'Session expiry timestamp (Unix ms)',
+    example: 1712000000000,
+  })
+  expires_at!: number;
 
-    @ApiProperty({ description: 'Session creation timestamp (Unix ms)', example: 1680000000000 })
-    created_at!: number;
+  @ApiProperty({
+    description: 'Session creation timestamp (Unix ms)',
+    example: 1680000000000,
+  })
+  created_at!: number;
 
-    @ApiProperty({ description: 'Devices associated with this session', type: () => [ApiDeviceDto] })
-    devices!: ApiDeviceDto[];
+  @ApiProperty({
+    description: 'Devices associated with this session',
+    type: () => [ApiDeviceDto],
+  })
+  devices!: ApiDeviceDto[];
 }
 
 export class ApiSessionListResponseDto {
-    @ApiProperty({ description: 'List of sessions', type: () => [ApiSessionListItemDto] })
-    sessions!: ApiSessionListItemDto[];
+  @ApiProperty({
+    description: 'List of sessions',
+    type: () => [ApiSessionListItemDto],
+  })
+  sessions!: ApiSessionListItemDto[];
 
-    @ApiProperty({ description: 'Total number of sessions for pagination', example: 5 })
-    total!: number;
+  @ApiProperty({
+    description: 'Total number of sessions for pagination',
+    example: 5,
+  })
+  total!: number;
 
-    @ApiProperty({ description: 'Page size', example: 10 })
-    limit!: number;
+  @ApiProperty({ description: 'Page size', example: 10 })
+  limit!: number;
 
-    @ApiProperty({ description: 'Page offset', example: 0 })
-    offset!: number;
+  @ApiProperty({ description: 'Page offset', example: 0 })
+  offset!: number;
 }
 
 export class ApiDeleteSessionResponseDto {
-    @ApiProperty({ description: 'Whether the deletion succeeded', example: true })
-    success!: boolean;
+  @ApiProperty({ description: 'Whether the deletion succeeded', example: true })
+  success!: boolean;
 
-    @ApiProperty({ description: 'Whether the deleted session was the current one (client should log out)', example: false })
-    logout!: boolean;
+  @ApiProperty({
+    description:
+      'Whether the deleted session was the current one (client should log out)',
+    example: false,
+  })
+  logout!: boolean;
 }

@@ -1,5 +1,9 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { OptionalServerAuthenticatedRequest, ServerAuthenticatedRequest, OptionalServerGuard } from './server.guard';
+import {
+  OptionalServerAuthenticatedRequest,
+  ServerAuthenticatedRequest,
+  OptionalServerGuard,
+} from './server.guard';
 import { ExternalUserWithMethods } from 'src/external/external-user.model';
 import { ExternalUsersService } from 'src/external/external-users.service';
 import { ApiErrorCode } from 'src/api/api-error.factory';
@@ -8,64 +12,80 @@ import { ApiUser } from 'src/users/users.types';
 import { ApiUserDto } from '../users/dto/user-response.dto';
 
 export interface OptionalServerAsUserAuthenticatedRequest extends OptionalServerAuthenticatedRequest {
-    user: ExternalUserWithMethods | null;
+  user: ExternalUserWithMethods | null;
 }
 
 export interface ServerAsUserAuthenticatedRequest extends ServerAuthenticatedRequest {
-    user: ExternalUserWithMethods;
+  user: ExternalUserWithMethods;
 }
 
 /** Runs OptionalServerGuard + resolves X-Nox-As user. Sets req.user = null if header absent. */
 @Injectable()
 export class OptionalServerAsUserGuard implements CanActivate {
-    constructor(
-        private readonly serverGuard: OptionalServerGuard,
-        private readonly externalUsers: ExternalUsersService,
-    ) { }
+  constructor(
+    private readonly serverGuard: OptionalServerGuard,
+    private readonly externalUsers: ExternalUsersService,
+  ) {}
 
-    async canActivate(context: ExecutionContext): Promise<boolean> {
-        const ok = await this.serverGuard.canActivate(context);
-        if (!ok) return false;
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const ok = await this.serverGuard.canActivate(context);
+    if (!ok) return false;
 
-        const req = context.switchToHttp().getRequest<OptionalServerAsUserAuthenticatedRequest>();
-        if (!req.server) 
-            return true;
+    const req = context
+      .switchToHttp()
+      .getRequest<OptionalServerAsUserAuthenticatedRequest>();
+    if (!req.server) return true;
 
-        req.user = null;
+    req.user = null;
 
-        const rawId = req.get('x-nox-as');
-        if (!rawId) return true;
+    const rawId = req.get('x-nox-as');
+    if (!rawId) return true;
 
-        const id = Number(rawId);
-        if (!Number.isInteger(id) || id <= 0)
-            throw new ApiException(ApiErrorCode.BAD_REQUEST, null, `X-Nox-As: invalid user ID "${rawId}"`);
+    const id = Number(rawId);
+    if (!Number.isInteger(id) || id <= 0)
+      throw new ApiException(
+        ApiErrorCode.BAD_REQUEST,
+        null,
+        `X-Nox-As: invalid user ID "${rawId}"`,
+      );
 
-        let user = await this.externalUsers.findByIid(id, req.server.address as string);
-        if (!user) {
-            const resp = await req.server.fetch<ApiUser>(`/users/${id}`, { responseClass: ApiUserDto });
-            if (resp.error || !resp.data)
-                throw new ApiException(ApiErrorCode.NOT_FOUND, null, `X-Nox-As: user ${id} not found on server "${req.server.address}"`);
-            user = await this.externalUsers.upsertUser(id, req.server, resp.data.public);
-        }
-
-        req.user = user;
-        return true;
+    let user = await this.externalUsers.findByIid(id, req.server.address);
+    if (!user) {
+      const resp = await req.server.fetch<ApiUser>(`/users/${id}`, {
+        responseClass: ApiUserDto,
+      });
+      if (resp.error || !resp.data)
+        throw new ApiException(
+          ApiErrorCode.NOT_FOUND,
+          null,
+          `X-Nox-As: user ${id} not found on server "${req.server.address}"`,
+        );
+      user = await this.externalUsers.upsertUser(
+        id,
+        req.server,
+        resp.data.public,
+      );
     }
+
+    req.user = user;
+    return true;
+  }
 }
 
 /** Requires both a valid Challenge token and a valid X-Nox-As user. */
 @Injectable()
 export class ServerAsUserGuard implements CanActivate {
-    constructor(private readonly optional: OptionalServerAsUserGuard) { }
+  constructor(private readonly optional: OptionalServerAsUserGuard) {}
 
-    async canActivate(context: ExecutionContext): Promise<boolean> {
-        if (!await this.optional.canActivate(context))
-            return false;
-        const req = context.switchToHttp().getRequest<ServerAsUserAuthenticatedRequest>();
-        if (!req.user || !req.server)
-            throw new ApiException(ApiErrorCode.UNAUTHORIZED);
-        return true;
-    }
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (!(await this.optional.canActivate(context))) return false;
+    const req = context
+      .switchToHttp()
+      .getRequest<ServerAsUserAuthenticatedRequest>();
+    if (!req.user || !req.server)
+      throw new ApiException(ApiErrorCode.UNAUTHORIZED);
+    return true;
+  }
 }
 
 export default ServerAsUserGuard;
