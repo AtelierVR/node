@@ -1,11 +1,16 @@
-
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as yaml from 'js-yaml';
 import { cwd } from 'node:process';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
-import { CONFIG_REGISTRY, DefaultFactory, getDefault, getNestedValue, setNestedValue } from './config.decorators';
+import {
+  CONFIG_REGISTRY,
+  DefaultFactory,
+  getDefault,
+  getNestedValue,
+  setNestedValue,
+} from './config.decorators';
 import { AppConfig } from './config.schema';
 
 // Importing config.schema.ts triggers @ConfigVar decorators, populating CONFIG_REGISTRY.
@@ -46,7 +51,8 @@ export default (): AppConfig => {
   const slots = new Map<string, Slot>();
   for (const [key, entry] of CONFIG_REGISTRY) {
     const def = getDefault(entry.proto, entry.property);
-    const value = (def !== undefined && typeof def !== 'function') ? String(def) : null;
+    const value =
+      def !== undefined && typeof def !== 'function' ? String(def) : null;
     slots.set(key, { value, locked: false });
   }
 
@@ -62,14 +68,18 @@ export default (): AppConfig => {
   if (!existsSync(filePath))
     throw new Error(`Configuration file not found: ${filePath}`);
 
-  const yamlCfg = yaml.load(readFileSync(filePath, 'utf8')) as Record<string, any>;
+  const yamlCfg = yaml.load(readFileSync(filePath, 'utf8')) as Record<
+    string,
+    any
+  >;
 
   for (const [key, entry] of CONFIG_REGISTRY) {
     const yamlVal = getNestedValue(yamlCfg, entry.yaml ?? key);
     if (yamlVal !== undefined) {
-      const raw = typeof yamlVal === 'object' && yamlVal !== null
-        ? JSON.stringify(yamlVal)
-        : String(yamlVal);
+      const raw =
+        typeof yamlVal === 'object' && yamlVal !== null
+          ? JSON.stringify(yamlVal)
+          : String(yamlVal);
       applyRaw(slots.get(key)!, raw);
     }
   }
@@ -89,7 +99,8 @@ export default (): AppConfig => {
     const slot = slots.get(key)!;
     if (slot.value !== null) continue;
     const def = getDefault(entry.proto, entry.property);
-    if (typeof def === 'function') slot.value = (def as DefaultFactory)(getResolved());
+    if (typeof def === 'function')
+      slot.value = (def as DefaultFactory)(getResolved());
   }
 
   // ── Build & validate via class-validator ───────────────────────────────────
@@ -104,15 +115,21 @@ export default (): AppConfig => {
     // any non-empty string (including 'false') to true. Coerce to the correct primitive
     // using reflect-metadata design:type before passing to plainToInstance.
     const entry = CONFIG_REGISTRY.get(key)!;
-    const type = Reflect.getMetadata('design:type', entry.proto, entry.property) as Function | undefined;
+    const type = Reflect.getMetadata(
+      'design:type',
+      entry.proto,
+      entry.property,
+    ) as Function | undefined;
     let value: unknown = slot.value;
-    if (type === Number)  value = Number(slot.value);
+    if (type === Number) value = Number(slot.value);
     else if (type === Boolean) value = slot.value === 'true';
 
     setNestedValue(raw, key, value);
   }
 
-  const config = plainToInstance(AppConfig, raw, { enableImplicitConversion: true });
+  const config = plainToInstance(AppConfig, raw, {
+    enableImplicitConversion: true,
+  });
   const errors = validateSync(config, { skipMissingProperties: false });
 
   if (errors.length > 0)
