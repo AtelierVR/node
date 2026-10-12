@@ -501,6 +501,7 @@ export class UploadProvider implements IAssetUploadProvider, OnModuleInit {
     const refetchAt = await this.refetchAt(!this.isFileStable(file));
 
     return {
+      id: file.id,
       name: file.name ?? null,
       url: options?.expanded ? { proxified: url, original: url } : url,
       alias: [{ key: 'api', value: url }],
@@ -1185,7 +1186,7 @@ export class UploadProvider implements IAssetUploadProvider, OnModuleInit {
     type: string,
     id: string,
     releaseRef: string,
-    fileId: number,
+    fileRef: string,
     _viewer: UserWithMethods,
     manager: AssetService,
   ): Promise<AssetFileWithMethods | null> {
@@ -1195,7 +1196,7 @@ export class UploadProvider implements IAssetUploadProvider, OnModuleInit {
     if (!release)
       throw new NotFoundException(`Release not found: ${releaseRef}`);
 
-    const row = await this.findFileRow(release, String(fileId));
+    const row = await this.findFileRow(release, fileRef);
     if (!row) return null;
     return this.attachSingleFile(release, row, asset, manager);
   }

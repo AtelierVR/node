@@ -335,6 +335,7 @@ export class GithubProvider implements IAssetProvider, OnModuleInit {
     const url = await this.fileApiUrl(asset, release, file);
     const original = file.url;
     return {
+      id: file.id,
       name: file.name ?? null,
       url: options?.expanded ? { proxified: url, original } : url,
       alias: [{ key: 'api', value: url }],

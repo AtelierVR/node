@@ -38,7 +38,7 @@ the URL anymore).
 | `GET` | `/api/{endpoint}/{id}/releases` | List the releases (paginated, `total`) — completed ones only by default |
 | `GET` | `/api/{endpoint}/{id}/releases/{version}` | One release — **without** its files |
 | `GET` | `/api/{endpoint}/{id}/releases/{version}/files` | List the files of a release (paginated, `query` + attribute filters, `total`) — completed ones only by default |
-| `GET` | `/api/{endpoint}/{id}/releases/{releaseId}/files/{fileId}/status` | Check a file slot status (no bytes streamed) |
+| `GET` | `/api/{endpoint}/{id}/releases/{releaseId}/files/{fileRef}/status` | Check a file slot status, by numeric id or file name (no bytes streamed) |
 | `PATCH` | `/api/{endpoint}/{id}` | Update asset metadata / preferred release |
 | `PATCH` | `/api/{endpoint}/{id}/releases/{version}` | Update release metadata (files are immutable) |
 | `DELETE` | see §11 | Delete an asset, a release or a file (cascading) |
@@ -239,6 +239,7 @@ Response (excerpt):
 
 ```json
 {
+  "id": 101,
   "name": "my-avatar-windows.bundle",
   "status": "completed",
   "url": "https://nox.example.com/api/files/<key>",
@@ -326,6 +327,7 @@ These attributes are stored in the **`asset_files.attributes` column** (JSON, `[
 
 In API responses, a file (`IApiFile`) **never has an `undefined` field**:
 
+- `id` → always set (the numeric file id, also the last segment of the upload URL);
 - `attributes`, `alias`, `hashs` → arrays (`[]` when absent);
 - `name`, `analysis`, `signature` → `null` when absent;
 - `created_at` / `updated_at` → always set (epoch ms);
@@ -333,8 +335,8 @@ In API responses, a file (`IApiFile`) **never has an `undefined` field**:
   `failed` (the retry window); omitted for `queued`, `processing` and `completed`;
 - `refetch_at` → epoch ms after which the SDK should GET the resource again, **omitted** when it
   is stable (see §7);
-- `analysis` → result returned by the type validator (e.g. `{ engine, platform, descriptors }`),
-  otherwise `null`.
+- `analysis` → result returned by the type validator of the file type, otherwise `null`; its
+  content is analyzer-specific, so the API does not fix its keys.
 
 `IApiRelease` follows the same rule and carries the same `refetch_at` hint, but it **never embeds
 its files**: `GET /api/{endpoint}/{id}/releases/{version}/files` serves them page by page
@@ -427,7 +429,7 @@ own:
 ```
 
 `UploadProvider` throttles the writes (one per 400 ms, keeping the **last** value) so a client
-polling `GET …/files/{fileId}/status` follows the analysis live:
+polling `GET …/files/{fileRef}/status` follows the analysis live:
 
 ```jsonc
 {
@@ -476,6 +478,7 @@ Response (excerpt):
 
 ```json
 {
+  "id": 101,
   "name": "my-avatar-windows.bundle",
   "status": "completed",
   "url": "https://nox.example.com/api/files/<key>",
@@ -487,7 +490,7 @@ Response (excerpt):
 
 The route takes either the numeric `fileId` (the one present in the upload URL returned by step 3)
 or the file name, like the deletion route: a numeric reference is looked up by id first, then by
-name.
+name. Every file object exposes that id as `id`, so a client never has to parse the upload URL.
 
 ### `refetch_at` — when to poll
 
@@ -656,15 +659,16 @@ Constraint examples:
 - `refetch_at` (see §7) is `now + <upload.refetch_ms>` while a file or release is pending, and is
   **omitted** otherwise; the default delay is **5 s** (`5000`). Like `expires_at`, the field only
   exists in the response when it is meaningful.
-- The file name is **unique per release**. Without a name, the file can only be reached through
-  the upload URL, which contains its `fileId` (the `id` is not exposed in `IApiFile`).
+- The file name is **unique per release**. Without a name, the file can still be reached through
+  its upload URL, whose last segment is the numeric `fileId` — also exposed as `id` in every
+  `IApiFile`.
 - The upload is **asynchronous**: the `PUT` only receives and verifies the bytes (it answers in a
   few milliseconds whatever the bundle size), the analysis + storage run in a background job
   through `JobQueueService` (`queue.provider` config: `sync` by default, `bullmq` for a
   Redis-backed queue with retries).
 - The detected analysis is kept in `metadata.analysis` server-side and exposed as-is in
-  `IApiFile.analysis`: `{ engine, platform, version, descriptors, metrics }` (filled by the type
-  validator; `null` when there is none).
+  `IApiFile.analysis` (filled by the type validator of the file type; `null` when there is none) —
+  its content is analyzer-specific.
 
 ---
 

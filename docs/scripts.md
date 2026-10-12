@@ -9,7 +9,8 @@
 | `npm run start:prod` | Production mode |
 | `npm run lint` | ESLint |
 | `npx prisma migrate dev` | Apply DB migrations |
-| `npx ts-node scripts/generate-openapi.ts` | Regenerate `_openapi.yaml` |
+| `npx ts-node scripts/generate-openapi.ts` | Regenerate `_openapi.yaml` (git-ignored) |
+| `cp _openapi.yaml ../docs/public/openapi.yaml` | Publish the spec to the docs site (this file **is** tracked, and the API reference is generated from it) |
 
 ## Tests
 

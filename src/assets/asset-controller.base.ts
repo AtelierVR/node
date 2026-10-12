@@ -6,6 +6,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  HttpStatus,
   Injectable,
   Param,
   ParseIntPipe,
@@ -23,6 +24,8 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiWrappedResponse } from '@/api/swagger';
+import { ApiFileDto, ApiFileListDto } from '@/assets/dto/file-response.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { tmpdir } from 'node:os';
@@ -244,6 +247,7 @@ export abstract class AssetControllerBase implements IAssetController {
    */
   @Get(':id/releases/:version/files')
   @ApiQuery(STATUS_QUERY)
+  @ApiWrappedResponse(ApiFileListDto)
   async listFiles(
     @Param('id') id: string,
     @Param('version') version: string,
@@ -349,6 +353,7 @@ export abstract class AssetControllerBase implements IAssetController {
   })
   @ApiBearerAuth()
   @UseGuards(AuthUserGuard)
+  @ApiWrappedResponse(ApiFileDto, HttpStatus.CREATED)
   @Post(':id/releases/:releaseId/files')
   async initUploadFile(
     @Param('id') id: string,
@@ -375,6 +380,7 @@ export abstract class AssetControllerBase implements IAssetController {
   })
   @ApiBearerAuth()
   @UseGuards(AuthUserGuard)
+  @ApiWrappedResponse(ApiFileDto)
   @Put(':id/releases/:releaseId/files/:fileId')
   async storeUploadFile(
     @Param('id') id: string,
@@ -458,19 +464,20 @@ export abstract class AssetControllerBase implements IAssetController {
     return release.sanitize(request.user, sanitizeOptions(full));
   }
 
-  /** GET /api/:type/:id/releases/:releaseId/files/:fileId/status — file status. */
+  /** GET /api/:type/:id/releases/:releaseId/files/:fileRef/status — file status. */
   @ApiOperation({
     summary: 'Get file status',
     description:
-      'Return a file slot status (IApiFile) without streaming its bytes. Poll it while `refetch_at` is not null.',
+      'Return a file slot status (IApiFile) without streaming its bytes. `fileRef` is the file name or its numeric id. Poll it while `refetch_at` is not null.',
   })
   @ApiBearerAuth()
   @UseGuards(AuthUserGuard)
-  @Get(':id/releases/:releaseId/files/:fileId/status')
+  @ApiWrappedResponse(ApiFileDto)
+  @Get(':id/releases/:releaseId/files/:fileRef/status')
   async getUploadFileStatus(
     @Param('id') id: string,
     @Param('releaseId') releaseId: string,
-    @Param('fileId') fileId: string,
+    @Param('fileRef') fileRef: string,
     @Req() request: UserAuthenticatedRequest,
     @Query('full') full: string | undefined,
   ): Promise<IApiFile> {
@@ -478,7 +485,7 @@ export abstract class AssetControllerBase implements IAssetController {
       this.assetType,
       id,
       releaseId,
-      parseUploadFileId(fileId),
+      fileRef,
       request.user,
     );
     return file.sanitize(request.user, sanitizeOptions(full));

@@ -111,6 +111,8 @@ export type IApiReleasePreference =
  * `expires_at`, which is omitted once the file is complete.
  */
 export interface IApiFile {
+  /** Numeric file id, as addressed by the `.../files/{id}/status` route. Always set. */
+  id: number;
   /** File name, or null when the slot is unnamed. */
   name: string | null;
   /** Final download URL, or the temporary upload URL while the upload is pending. */

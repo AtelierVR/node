@@ -240,18 +240,18 @@ export class AssetService {
     type: string,
     id: string,
     release: string,
-    fileId: number,
+    fileRef: string,
     viewer: UserWithMethods,
   ): Promise<AssetFileWithMethods> {
     const file = await this.getUploadProvider(type).getFileStatus(
       type,
       id,
       release,
-      fileId,
+      fileRef,
       viewer,
       this,
     );
-    if (!file) throw new NotFoundException(`File not found: ${fileId}`);
+    if (!file) throw new NotFoundException(`File not found: ${fileRef}`);
     return file;
   }
 

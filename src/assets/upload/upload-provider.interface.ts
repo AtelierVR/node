@@ -102,14 +102,14 @@ export interface IAssetUploadProvider extends IAssetProvider {
   ): Promise<AssetReleaseWithMethods>;
 
   /**
-   * Lightweight status lookup for a file slot, by numeric id (no bytes are
-   * streamed back). Returns null when the file does not exist.
+   * Lightweight status lookup for a file slot, by numeric id **or file name**
+   * (no bytes are streamed back). Returns null when the file does not exist.
    */
   getFileStatus(
     type: string,
     id: string,
     release: string,
-    fileId: number,
+    fileRef: string,
     viewer: UserWithMethods,
     manager: AssetService,
   ): Promise<AssetFileWithMethods | null>;
