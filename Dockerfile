@@ -21,6 +21,9 @@ FROM base AS development
 ENV NODE_ENV=development
 EXPOSE 8080
 
+COPY tools/noxcli.sh /usr/local/bin/noxcli
+RUN chmod +x /usr/local/bin/noxcli
+
 # Build stage
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
