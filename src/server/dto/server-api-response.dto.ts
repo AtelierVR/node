@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { ReleaseUploadRules } from '@/assets/asset.types';
 
 export class ServerLogEntryDto {
   @ApiProperty({
@@ -120,6 +121,37 @@ export class ConfigPatchResponseDto {
   results!: ConfigPatchResultItemDto[];
 }
 
+export class InstanceAssetDto {
+  @ApiProperty({
+    description: 'Asset type, as used by the asset payloads',
+    example: 'avatar',
+  })
+  type!: string;
+
+  @ApiProperty({
+    description:
+      'Nox identifier type letter of the asset (`a` for an avatar, `w` for a world, `m` for a mod)',
+    example: 'a',
+  })
+  key!: string;
+
+  @ApiProperty({
+    description: 'Route segment of the asset endpoints',
+    example: 'avatars',
+  })
+  endpoint!: string;
+
+  @ApiProperty({
+    description:
+      'Upload rules enforced server-side on the files of this asset (`required` attribute keys, `unique` attribute-key groups). `{}` when the asset accepts anything: every uploaded file must declare the required attributes, and cannot duplicate an existing file on a unique group.',
+    example: {
+      required: ['platform', 'engine'],
+      unique: [['platform', 'engine']],
+    },
+  })
+  rules!: ReleaseUploadRules;
+}
+
 export class InstanceConfigDto {
   @ApiProperty({ description: 'Allow new account registration', example: true })
   allowUserRegistration!: boolean;
@@ -188,4 +220,11 @@ export class InstanceConfigDto {
     example: true,
   })
   supportPasskey!: boolean;
+
+  @ApiProperty({
+    type: () => [InstanceAssetDto],
+    description:
+      'Asset kinds served by this instance, with the upload rules their files are held to. A kind that declares no rule accepts anything.',
+  })
+  assets!: InstanceAssetDto[];
 }

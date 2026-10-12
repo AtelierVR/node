@@ -21,7 +21,7 @@ import type { IApiWorld } from '@/assets/worlds/worlds.types';
  * {@link AssetControllerBase}. Only the create/update entry points are
  * overridden to accept the world-specific `capacity` option.
  */
-@AssetController(WORLD_ASSET_TYPE, 'worlds')
+@AssetController(WORLD_ASSET_TYPE, 'worlds', 'w')
 export class WorldsController extends AssetControllerBase {
     constructor(private readonly worldsAssets: AssetService) {
         super(worldsAssets);

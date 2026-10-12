@@ -8,7 +8,7 @@ import type { IAssetController } from '@/assets/asset-controller.interface';
  * Avatars have no extra option on top of the generic asset model, so the base
  * controller is used as-is (exactly like {@link ModsController}).
  */
-@AssetController('avatar', 'avatars')
+@AssetController('avatar', 'avatars', 'a')
 export class AvatarsController
   extends AssetControllerBase
   implements IAssetController {}

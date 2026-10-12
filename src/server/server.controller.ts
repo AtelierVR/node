@@ -36,6 +36,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ConfigPatchItemDto } from './dto/patch-configs.dto';
 import { ALLOWED_WIDTHS } from '../storage/image-resize.constants';
+import { assetConfigs } from '@/assets/asset-config';
 import { ApiException } from '../api/api-exception';
 import { ApiErrorCode } from '../api/api-error.factory';
 
@@ -112,6 +113,7 @@ export class ServerController {
       regions: await this.appConfig.get<string[]>('instance.regions'),
       allowed_image_widths: [...ALLOWED_WIDTHS],
       support_passkey: await this.passkeyAvailable(),
+      assets: assetConfigs(),
     };
   }
 

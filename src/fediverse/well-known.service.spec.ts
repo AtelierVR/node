@@ -8,7 +8,7 @@ jest.mock('../config/config.service', () => ({
 
 class TestModsAssetController {}
 
-AssetController('mod', 'mods')(TestModsAssetController);
+AssetController('mod', 'mods', 'm')(TestModsAssetController);
 
 describe('WellKnownService', () => {
   it('includes asset controller types in the features list', async () => {

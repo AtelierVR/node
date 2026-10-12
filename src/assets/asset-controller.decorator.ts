@@ -9,13 +9,15 @@ import { registerAssetControllerType } from '@/assets/asset-controller.registry'
 export function AssetController(
   type: string,
   endpoint: string,
+  key: string,
 ): ClassDecorator {
   if (!type.trim()) throw new Error('Asset controller type must not be empty');
   if (!endpoint.trim())
     throw new Error('Asset controller endpoint must not be empty');
+  if (!key.trim()) throw new Error('Asset controller key must not be empty');
 
   return (target) => {
-    registerAssetControllerType(type, endpoint);
+    registerAssetControllerType(type, endpoint, key);
     Controller(endpoint)(target);
     SetMetadata(ASSET_TYPE_METADATA, type)(target);
     SetMetadata(ASSET_ENDPOINT_METADATA, endpoint)(target);
