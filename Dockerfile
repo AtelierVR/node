@@ -41,6 +41,10 @@ COPY --chown=node:node tools/ ./tools/
 COPY --chown=node:node public/ ./public/
 RUN mkdir -p /app/assets && chown node:node /app/assets
 RUN mkdir -p /app/configs && chown -R node:node /app/configs
+RUN chmod +x /app/dist/cli/noxcli.js \
+    && ln -s /app/dist/cli/noxcli.js /usr/local/bin/noxcli
 USER node
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD noxcli ready --quiet --timeout 5s
 CMD ["node", "dist/main"]

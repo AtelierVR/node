@@ -29,6 +29,7 @@
 - **Relay Management** — register/control relay servers, send commands, stream logs
 - **Storage** — local file provider for thumbnails, banners and asset bundles
 - **Fediverse** — NodeInfo, WebFinger, `.well-known/nox` federation endpoints
+- **CLI** — `noxcli ready` / `status` / `version`, shipped in the image and used as container healthcheck
 - **OpenAPI** — auto-generated Swagger spec (`_openapi.yaml`)
 
 ## Documentation
