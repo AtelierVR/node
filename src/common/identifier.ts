@@ -69,7 +69,8 @@ export class NoxIdentifier {
 
   /**
    * True when this identifier is well-formed: non-empty id, hostname-like server
-   * (when present) and URL-safe query keys/values, within the length limit.
+   * (when present) and URL-safe query keys/values, within the length limit. A
+   * numeric id must be in the uint32 range, and never 0.
    *
    * {@link parse} is tolerant (an unknown type prefix is kept in the id), so client
    * input must be checked with this before being stored or re-serialized.
@@ -77,6 +78,12 @@ export class NoxIdentifier {
   isValid(): boolean {
     if (!this.id || this.id.length > NoxIdentifier.MAX_LENGTH) return false;
     if (!NoxIdentifier.ID_RE.test(this.id)) return false;
+    // Numeric ids are uint32: `0` is the "invalid" sentinel and anything beyond
+    // the range cannot exist.
+    if (/^\d+$/.test(this.id)) {
+      const value = Number(this.id);
+      if (value < 1 || value > 0xffffffff) return false;
+    }
     if (this.server !== undefined && !NoxIdentifier.SERVER_RE.test(this.server))
       return false;
     for (const [key, value] of Object.entries(this.query)) {
