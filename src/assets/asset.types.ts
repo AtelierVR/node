@@ -63,6 +63,24 @@ export interface IApiAsset {
 }
 
 /**
+ * Upload rules enforced on the files of an asset type's releases.
+ *
+ * Declared per asset type in `upload/upload-rules.ts` (an `avatar` and a `world`
+ * require `platform` and `engine`, and keep that pair unique across a release)
+ * and published by `GET /configs`, not on the asset payloads.
+ */
+export interface ReleaseUploadRules {
+  /** Attribute keys every file of the release must declare. */
+  required?: string[];
+  /**
+   * Attribute key groups that must stay unique across the release's files:
+   * with `[['platform', 'engine']]` a release accepts one `windows`+`unity`
+   * file, one `windows`+`ue5` file… but never two identical pairs.
+   */
+  unique?: string[][];
+}
+
+/**
  * API-facing representation of a release.
  *
  * Its **files are not embedded**: a release can hold a very large number of
@@ -76,6 +94,8 @@ export interface IApiRelease {
   channel: 'stable' | 'candidate' | 'nightly';
   alias: IApiAlias[];
   status: IApiStatus;
+  /** Epoch ms when the release was created (the publish date for a mirrored release). Always set. */
+  created_at: number;
   /** Expiration timestamp (epoch ms) while the release is incomplete; omitted once it holds a completed file. */
   expires_at?: number;
   /**

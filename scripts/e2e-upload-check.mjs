@@ -456,7 +456,18 @@ try {
   check('release preference is expanded', typeof fullAsset.json?.release, 'object');
   check('expanded preference is auto', fullAsset.json?.release?.auto, true);
 
-  const fullSlot = await api.initFile(assetId, releaseId, { name: 'e2e-full.bundle' }, true);
+  const fullSlot = await api.initFile(
+    assetId,
+    releaseId,
+    {
+      name: 'e2e-full.bundle',
+      attributes: [
+        { key: 'platform', value: 'windows' },
+        { key: 'engine', value: 'ue5' },
+      ],
+    },
+    true,
+  );
   check('reserve slot ?full=1 → 201', fullSlot.status, 201);
   check('url is expanded', typeof fullSlot.json?.url, 'object');
   check('expanded url keeps the original', typeof urlOf(fullSlot.json?.url), 'string');
@@ -608,7 +619,13 @@ try {
   // ── 5. Rejected uploads ────────────────────────────────────────────────────
   section('Rejected uploads');
 
-  const badHashSlot = await api.initFile(assetId, releaseId, { name: 'bad-hash.bundle' });
+  const badHashSlot = await api.initFile(assetId, releaseId, {
+    name: 'bad-hash.bundle',
+    attributes: [
+      { key: 'platform', value: 'linux' },
+      { key: 'engine', value: 'unity' },
+    ],
+  });
   const badHashId = Number(urlOf(badHashSlot.json?.url).split('/').pop());
   const badHash = await api.uploadFile(assetId, releaseId, badHashId, {
     'content-type': DEFAULT_MIME,
@@ -627,7 +644,13 @@ try {
     urlOf(badHashStatus.json?.url),
   );
 
-  const badLengthSlot = await api.initFile(assetId, releaseId, { name: 'bad-length.bundle' });
+  const badLengthSlot = await api.initFile(assetId, releaseId, {
+    name: 'bad-length.bundle',
+    attributes: [
+      { key: 'platform', value: 'macos' },
+      { key: 'engine', value: 'unity' },
+    ],
+  });
   const badLengthId = Number(urlOf(badLengthSlot.json?.url).split('/').pop());
   const badLength = await rawUpload(
     `/${ENDPOINT}/${assetId}/releases/${releaseId}/files/${badLengthId}`,
@@ -654,6 +677,10 @@ try {
   const customSlot = await api.initFile(assetId, release2Id, {
     name: 'e2e-custom.bundle',
     mime: 'application/x-slot-declared',
+    attributes: [
+      { key: 'platform', value: 'windows' },
+      { key: 'engine', value: 'unity' },
+    ],
   });
   const customId = Number(urlOf(customSlot.json?.url).split('/').pop());
   const customUpload = await api.uploadFile(assetId, release2Id, customId, {
@@ -730,7 +757,13 @@ try {
     const targetAssetId = created.json?.id;
     const targetRelease = await api.createRelease(targetAssetId, { name: 'v1.0.0' });
     const targetReleaseId = targetRelease.json?.id;
-    const slot = await api.initFile(targetAssetId, targetReleaseId, { name: 'cancel.bundle' });
+    const slot = await api.initFile(targetAssetId, targetReleaseId, {
+      name: 'cancel.bundle',
+      attributes: [
+        { key: 'platform', value: 'windows' },
+        { key: 'engine', value: 'unity' },
+      ],
+    });
     const targetFileId = Number(urlOf(slot.json?.url).split('/').pop());
     const bytesBefore = storedFileCount();
 

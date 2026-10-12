@@ -39,6 +39,7 @@ import {
 import type { IStatusProgress } from '@/assets/asset.types';
 import type { AssetService } from '@/assets/asset.service';
 import {
+  findFileWithAttributes,
   searchAssetIds,
   searchFileIds,
   searchReleaseIds,
@@ -83,6 +84,14 @@ import type {
 import { checkValidAssetFile } from '@/utils/assetbundle';
 import type { AnalyzedAssetBundle } from '@/utils/assetbundle';
 import { getUploadValidator } from '@/assets/upload/upload-validation';
+import {
+  attributeMap,
+  describeAttributes,
+  duplicateAttributes,
+  isUploadRulesEmpty,
+  missingAttributes,
+  uploadRules,
+} from '@/assets/upload/upload-rules';
 import type { IApiAlias } from '@/common/alias.types';
 
 /** MIME type used when an uploaded file does not advertise its own. */
@@ -458,6 +467,7 @@ export class UploadProvider implements IAssetUploadProvider, OnModuleInit {
       title: release.title,
       changelog: release.changelog,
       channel: release.channel,
+      created_at: release.createdAt.getTime(),
       alias: [
         {
           key: 'api',
@@ -635,6 +645,49 @@ export class UploadProvider implements IAssetUploadProvider, OnModuleInit {
     return this.attachRelease(record, asset, manager);
   }
 
+  /**
+   * Checks a slot against the upload rules of its release and throws a `400`
+   * describing the conflict when it does not pass: an attribute required by the
+   * release is missing, or the slot duplicates an existing file on a group of
+   * attributes that must stay unique (e.g. `platform`+`engine`).
+   *
+   * Called both when the slot is reserved and when its bytes are stored, so a
+   * release can gain rules in between without letting an invalid file through.
+   */
+  private async assertUploadRules(
+    release: AssetReleaseWithMethods,
+    attributes: readonly { key: string; value: unknown }[],
+    excludeFileId?: number,
+  ): Promise<void> {
+    const rules = uploadRules(release.assetType);
+    if (isUploadRulesEmpty(rules)) return;
+
+    const values = attributeMap(attributes);
+    const missing = missingAttributes(rules, values);
+    if (missing.length > 0)
+      throw new BadRequestException(
+        `Missing required attribute${missing.length > 1 ? 's' : ''} ${missing
+          .map((key) => `"${key}"`)
+          .join(', ')} — this release requires ${(rules.required ?? []).join(', ')}`,
+      );
+
+    const label = release.name ?? String(release.id);
+    for (const group of rules.unique ?? []) {
+      const pairs = duplicateAttributes(group, values);
+      if (!pairs) continue;
+      const clash = await findFileWithAttributes(
+        this.prisma,
+        release,
+        pairs,
+        excludeFileId,
+      );
+      if (clash)
+        throw new BadRequestException(
+          `Release "${label}" already has a file with ${describeAttributes(pairs)}${clash.name ? ` ("${clash.name}")` : ''}`,
+        );
+    }
+  }
+
   async initFile(
     type: string,
     id: string,
@@ -673,6 +726,7 @@ export class UploadProvider implements IAssetUploadProvider, OnModuleInit {
       key: attribute.key,
       value: attribute.value,
     }));
+    await this.assertUploadRules(release, attributes);
     const waitingStatus = statusJson(AWAITING_FILE_STATUS);
     // A reserved slot is incomplete until its file is uploaded: it expires too.
     const expiresAt = await this.expiryDate();
@@ -744,6 +798,8 @@ export class UploadProvider implements IAssetUploadProvider, OnModuleInit {
     const attributes = parseAttributes(file.attributes);
     if (file.url)
       throw new BadRequestException('File has already been uploaded');
+    // The rules may have been set after the slot was reserved.
+    await this.assertUploadRules(release, attributes, file.id);
 
     // The slot may be unnamed: fall back to the filename advertised by the
     // upload (`Content-Disposition`), just like the MIME type comes from
