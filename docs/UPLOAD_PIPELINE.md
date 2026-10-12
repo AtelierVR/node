@@ -35,7 +35,7 @@ the URL anymore).
 | Method | Route | Purpose |
 |--------|-------|---------|
 | `GET` | `/api/{endpoint}` | Search the assets — only those owning a completed release (see §5) |
-| `GET` | `/api/{endpoint}/{id}/releases` | List the releases (paginated, `total`) — completed ones only by default |
+| `GET` | `/api/{endpoint}/{id}/releases` | List the releases (paginated, `total`) — newest first, completed ones only by default |
 | `GET` | `/api/{endpoint}/{id}/releases/{version}` | One release — **without** its files |
 | `GET` | `/api/{endpoint}/{id}/releases/{version}/files` | List the files of a release (paginated, `query` + attribute filters, `total`) — completed ones only by default |
 | `GET` | `/api/{endpoint}/{id}/releases/{releaseId}/files/{fileRef}/status` | Check a file slot status, by numeric id or file name (no bytes streamed) |
@@ -320,10 +320,66 @@ Recommended convention:
 Example file name: `my-avatar-<platform>.bundle` (Unity bundle).
 
 The type validator receives `{ type, attributes }` (a `key → value` map) and reads what it
-needs. For `avatar`/`world`, `platform` and `engine` are **required** for the descriptor
-comparison to run (otherwise only the generic bundle analysis happens).
+needs. For `avatar`/`world`, `platform` and `engine` are **required by the upload rules** (see
+below): a slot that omits one of them is refused before any byte is sent, and the descriptor
+comparison uses them.
 
 These attributes are stored in the **`asset_files.attributes` column** (JSON, `[{ key, value }]`).
+
+### Upload rules
+
+What a release accepts is declared **per asset type**, in code
+(`src/assets/upload/upload-rules.ts` → `registerUploadRules`), and enforced **by the server** — not
+per release, and never exposed on the asset/release payloads.
+
+| Rule | Meaning |
+|------|---------|
+| `required` | attribute keys **every** file of the release must declare |
+| `unique` | attribute key groups whose **combination** must stay unique across the release |
+
+The defaults:
+
+| Type | Rules |
+|------|-------|
+| `mod` | `required: [platform, engine]`, `unique: [[platform, engine]]` |
+| `avatar` | `required: [platform, engine]`, `unique: [[platform, engine]]` |
+| `world` | `required: [platform, engine]`, `unique: [[platform, engine]]` |
+| anything else | none — attributes are free |
+
+so a mod, an avatar or a world ships **one bundle per platform+engine pair**:
+
+```bash
+# BOTH are refused with a 400, before any byte is uploaded
+curl -X POST "…/files" -d '{ "name": "a.bundle" }'                      # missing platform, engine
+curl -X POST "…/files" -d '{ "attributes": [{"key":"platform","value":"windows"},{"key":"engine","value":"unity"}] }'
+#   → Release "v1.0.0" already has a file with platform=windows, engine=unity ("a.bundle")
+```
+
+Both checks run when the slot is **reserved** (`POST …/files`) and again when its bytes are
+**stored** (`PUT …/files/{id}`), so a refused slot never reaches the analysis and cannot be
+duplicated concurrently. Attributes are matched case-insensitively, and **in full**:
+`unity:6000.5` and `unity:6000.4` are two different pairs, like two different platforms. A group is
+only checked on files declaring **all** of its keys.
+
+Clients discover the rules through the public instance config — `GET /configs`, `assets` — which
+lists every asset kind served by the instance (its payload `type`, its Nox identifier `key`, the
+`endpoint` that serves it) along with its `rules`:
+
+```jsonc
+{
+  "support_passkey": true,
+  "assets": [
+    { "type": "mod",    "key": "m", "endpoint": "mods",    "rules": { "required": ["platform","engine"], "unique": [["platform","engine"]] } },
+    { "type": "avatar", "key": "a", "endpoint": "avatars", "rules": { "required": ["platform","engine"], "unique": [["platform","engine"]] } },
+    { "type": "world",  "key": "w", "endpoint": "worlds",  "rules": { "required": ["platform","engine"], "unique": [["platform","engine"]] } }
+  ]
+}
+```
+
+The list is built from the registered asset controllers (`@AssetController(type, endpoint, key)`),
+so a kind that declares no rule simply reports `"rules": {}`.
+
+The rules apply to **new uploads** only: files already stored are not re-checked.
 
 In API responses, a file (`IApiFile`) **never has an `undefined` field**:
 
@@ -622,6 +678,9 @@ Constraint examples:
 - **Bundle**: `checkValidAssetFile` fails (not a bundle, invalid JSON, exit ≠ 0).
 - **Avatar descriptor**: `No AvatarDescriptor found`, `Platform mismatch: bundle is "linux", asset expects "windows"`, `Engine mismatch`, `Unknown platform ID`.
 - **Hash mismatch**: `Content-Hash` does not match the received content.
+- **Upload rules**: `Missing required attributes "platform", "engine" — this release requires platform, engine`,
+  `Release "v1.0.0" already has a file with platform=windows, engine=unity ("my-avatar-windows.bundle")`
+  (see §4).
 - **Length mismatch**: `Content-Length` does not match the received size.
 
 ---
