@@ -102,6 +102,42 @@ export async function searchFileIds(
 }
 
 /**
+ * First file of a release carrying **all** the given attributes, or `null`.
+ *
+ * Attributes are compared case-insensitively, like the attribute filters, and
+ * `excludeFileId` skips the file being written. Backs the `unique` upload rules
+ * (e.g. an avatar release accepts a single `platform`+`engine` pair).
+ */
+export async function findFileWithAttributes(
+  prisma: RawQueryRunner,
+  release: { assetType: string; assetId: number; id: number },
+  attributes: readonly { key: string; value: string }[],
+  excludeFileId?: number,
+): Promise<{ id: number; name: string | null } | null> {
+  const conditions: Prisma.Sql[] = [
+    Prisma.sql`f."release_asset_type" = ${release.assetType}`,
+    Prisma.sql`f."release_asset_id" = ${release.assetId}`,
+    Prisma.sql`f."release_id" = ${release.id}`,
+  ];
+  if (excludeFileId !== undefined)
+    conditions.push(Prisma.sql`f."id" <> ${excludeFileId}`);
+  for (const { key, value } of attributes) {
+    const predicate = attributePredicate({ key, values: [value] });
+    if (predicate) conditions.push(matchingAttributePredicate(predicate));
+  }
+
+  const rows = (await prisma.$queryRaw(
+    Prisma.sql`SELECT f."id", f."name" FROM "asset_files" f WHERE ${Prisma.join(
+      conditions,
+      ' AND ',
+    )} ORDER BY f."id" ASC LIMIT 1`,
+  )) as Array<{ id: number; name: string | null }>;
+
+  const row = rows[0];
+  return row ? { id: Number(row.id), name: row.name } : null;
+}
+
+/**
  * Resolves the releases of an asset **in the database**: the text search, the
  * file-attribute filters, the total count and the pagination all run in
  * PostgreSQL, so only the requested page is ever loaded in the process.
@@ -158,7 +194,7 @@ export async function searchReleaseIds(
   )) as Array<{ total: number }>;
 
   const rows = (await prisma.$queryRaw(
-    Prisma.sql`SELECT r."id" FROM "asset_releases" r WHERE ${where} ORDER BY r."id" ASC LIMIT ${options.limit} OFFSET ${options.offset}`,
+    Prisma.sql`SELECT r."id" FROM "asset_releases" r WHERE ${where} ORDER BY r."id" DESC LIMIT ${options.limit} OFFSET ${options.offset}`,
   )) as Array<{ id: number }>;
 
   return {

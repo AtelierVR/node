@@ -298,6 +298,8 @@ export class GithubProvider implements IAssetProvider, OnModuleInit {
       title: release.title,
       changelog: release.changelog,
       channel: release.channel,
+      created_at: metadataDate(release.metadata, 'publishedAt')
+         ?? release.createdAt.getTime(),
       alias: [
         {
           key: 'iid',
@@ -1293,6 +1295,17 @@ function metadataString(metadata: unknown, key: string): string {
     throw new Error(`GitHub provider metadata is missing "${key}"`);
   }
   return value;
+}
+
+/** Reads an optional ISO date from the provider metadata, as epoch ms. */
+function metadataDate(metadata: unknown, key: string): number | null {
+  const root = isRecord(metadata) ? metadata : null;
+  const providerData =
+    root && isRecord(root.providerData) ? root.providerData : null;
+  const value = providerData?.[key];
+  if (typeof value !== 'string') return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function parseGithubId(value: string): number {
