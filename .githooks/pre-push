@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# Pre-push gate: runs locally what the CI runs, so a broken commit is caught
+# before it leaves the machine.
+#
+#   npm run ci         type-check / tests / cargo checks   (always)
+#   npm run ci:docker  the image the CI builds             (default)
+#
+# Controls:
+#   NOX_CI_SKIP=1     push without any check
+#   NOX_CI_DOCKER=0   skip the docker build (the slow part)
+#
+# Enabled per clone by `npm install` (the "prepare" script sets core.hooksPath),
+# or manually with:  git config core.hooksPath .githooks
+
+set -e
+
+if [ "$NOX_CI_SKIP" = "1" ]; then
+    echo "pre-push: checks skipped (NOX_CI_SKIP=1)"
+    exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Files about to be pushed: everything since the upstream branch, or the last
+# commit when the branch has no upstream yet.
+if upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null); then
+    changed=$(git diff --name-only "$upstream..HEAD")
+else
+    changed=$(git diff --name-only HEAD~1 2>/dev/null || git ls-files)
+fi
+
+if [ -z "$changed" ]; then
+    echo "pre-push: nothing to check"
+    exit 0
+fi
+
+echo "pre-push: npm run ci"
+npm run --silent ci
+
+if [ "$NOX_CI_DOCKER" = "0" ]; then
+    echo "pre-push: docker build skipped (NOX_CI_DOCKER=0)"
+else
+    echo "pre-push: npm run ci:docker"
+    npm run --silent ci:docker
+fi
+
+echo "pre-push: ok ($(printf '%s\n' "$changed" | wc -l | tr -d ' ') file(s) to push)"

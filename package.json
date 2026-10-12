@@ -7,6 +7,9 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build && tsc-alias -p tsconfig.build.json",
+    "ci": "tsc --noEmit -p tsconfig.build.json && jest --silent",
+    "ci:docker": "docker build --target runner -t nox-node:ci .",
+    "prepare": "git config core.hooksPath .githooks || true",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
