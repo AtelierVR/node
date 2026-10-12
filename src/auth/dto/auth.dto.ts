@@ -112,9 +112,9 @@ export class RegisterDto {
     type: 'string',
     example: null,
     nullable: true,
-    description: 'Ed25519 public key (base64 SPKI DER)',
+    description: 'Public key (base64 SPKI DER), Ed25519 or RSA',
   })
-  @IsPublicKey({ type: 'ed25519' })
+  @IsPublicKey({ type: ['ed25519', 'rsa'] })
   @IsOptional()
   @IsString()
   public_key?: string;
@@ -152,9 +152,9 @@ export class LoginDto {
   @ApiPropertyOptional({
     example: null,
     nullable: true,
-    description: 'Ed25519 public key (base64 SPKI DER)',
+    description: 'Public key (base64 SPKI DER), Ed25519 or RSA',
   })
-  @IsPublicKey({ type: 'ed25519' })
+  @IsPublicKey({ type: ['ed25519', 'rsa'] })
   @IsOptional()
   @IsString()
   public_key?: string;

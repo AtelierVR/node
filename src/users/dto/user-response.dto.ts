@@ -325,7 +325,7 @@ export class ApiSessionListItemDto {
   @ApiPropertyOptional({
     type: 'string',
     description:
-      'Device fingerprint (SHA-256 hex of the Ed25519 public key) if provided during login, or null',
+      'Device fingerprint (SHA-256 hex of the login public key) if provided during login, or null',
     example: 'a1b2c3d4e5f6...',
     nullable: true,
   })

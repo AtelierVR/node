@@ -75,9 +75,9 @@ export class PasskeyLoginVerifyDto {
     example: null,
     nullable: true,
     description:
-      'Ed25519 public key (base64 SPKI DER) binding the session to a device key',
+      'Public key (base64 SPKI DER, Ed25519 or RSA) binding the session to a device key',
   })
-  @IsPublicKey({ type: 'ed25519' })
+  @IsPublicKey({ type: ['ed25519', 'rsa'] })
   @IsOptional()
   @IsString()
   public_key?: string;

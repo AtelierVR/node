@@ -3,32 +3,23 @@ import {
   ValidationArguments,
   ValidationOptions,
 } from 'class-validator';
+import { createPublicKey } from 'node:crypto';
 
 /** Supported public-key algorithms. */
-export type PublicKeyType = 'ed25519';
+export type PublicKeyType = 'ed25519' | 'rsa';
 
 export interface IsPublicKeyOptions {
-  /** Key algorithm to validate. Defaults to `'ed25519'`. */
-  type?: PublicKeyType;
+  /**
+   * Accepted key algorithm(s). Defaults to `'ed25519'`.
+   * `'rsa'` matches any RSA SubjectPublicKeyInfo (2048-8192 bits and beyond).
+   */
+  type?: PublicKeyType | PublicKeyType[];
   /** Also accept a raw (unwrapped) public key of the algorithm's native size. Defaults to `true`. */
   allowRaw?: boolean;
 }
 
-/**
- * Ed25519 SubjectPublicKeyInfo prefix (RFC 8410 §4):
- *   SEQUENCE (0x2A) { SEQUENCE { OID 1.3.101.112 } BIT STRING (0x21 0x00) } + 32-byte key
- * → total 44 bytes.
- */
-const ED25519_SPKI_PREFIX = Buffer.from([
-  0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
-]);
-
-/** Native raw key size (bytes) per algorithm. */
-const RAW_KEY_SIZE: Record<PublicKeyType, number> = {
-  ed25519: 32,
-};
-
-const ED25519_SPKI_SIZE = ED25519_SPKI_PREFIX.length + RAW_KEY_SIZE.ed25519; // 44
+/** Raw (unwrapped) Ed25519 key size, in bytes. */
+const ED25519_RAW_SIZE = 32;
 
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -52,21 +43,43 @@ function decodeBase64Strict(value: string): Buffer | null {
   return buf;
 }
 
+/** Node's `KeyObject.asymmetricKeyType` → {@link PublicKeyType}. */
+const ASYMMETRIC_KEY_TYPE: Record<string, PublicKeyType> = {
+  ed25519: 'ed25519',
+  rsa: 'rsa',
+  'rsa-pss': 'rsa',
+};
+
+/** Reads the algorithm of a SPKI DER public key, or `null` when it cannot be parsed. */
+function detectSpkiType(der: Buffer): PublicKeyType | null {
+  try {
+    const key = createPublicKey({ key: der, format: 'der', type: 'spki' });
+    return ASYMMETRIC_KEY_TYPE[key.asymmetricKeyType ?? ''] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Validates a base64-encoded public key against the real key format used by the
- * server (`users.service.ts` → `base64(SPKI DER)`, stored in `sessions.publicKey`).
+ * Validates a base64-encoded public key.
  *
- * By default both the wrapped SPKI DER form and the raw key form are accepted,
- * because the previous validation only checked the base64 alphabet and some
- * clients send the unwrapped key.
+ * By default only Ed25519 is accepted — either the wrapped SPKI DER form
+ * (`base64(SPKI DER)`, 44 bytes, as produced by `users.service.ts`) or the raw
+ * 32-byte key. RSA clients (Unity `nox.cck`, 4096-bit by default, up to 8192) are
+ * supported through `type: ['ed25519', 'rsa']`, which matches any parsable SPKI DER.
+ *
+ * The key is opaque to the server (stored on the session and reduced to a SHA-256
+ * fingerprint), so every accepted algorithm is equivalent for the fingerprint.
  *
  * @example
- *   @IsPublicKey({ type: 'ed25519' }) public_key?: string;
+ *   @IsPublicKey({ type: ['ed25519', 'rsa'] }) public_key?: string;
  */
 export function IsPublicKey(
   options: IsPublicKeyOptions & ValidationOptions = {},
 ): PropertyDecorator {
-  const type = options.type ?? 'ed25519';
+  const types: PublicKeyType[] = Array.isArray(options.type)
+    ? options.type
+    : [options.type ?? 'ed25519'];
   const allowRaw = options.allowRaw ?? true;
 
   return function (object: object, propertyName: string | symbol): void {
@@ -82,23 +95,26 @@ export function IsPublicKey(
           const buf = decodeBase64Strict(value);
           if (!buf) return false;
 
-          if (type === 'ed25519') {
-            if (allowRaw && buf.length === RAW_KEY_SIZE.ed25519) return true;
-            return (
-              buf.length === ED25519_SPKI_SIZE &&
-              buf
-                .subarray(0, ED25519_SPKI_PREFIX.length)
-                .equals(ED25519_SPKI_PREFIX)
-            );
-          }
+          // Raw (unwrapped) Ed25519 key.
+          if (
+            allowRaw &&
+            types.includes('ed25519') &&
+            buf.length === ED25519_RAW_SIZE
+          )
+            return true;
 
-          return false;
+          // Wrapped SPKI DER form — detect the algorithm from the DER itself.
+          const detected = detectSpkiType(buf);
+          return detected !== null && types.includes(detected);
         },
         defaultMessage(args: ValidationArguments): string {
-          const raw = allowRaw
-            ? ` or a raw ${RAW_KEY_SIZE[type]}-byte key`
-            : '';
-          return `${args.property} must be a base64-encoded ${type} public key (SPKI DER${raw})`;
+          const raw =
+            allowRaw && types.includes('ed25519')
+              ? ` or a raw ${ED25519_RAW_SIZE}-byte key`
+              : '';
+          return `${args.property} must be a base64-encoded ${types.join(
+            ' or ',
+          )} public key (SPKI DER${raw})`;
         },
       },
     });
